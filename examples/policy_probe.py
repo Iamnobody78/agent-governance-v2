@@ -16,9 +16,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 # Single source of truth: import from src.main, don't duplicate constants.
-from src.main import _is_dangerous
+from src.main import _is_dangerous, DANGEROUS_PREFIXES
 
 BLOCKING_ACTIONS = ("DENY", "ESCALATE")
+ALLOWED_ACTIONS = BLOCKING_ACTIONS + ("ALLOW",)
 
 POLICIES = REPO_ROOT / "config" / "policies.yaml"
 
@@ -34,25 +35,59 @@ def main() -> int:
               f"{r.get('priority','?'):<9}{r.get('path_pattern','?')}")
 
     warnings = []
+
+    # ── HIGH fix (Reviewer REJECT): action whitelist ──
+    # Unknown/misspelled action (e.g. 'deny', 'DENNY') is silently ALLOWed
+    # at runtime (main.py else-branch) AND skipped by this probe → CI green
+    # while governance is fail-open. Must hard-fail instead.
+    for i, r in enumerate(rules):
+        action = r.get("action")
+        if action not in ALLOWED_ACTIONS:
+            warnings.append(
+                f"rule[{i}] '{r.get('name','?')}': action={action!r} is NOT in "
+                f"{ALLOWED_ACTIONS} — runtime would silently ALLOW it. "
+                f"Fix the YAML (case-sensitive) or add to whitelist."
+            )
+
     for r in rules:
         name = r.get("name", "?")
         action = r.get("action", "")
         path = r.get("path_pattern", "")
         method = r.get("method")
+        if action not in ALLOWED_ACTIONS:
+            continue  # already reported above
+        # Missing method = wildcard (matches all) per policy.py Rule.matches
         if method is None:
-            warnings.append(f"{name}: missing 'method' field")
-            continue
-        if action in BLOCKING_ACTIONS and not _is_dangerous(path, method):
-            warnings.append(f"{name}: DENY/ESCALATE rule NOT covered by _is_dangerous()")
-        if action == "ALLOW" and _is_dangerous(path, method):
-            warnings.append(f"{name}: ALLOW rule wrongly flagged as dangerous")
+            # treat as wildcard: check path against _is_dangerous for any method
+            dangerous = any(_is_dangerous(path, m) for m in ("GET", "POST", "DELETE", "PUT", "PATCH"))
+            method_for_report = "*"
+        else:
+            dangerous = _is_dangerous(path, method)
+            method_for_report = method
+        if action in BLOCKING_ACTIONS and not dangerous:
+            warnings.append(f"{name}: {action} rule '{path}' ({method_for_report}) NOT covered by _is_dangerous()")
+        if action == "ALLOW" and dangerous:
+            warnings.append(f"{name}: ALLOW rule '{path}' ({method_for_report}) wrongly flagged as dangerous")
+
+    # ── MEDIUM fix (Reviewer): orphan-prefix reverse check ──
+    # A prefix in _is_dangerous with NO matching YAML rule means the
+    # timeout fail-closed branch would DENY requests the YAML has allowed.
+    covered_prefixes = set()
+    for r in rules:
+        path = r.get("path_pattern", "")
+        for prefix in DANGEROUS_PREFIXES:
+            if path.startswith(prefix) or f"/{prefix.lstrip('/')}*" in path:
+                covered_prefixes.add(prefix)
+    for prefix in DANGEROUS_PREFIXES:
+        if prefix not in covered_prefixes:
+            warnings.append(f"orphan prefix '{prefix}' in _is_dangerous() has NO YAML rule — timeout branch would DENY allowed traffic")
 
     if warnings:
         print(f"WARNING: {len(warnings)} inconsistency(ies):")
         for w in warnings:
             print(f"  - {w}")
         return 1
-    print("OK: all blocking rules covered, no ALLOW rule mis-flagged")
+    print("OK: all actions valid, blocking rules covered, no orphan prefixes, no ALLOW mis-flag")
     return 0
 
 

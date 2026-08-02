@@ -26,6 +26,10 @@ INTERCEPT_TIMEOUT = 0.5       # seconds — if policy eval exceeds this, auto-AL
 CIRCUIT_BREAKER_LIMIT = 10    # consecutive ESCALATE without resolution → ALLOW
 AGENT_BACKEND_URL = "http://localhost:8000"   # upstream Agent (for proxy mode)
 
+# Shared heuristic constants — exported for policy_probe.py (single source of truth)
+DANGEROUS_PREFIXES = ("/api/delete", "/api/admin", "/api/config", "/api/model")
+DANGEROUS_METHODS = ("DELETE", "POST", "PUT", "PATCH")
+
 # ── global state ────────────────────────────────────────────────────
 start_time = time.time()
 escalate_count_since_resolve = 0
@@ -51,10 +55,8 @@ async def resolve_policy() -> Rule:
 
 def _is_dangerous(path: str, method: str) -> bool:
     """Heuristic: operations that modify state are dangerous when uncertain."""
-    dangerous_prefixes = ("/api/delete", "/api/admin", "/api/config", "/api/model")
-    dangerous_methods = ("DELETE", "POST", "PUT", "PATCH")
-    if method.upper() in dangerous_methods:
-        for prefix in dangerous_prefixes:
+    if method.upper() in DANGEROUS_METHODS:
+        for prefix in DANGEROUS_PREFIXES:
             if path.startswith(prefix):
                 return True
     return False

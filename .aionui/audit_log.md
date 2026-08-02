@@ -44,4 +44,17 @@
 - Commit: `f541481`
 - 备注: 修正了依赖 bug——policy_probe import src.main 需要完整依赖，非仅 pyyaml
 
+## AUDIT-0004 — 2026-08-03T03:00:00Z
+
+- PR: N/A（协议验证：用 Reviewer Prompt Template v1.0 实际 Spawn）
+- 标题: GATE 5 审查 → REJECT → 修复 → PASS 完整闭环
+- 变更文件: `examples/policy_probe.py`, `src/main.py`, `config/policies.yaml`
+- 变更行数: +33/-22
+- 评级: C → A-（修复后）
+- 结论: **REJECT → PASS**（首个真实 REJECT 闭环）
+- 问题数: HIGH:1 MEDIUM:2 LOW:4 → 修复后 HIGH:0 MEDIUM:0
+- Reviewer: Spawn 代理 `reviewer-gate5`（模板注入，6 turns）
+- Commit: 待提交
+- 备注: **HIGH** — action 大小写/笔误绕过（`deny` 被运行时 else→ALLOW 放行且 probe 静默跳过）→ 修复：action 白名单校验 + 孤儿前缀反向检查 + DANGEROUS_PREFIXES 提升为模块常量。验证：篡改 YAML 后 probe exit 1，恢复后 exit 0
+
 ---
