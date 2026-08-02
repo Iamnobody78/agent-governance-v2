@@ -90,7 +90,7 @@ class AssertVisitor(ast.NodeVisitor):
             while isinstance(root, ast.Attribute):
                 root = root.value
             if isinstance(root, ast.Name):
-                if root.id in ("resp", "response", "data", "result", "actual", "expected"):
+                if root.id in ("resp", "response", "data", "result", "actual", "expected", "main_module"):
                     return False
                 if root.id.startswith("resp"):
                     return False

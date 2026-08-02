@@ -29,6 +29,7 @@ AGENT_BACKEND_URL = "http://localhost:8000"   # upstream Agent (for proxy mode)
 # ── global state ────────────────────────────────────────────────────
 start_time = time.time()
 escalate_count_since_resolve = 0
+last_escalate_time = 0.0
 policy_engine: Optional[PolicyEngine] = None
 storage: Optional[Storage] = None
 
@@ -107,7 +108,13 @@ async def intercept_handler(request: web.Request) -> web.Response:
                 verdict = Verdict.DENY
                 reason = rule.reason or f"匹配规则 '{rule.name}' → 拦截"
             elif rule.action == "ESCALATE":
-                escalate_count_since_resolve += 1
+                global last_escalate_time
+                now = time.time()
+                if now - last_escalate_time > 300:
+                    escalate_count_since_resolve = 1  # fresh burst, reset counter
+                else:
+                    escalate_count_since_resolve += 1
+                last_escalate_time = now
                 if escalate_count_since_resolve >= CIRCUIT_BREAKER_LIMIT:
                     verdict = Verdict.ALLOW
                     reason = f"连续 {escalate_count_since_resolve} 次升级未获审批，熔断放行"
@@ -118,8 +125,9 @@ async def intercept_handler(request: web.Request) -> web.Response:
             else:
                 verdict = Verdict.ALLOW
                 reason = rule.reason or f"匹配规则 '{rule.name}' → 放行"
-                if rule.action == "ESCALATE":  # reset if resolved
-                    escalate_count_since_resolve = 0
+                # successful ALLOW = request resolved → reset circuit breaker
+                escalate_count_since_resolve = 0
+                last_escalate_time = 0.0
 
     # 3. persist decision
     decision = {
@@ -196,10 +204,11 @@ async def decisions_handler(request: web.Request) -> web.Response:
 # ── app factory ─────────────────────────────────────────────────────
 
 def create_app() -> web.Application:
-    global policy_engine, storage, escalate_count_since_resolve
+    global policy_engine, storage, escalate_count_since_resolve, last_escalate_time
     policy_engine = PolicyEngine()
     storage = Storage()
     escalate_count_since_resolve = 0
+    last_escalate_time = 0.0
 
     app = web.Application()
     app.router.add_post("/v1/intercept", intercept_handler)
