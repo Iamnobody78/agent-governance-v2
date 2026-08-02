@@ -3,3 +3,8 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 *.db
+
+# virtual environments — never commit
+.venv*/
+venv/
+env/

@@ -26,7 +26,7 @@ class TestInterceptHTTP(AioHTTPTestCase):
         assert resp.status == 200
         data = await resp.json()
         assert data["status"] == "ok"
-        assert data["version"] == "0.1.0"
+        assert data["version"] == "0.2.0"
         assert "uptime_seconds" in data
 
     @unittest_run_loop
@@ -107,7 +107,7 @@ class TestInterceptHTTP(AioHTTPTestCase):
     @unittest_run_loop
     async def test_circuit_breaker_after_consecutive_escalations(self):
         """After 10 consecutive ESCALATE verdicts, the circuit breaker
-        should flip to ALLOW to prevent indefinite blocking."""
+        trips to DENY (fail-closed) — AUDIT-0005: never ALLOW on breaker trip."""
         for i in range(9):
             resp = await self.client.post(
                 "/v1/intercept",
@@ -117,14 +117,14 @@ class TestInterceptHTTP(AioHTTPTestCase):
             data = await resp.json()
             assert data["verdict"] == "ESCALATE"
 
-        # 10th request → circuit breaker flips
+        # 10th request → circuit breaker trips → DENY
         resp = await self.client.post(
             "/v1/intercept",
             json={"path": "/api/config/model", "method": "POST"},
         )
-        assert resp.status == 200  # now ALLOW
+        assert resp.status == 403  # fail-closed
         data = await resp.json()
-        assert data["verdict"] == "ALLOW"
+        assert data["verdict"] == "DENY"
         assert "熔断" in data["reason"] or "circuit" in data["reason"].lower()
 
     @unittest_run_loop

@@ -57,4 +57,25 @@
 - Commit: 待提交
 - 备注: **HIGH** — action 大小写/笔误绕过（`deny` 被运行时 else→ALLOW 放行且 probe 静默跳过）→ 修复：action 白名单校验 + 孤儿前缀反向检查 + DANGEROUS_PREFIXES 提升为模块常量。验证：篡改 YAML 后 probe exit 1，恢复后 exit 0
 
+## AUDIT-0005 — 2026-08-03T04:00:00Z
+
+- PR: N/A（外部安全审查，4 洞全确认）
+- 标题: 安全加固 v0.2.0 —— 熔断 fail-closed + 路径规范化 + 计数器加锁 + Header 白名单
+- 变更文件: `src/main.py`, `tests/test_security_hardening.py`, `tests/test_circuit_breaker.py`, `tests/test_intercept.py`
+- 变更行数: +118/-36
+- 评级: 审查 C（4 洞）→ 修复后 A-
+- 结论: **REJECT → PASS**（外部审查触发，非自我审查）
+- 问题数: HIGH:2 MEDIUM:2 LOW:1 → 修复后 HIGH:0 MEDIUM:0
+- Reviewer: 外部安全审查（用户提供，非 Spawn）
+- Commit: 待提交
+- 备注:
+  - 🔴 HIGH-1 熔断 DDoS 后门: `escalate_count >= LIMIT` 时 `ALLOW` → 改为 `DENY`（失去判断力=拒绝，不是放行）。同步 3 处测试断言 ALLOW→DENY
+  - 🔴 HIGH-2 路径绕过: `_is_dangerous()` 的 `startswith` 无法覆盖 `/api/v1/delete` 变体与 `/api/delete/../admin` 遍历 → 加 `posixpath.normpath` 规范化 + 边界匹配 + 危险尾段段级防御（8 个单元测试覆盖遍历/变体/编码斜杠/边界）
+  - 🟡 MEDIUM-3 全局竞态: `escalate_count_since_resolve` 无锁 → `asyncio.Lock` 保护读写（并发 5 请求精确计数测试）
+  - 🟡 MEDIUM-4 Header 透传: `Authorization` 直接透传上游 → `FORWARD_HEADER_WHITELIST` 白名单（真实 echo 上游验证 auth 不泄漏）
+  - 🟢 LOW: 流式请求体（记为已知限制，不修）
+  - 附带清理: 删除从未被调用的死代码 `resolve_policy()`（v1 玩具算式残留）
+  - 验证: 44/44 测试 + GATE 1-5 全过（覆盖率 92% > 60%）
+  - 教训: 熔断器"修复 fail-open 又引入 fail-open"——安全逻辑的递归缺陷。修复必须从语义出发（fail-closed），而非从参数出发
+
 ---

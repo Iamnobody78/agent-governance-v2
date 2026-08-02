@@ -51,7 +51,8 @@ class TestCircuitBreakerDecay(AioHTTPTestCase):
     async def test_continuous_burst_still_trips(self):
         """10 ESCALATEs in quick succession (<300s apart) still trip breaker.
 
-        Time decay must not weaken the original protection.
+        v0.2.0 (AUDIT-0005): breaker trips to DENY (fail-closed), not ALLOW.
+        A gateway that lost judgment must refuse, not bypass itself.
         """
         for i in range(9):
             resp = await self.client.post(
@@ -60,14 +61,14 @@ class TestCircuitBreakerDecay(AioHTTPTestCase):
             )
             assert resp.status == 202, f"iteration {i}: expected 202, got {resp.status}"
 
-        # 10th within the window → trips
+        # 10th within the window → trips to DENY
         resp = await self.client.post(
             "/v1/intercept",
             json={"path": "/api/config/model", "method": "POST"},
         )
-        assert resp.status == 200
+        assert resp.status == 403
         data = await resp.json()
-        assert data["verdict"] == "ALLOW"
+        assert data["verdict"] == "DENY"
 
     @unittest_run_loop
     async def test_allow_resets_counter(self):
@@ -129,9 +130,9 @@ class TestCircuitBreakerDecay(AioHTTPTestCase):
             )
             assert resp.status == 202, f"iteration {i} after decay: expected 202"
 
-        # 10th after decay → trips
+        # 10th after decay → trips to DENY (fail-closed)
         resp = await self.client.post(
             "/v1/intercept",
             json={"path": "/api/config/model", "method": "POST"},
         )
-        assert resp.status == 200
+        assert resp.status == 403

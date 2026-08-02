@@ -8,6 +8,7 @@ Usage:
 import asyncio
 import json
 import logging
+import posixpath
 import time
 import uuid
 from datetime import datetime, timezone
@@ -22,18 +23,22 @@ from .storage import Storage
 logger = logging.getLogger(__name__)
 
 # ── configurable constants ──────────────────────────────────────────
-INTERCEPT_TIMEOUT = 0.5       # seconds — if policy eval exceeds this, auto-ALLOW
-CIRCUIT_BREAKER_LIMIT = 10    # consecutive ESCALATE without resolution → ALLOW
+INTERCEPT_TIMEOUT = 0.5       # seconds — if policy eval exceeds this, fail-closed
+CIRCUIT_BREAKER_LIMIT = 10    # consecutive ESCALATE without resolution → DENY (fail-closed)
 AGENT_BACKEND_URL = "http://localhost:8000"   # upstream Agent (for proxy mode)
 
 # Shared heuristic constants — exported for policy_probe.py (single source of truth)
 DANGEROUS_PREFIXES = ("/api/delete", "/api/admin", "/api/config", "/api/model")
 DANGEROUS_METHODS = ("DELETE", "POST", "PUT", "PATCH")
 
+# Only these headers are forwarded to the upstream backend (never Authorization)
+FORWARD_HEADER_WHITELIST = ("content-type", "accept", "user-agent", "x-agent-id")
+
 # ── global state ────────────────────────────────────────────────────
 start_time = time.time()
 escalate_count_since_resolve = 0
 last_escalate_time = 0.0
+_escalate_lock: asyncio.Lock = None  # guards escalate_count_since_resolve / last_escalate_time
 policy_engine: Optional[PolicyEngine] = None
 storage: Optional[Storage] = None
 
@@ -42,30 +47,35 @@ def _uptime() -> float:
     return time.time() - start_time
 
 
-async def resolve_policy() -> Rule:
-    """Wait for policy engine to evaluate. Returns ALLOW-default if timeout."""
-    try:
-        return await asyncio.wait_for(
-            asyncio.to_thread(policy_engine.evaluate, "...pending...", "POST"),
-            timeout=INTERCEPT_TIMEOUT,
-        )
-    except asyncio.TimeoutError:
-        return None
-
-
 def _is_dangerous(path: str, method: str) -> bool:
-    """Heuristic: operations that modify state are dangerous when uncertain."""
-    if method.upper() in DANGEROUS_METHODS:
-        for prefix in DANGEROUS_PREFIXES:
-            if path.startswith(prefix):
-                return True
+    """Heuristic: operations that modify state are dangerous when uncertain.
+
+    Defense layers (v0.2.0 security hardening, AUDIT-0005):
+      1. normpath normalizes '/api/delete/../admin/exec' → '/api/admin/exec',
+         killing path-traversal bypasses.
+      2. Boundary matching: '/api/delete-evil' does NOT match prefix '/api/delete'.
+      3. Segment-level fallback: '/api/v1/delete' (path variant) hits the
+         dangerous tail segment 'delete' even without an exact prefix match.
+    """
+    if method.upper() not in DANGEROUS_METHODS:
+        return False
+    normalized = posixpath.normpath(path.split("?", 1)[0])
+    # 1) exact/prefix match with boundary
+    for prefix in DANGEROUS_PREFIXES:
+        if normalized == prefix or normalized.startswith(prefix + "/"):
+            return True
+    # 2) segment-level fallback: any dangerous tail segment anywhere in path
+    dangerous_tails = {p.rsplit("/", 1)[-1] for p in DANGEROUS_PREFIXES}
+    segments = normalized.split("/")
+    if any(seg in dangerous_tails for seg in segments):
+        return True
     return False
 
 
 # ── handlers ────────────────────────────────────────────────────────
 
 async def intercept_handler(request: web.Request) -> web.Response:
-    global escalate_count_since_resolve
+    global escalate_count_since_resolve, last_escalate_time
 
     try:
         data = await request.json()
@@ -110,26 +120,29 @@ async def intercept_handler(request: web.Request) -> web.Response:
                 verdict = Verdict.DENY
                 reason = rule.reason or f"匹配规则 '{rule.name}' → 拦截"
             elif rule.action == "ESCALATE":
-                global last_escalate_time
                 now = time.time()
-                if now - last_escalate_time > 300:
-                    escalate_count_since_resolve = 1  # fresh burst, reset counter
-                else:
-                    escalate_count_since_resolve += 1
-                last_escalate_time = now
-                if escalate_count_since_resolve >= CIRCUIT_BREAKER_LIMIT:
-                    verdict = Verdict.ALLOW
-                    reason = f"连续 {escalate_count_since_resolve} 次升级未获审批，熔断放行"
-                    escalate_count_since_resolve = 0
-                else:
-                    verdict = Verdict.ESCALATE
-                    reason = rule.reason or f"匹配规则 '{rule.name}' → 升级人工审批"
+                async with _escalate_lock:
+                    if now - last_escalate_time > 300:
+                        escalate_count_since_resolve = 1  # fresh burst, reset counter
+                    else:
+                        escalate_count_since_resolve += 1
+                    last_escalate_time = now
+                    if escalate_count_since_resolve >= CIRCUIT_BREAKER_LIMIT:
+                        # v0.2.0 (AUDIT-0005): breaker trips to DENY, NOT ALLOW.
+                        # A gateway that lost judgment must refuse, not bypass itself.
+                        verdict = Verdict.DENY
+                        reason = f"连续 {escalate_count_since_resolve} 次升级未获审批，熔断拒绝 (fail-closed)"
+                        escalate_count_since_resolve = 0
+                    else:
+                        verdict = Verdict.ESCALATE
+                        reason = rule.reason or f"匹配规则 '{rule.name}' → 升级人工审批"
             else:
                 verdict = Verdict.ALLOW
                 reason = rule.reason or f"匹配规则 '{rule.name}' → 放行"
                 # successful ALLOW = request resolved → reset circuit breaker
-                escalate_count_since_resolve = 0
-                last_escalate_time = 0.0
+                async with _escalate_lock:
+                    escalate_count_since_resolve = 0
+                    last_escalate_time = 0.0
 
     # 3. persist decision
     decision = {
@@ -169,13 +182,20 @@ async def intercept_handler(request: web.Request) -> web.Response:
 
 
 async def _proxy_forward(req: InterceptRequest) -> Optional[dict]:
-    """Forward the request to the upstream Agent backend."""
+    """Forward the request to the upstream Agent backend.
+
+    v0.2.0 (AUDIT-0005): only whitelisted headers are forwarded.
+    Authorization / cookies are NEVER proxied upstream.
+    """
     try:
         async with ClientSession(timeout=ClientTimeout(total=0.5, connect=0.3)) as session:
             async with session.request(
                 method=req.method,
                 url=f"{AGENT_BACKEND_URL}{req.path}",
-                headers={k: v for k, v in req.headers.items() if k.lower() != "host"},
+                headers={
+                    k: v for k, v in req.headers.items()
+                    if k.lower() in FORWARD_HEADER_WHITELIST
+                },
                 json=json.loads(req.body) if req.body else None,
             ) as resp:
                 text = await resp.text()
@@ -191,7 +211,7 @@ async def _proxy_forward(req: InterceptRequest) -> Optional[dict]:
 async def health_handler(request: web.Request) -> web.Response:
     return web.json_response({
         "status": "ok",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "uptime_seconds": round(_uptime(), 2),
         "decisions_total": storage.count(),
     })
@@ -206,11 +226,12 @@ async def decisions_handler(request: web.Request) -> web.Response:
 # ── app factory ─────────────────────────────────────────────────────
 
 def create_app() -> web.Application:
-    global policy_engine, storage, escalate_count_since_resolve, last_escalate_time
+    global policy_engine, storage, escalate_count_since_resolve, last_escalate_time, _escalate_lock
     policy_engine = PolicyEngine()
     storage = Storage()
     escalate_count_since_resolve = 0
     last_escalate_time = 0.0
+    _escalate_lock = asyncio.Lock()
 
     app = web.Application()
     app.router.add_post("/v1/intercept", intercept_handler)
@@ -222,5 +243,5 @@ def create_app() -> web.Application:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     app = create_app()
-    logger.info("governance-gateway v0.1.0 starting on :9000")
+    logger.info("governance-gateway v0.2.0 starting on :9000")
     web.run_app(app, port=9000)

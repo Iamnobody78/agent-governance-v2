@@ -1,7 +1,8 @@
-# CRITIQUE_V2.md — governance-gateway v0.1.0 诚实代码审查
+# CRITIQUE_V2.md — governance-gateway v0.2.0 诚实代码审查
 
-> 由 DeepSeek-V4 PRO 自我审查。不是外部攻击——是同一模型对自己代码的诚实评估。
-> "反思是深刻的，但实现是粗糙的。"
+> 由 DeepSeek-V4 PRO 自我审查 + 外部安全审查（AUDIT-0005）。
+> "反思是深刻的，但实现是粗糙的。" —— v0.1.0
+> "修复了一个 fail-open，又引入了另一个 fail-open。" —— v0.2.0 教训
 
 ---
 
@@ -183,4 +184,58 @@ for key in node.keys:
 
 ---
 
-*本审查由 DeepSeek-V4 PRO 自我生成。同一模型写了代码，也写了批评。这是元治理的实验终章——诚实地面对自己的缺陷。*
+## 🔴 v0.2.0 追加审查 —— AUDIT-0005（外部安全审查，4 洞全确认）
+
+> v0.1.0 的自我审查修复了"超时 fail-open"，却在熔断器里引入了"熔断 fail-open"。
+> **安全逻辑的递归缺陷：修复一个，又引入一个。** 这正是"AI 生成代码需要外部审计"的最有力证据。
+
+### 缺陷 5（🔴 HIGH）：熔断器 DDoS 绕过后门
+
+```python
+if escalate_count_since_resolve >= CIRCUIT_BREAKER_LIMIT:
+    verdict = Verdict.ALLOW   # ← 熔断放行！
+```
+
+熔断的语义是"保护系统不被压垮"；安全网关在"被压垮"= 失去判断能力时，策略应该是 **DENY（拒绝所有）** 而非 ALLOW（放行所有）。
+
+攻击向量：攻击者发 9 次 ESCALATE 填满队列 → 第 10 次带攻击 payload → 熔断放行 → 绕过。
+
+**修复**：`verdict = Verdict.DENY`（fail-closed）。同步更新 3 处测试断言（`test_circuit_breaker.py` ×2、`test_intercept.py` ×1）。
+
+### 缺陷 6（🔴 HIGH）：`_is_dangerous()` 路径绕过
+
+```python
+if path.startswith(prefix): return True
+```
+
+`startswith` 无法覆盖：
+- `/api/v1/delete` → False（路径变体）
+- `/api/delete/../admin/exec` → False（路径遍历）
+- `/api/model/../../admin` → False（目录跳转）
+
+**修复**（三层防御）：
+1. `posixpath.normpath()` 规范化，消灭 `..` 遍历
+2. 边界匹配 `normalized == prefix or normalized.startswith(prefix + "/")`，防 `/api/delete-evil` 误伤
+3. 段级防御：危险尾段（delete/admin/config/model）出现在路径任何位置 → dangerous，覆盖 `/api/v1/delete` 变体
+
+### 缺陷 7（🟡 MEDIUM）：全局可变状态竞态
+
+`escalate_count_since_resolve` 在多个协程间读写无锁——第 10 次 ESCALATE 触发放行的同时，另一个 ALLOW 请求可能清零计数器。
+
+**修复**：`asyncio.Lock` 保护计数器读写，`create_app()` 中实例化。
+
+### 缺陷 8（🟡 MEDIUM）：代理转发透传 Authorization
+
+`headers={k: v for k, v in req.headers.items() if k.lower() != "host"}` 将 `Authorization`/`Cookie` 直接透传上游。
+
+**修复**：`FORWARD_HEADER_WHITELIST = ("content-type", "accept", "user-agent", "x-agent-id")` 白名单转发，真实 echo 上游验证不泄漏。
+
+### 验证
+
+- 44/44 测试（新增 `tests/test_security_hardening.py` 13 个：8 路径 + 2 熔断 + 2 锁 + 2 白名单）
+- GATE 1-5 全过，覆盖率 92% > 60%
+- 附带清理：删除从未被调用的死代码 `resolve_policy()`（v1 玩具算式残留）
+
+---
+
+*本审查由 DeepSeek-V4 PRO 自我生成 + 外部安全审查（AUDIT-0005）触发。同一模型写了代码，也写了批评。这是元治理的实验终章——诚实地面对自己的缺陷。*
