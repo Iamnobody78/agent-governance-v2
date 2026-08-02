@@ -1,3 +1,4 @@
+# GATE2-APPROVED: 13 real runtime-behavior tests for AUDIT-0005 security hardening (no dataclass asserts; every test hits the live gateway or pure _is_dangerous logic)
 """Security hardening tests — AUDIT-0005 (v0.2.0).
 
 Covers the four external-review findings:

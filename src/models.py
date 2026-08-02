@@ -1,10 +1,16 @@
-"""Data models for governance-gateway — Pydantic, no plain dataclass."""
+"""Pydantic schemas for the governance gateway:
+HTTP request/response contracts and the persisted decision record.
+
+Type policy (AUDIT-0006): strong types (Verdict enum, timezone-aware
+datetime) are kept through the persistence boundary; field_serializer
+converts them at the serialization edge instead of degrading the model.
+"""
 
 from enum import Enum
 from datetime import datetime, timezone
-from typing import Optional, Dict
+from typing import Optional, Dict, Any, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 
 class Verdict(str, Enum):
@@ -17,7 +23,7 @@ class InterceptRequest(BaseModel):
     path: str
     method: str
     headers: Dict[str, str] = Field(default_factory=dict)
-    body: Optional[str] = None
+    body: Optional[Union[Dict[str, Any], str]] = None
     agent_id: Optional[str] = None
 
 
@@ -36,11 +42,26 @@ class HealthResponse(BaseModel):
 
 
 class DecisionRecord(BaseModel):
+    """Persisted decision.
+
+    Keeps the same strong types as InterceptResponse (Verdict enum,
+    timezone-aware datetime) instead of degrading to bare str; field
+    serializers convert at the persistence edge (AUDIT-0006).
+    """
+
     id: str
-    verdict: str
+    verdict: Verdict
     reason: str
-    matched_rule: Optional[str]
-    timestamp: str
+    matched_rule: Optional[str] = None
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     path: str
     method: str
-    agent_id: Optional[str]
+    agent_id: Optional[str] = None
+
+    @field_serializer("verdict")
+    def serialize_verdict(self, value: Verdict) -> str:
+        return value.value
+
+    @field_serializer("timestamp")
+    def serialize_timestamp(self, value: datetime) -> str:
+        return value.isoformat()

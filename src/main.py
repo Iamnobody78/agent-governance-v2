@@ -11,12 +11,11 @@ import logging
 import posixpath
 import time
 import uuid
-from datetime import datetime, timezone
 from typing import Optional
 
 from aiohttp import web, ClientSession, ClientTimeout
 
-from .models import InterceptRequest, InterceptResponse, Verdict
+from .models import InterceptRequest, InterceptResponse, DecisionRecord, Verdict
 from .policy import PolicyEngine, Rule
 from .storage import Storage
 
@@ -144,18 +143,17 @@ async def intercept_handler(request: web.Request) -> web.Response:
                     escalate_count_since_resolve = 0
                     last_escalate_time = 0.0
 
-    # 3. persist decision
-    decision = {
-        "id": str(uuid.uuid4()),
-        "verdict": verdict.value,
-        "reason": reason,
-        "matched_rule": matched_rule,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "path": req.path,
-        "method": req.method,
-        "agent_id": req.agent_id,
-    }
-    storage.save(decision)
+    # 3. persist decision (strong-typed model, serialized at DB edge)
+    decision = DecisionRecord(
+        id=str(uuid.uuid4()),
+        verdict=verdict,
+        reason=reason,
+        matched_rule=matched_rule,
+        path=req.path,
+        method=req.method,
+        agent_id=req.agent_id,
+    )
+    storage.save(decision.model_dump(mode="json"))
 
     # 4. if ALLOW and proxy mode → forward to upstream Agent
     response_body = None
@@ -166,7 +164,7 @@ async def intercept_handler(request: web.Request) -> web.Response:
     resp = InterceptResponse(
         verdict=verdict,
         reason=reason,
-        decision_id=decision["id"],
+        decision_id=decision.id,
         matched_rule=matched_rule,
     )
 
@@ -189,6 +187,10 @@ async def _proxy_forward(req: InterceptRequest) -> Optional[dict]:
     """
     try:
         async with ClientSession(timeout=ClientTimeout(total=0.5, connect=0.3)) as session:
+            # body may be a parsed dict (InterceptRequest.body) or raw JSON str
+            body = req.body
+            if isinstance(body, str) and body.strip():
+                body = json.loads(body)
             async with session.request(
                 method=req.method,
                 url=f"{AGENT_BACKEND_URL}{req.path}",
@@ -196,7 +198,7 @@ async def _proxy_forward(req: InterceptRequest) -> Optional[dict]:
                     k: v for k, v in req.headers.items()
                     if k.lower() in FORWARD_HEADER_WHITELIST
                 },
-                json=json.loads(req.body) if req.body else None,
+                json=body,
             ) as resp:
                 text = await resp.text()
                 try:
