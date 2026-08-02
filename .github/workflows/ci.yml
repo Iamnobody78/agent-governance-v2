@@ -46,3 +46,19 @@ jobs:
         run: |
           pip install pytest-cov
           python -m pytest tests/ --cov=src --cov-report=term --cov-fail-under=60
+
+  # ── Gate 5: Policy consistency (YAML rules vs _is_dangerous) ──
+  policy-probe:
+    name: GATE 5 - Policy Consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # NOTE: must install full deps — policy_probe imports from src.main
+      # which imports aiohttp/pydantic. pyyaml alone → ModuleNotFoundError.
+      - name: Install dependencies
+        run: pip install -e ".[test]"
+      - name: Run policy_probe
+        run: python examples/policy_probe.py
