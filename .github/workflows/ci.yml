@@ -1,0 +1,48 @@
+name: governance-gateway CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Gate 1 + 2: Test quality (no dataclass asserts, no test inflation) ──
+  test-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run test quality scanner
+        run: python scripts/check_test_quality.py
+
+  # ── Gate 3: Policy must be YAML, not hardcoded ──
+  policy-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml
+      - name: Run policy audit
+        run: python scripts/check_policy.py
+
+  # ── Gate 4: Smoke tests must pass ──
+  gateway-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -e ".[test]"
+      - name: Run gateway tests
+        run: python -m pytest tests/ -v --tb=short
+      - name: Check coverage threshold
+        run: |
+          pip install pytest-cov
+          python -m pytest tests/ --cov=src --cov-report=term --cov-fail-under=60
