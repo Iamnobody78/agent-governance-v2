@@ -1,8 +1,11 @@
-# 🧬 Teams 代理团队协作协议 v1.0
+# 🧬 Teams 代理团队协作协议 v2.0
 
 > **定位**：让 2-5 个 AionUI 子代理组成自治团队，并行处理 agent-governance 项目的开发、测试、审查、归档任务。
 >
-> **核心约束（来自实验）**：单代理工作量 ≤2 文件、≤5 维度。超过此粒度，拆分为多个子代理。
+> **核心约束（来自实验）**：
+> - 单代理工作量 ≤2 文件、≤5 维度
+> - 单次 Spawn ≤3 代理并行（4+ 会资源竞争超时）
+> - **子代理之间无法互相通信** → 必须用两阶段 Spawn（见 §2.4）
 
 ---
 
@@ -19,6 +22,7 @@
 - Builder 和 Reviewer 不能是同一代理（不可自我审查）。
 - 每次变更必须经过"Builder → Reviewer → Archivist"三阶段闭环。
 - 如果团队只有 2 个代理：省略 Archivist 角色，Reviewer 兼任。
+- **Spawn 子代理是"哑执行者"**：它们只执行明确指令并输出结果，不做跨代理协调——协调永远是 Coordinator（主代理）的职责。
 
 ---
 
@@ -26,7 +30,7 @@
 
 ### 2.1 任务模板
 
-发起代理（Coordinator）使用以下模板分配任务：
+Coordinator 使用以下模板分配任务：
 
 ```markdown
 ## 任务分配 — {{TASK_ID}}
@@ -37,12 +41,11 @@
 ### 优先级
 P0 / P1 / P2 / P3
 
-### 代理分配
-| 角色 | 代理 ID | 任务摘要 | 文件范围 |
-|------|---------|----------|----------|
-| Builder-1 | [name] | [what to build] | src/xxx.py |
-| Tester-1 | [name] | [what to test] | tests/test_xxx.py |
-| Reviewer | [name] | [what to review] | [文件列表] |
+### 文件分配表（防撞车）
+| 文件 | 负责代理 | 角色 |
+|------|----------|------|
+| src/xxx.py | Builder-1 | 修改 |
+| tests/test_xxx.py | Tester-1 | 新增 |
 
 ### 验收标准
 - [ ] 测试通过 (pytest -q)
@@ -60,72 +63,94 @@ P0 / P1 / P2 / P3
 |------|:--:|------|
 | 单代理最大文件数 | 2 | 实验数据：3 文件 → 超时 |
 | 单代理最大审查维度 | 5 | 实验数据：超过 5 维度 → 超时 |
-| 最大并行代理数 | 3 | 实验数据：$4+$ 代理 → 资源竞争 |
-| 单代理最大输出行数 | 300 | 控制 token 消耗 |
+| 单次 Spawn 最大并行代理数 | 3 | 实验数据：4+ 代理 → 资源竞争 |
+| 单代理最大输出行数 | 100 | **Spawn 输出 4096 token 截断**，超长会被切掉 |
 
-### 2.3 并行与顺序策略
+### 2.3 两阶段 Spawn 架构（关键）
+
+**由于 Spawn 子代理之间无法互相通信，禁止在单次 Spawn 中构建跨代理依赖链。**
 
 ```
-          ┌──────────┐
-          │Coordinator│ (主代理，用户在对话中)
-          └─────┬────┘
-                │
-       ┌────────┼────────┐
-       │        │        │
-       ▼        ▼        ▼
-   Builder-1  Builder-2  Tester-1     ← 可并行（无依赖）
-       │        │        │
-       └────────┼────────┘
-                │
-                ▼
-           Reviewer                       ← 串行（依赖前序）
-                │
-                ▼
-           Archivist                      ← 串行（依赖审查）
+阶段 1 — Spawn #1（并行，无依赖）
+┌─────────────┬─────────────┬─────────────┐
+│  Builder-1  │  Builder-2  │  Tester-1   │
+│  写 src/     │  写 config/ │  写 tests/  │
+└──────┬──────┴──────┬──────┴──────┬──────┘
+       └─────────────┼─────────────┘
+                     ▼
+       Coordinator 验证层（必须执行，不可跳过）
+       ├── git diff 检查文件变更
+       ├── python -m pytest tests/ -q
+       └── python scripts/check_test_quality.py
+                     ▼
+阶段 2 — Spawn #2（串行，读最终文件）
+       ┌─────────────┐
+       │  Reviewer   │
+       │  读最终文件  │ ← 独立读取，不依赖 Builder 的交接块
+       └──────┬──────┘
+              ▼
+       Coordinator 汇总
+       ├── 通过 → git add + commit + push
+       ├── REJECT → 分配回 Builder 重做（新 Spawn）
+       └── 记录 → Archivist 任务（或 Coordinator 兼任）
+```
+
+**为什么必须两阶段**：
+- 阶段 1 的 Builder 们互不依赖 → 可安全并行
+- 阶段 2 的 Reviewer 需要看 Builder 的**最终落盘文件** → 必须等阶段 1 完成后单独启动
+- 单次 Spawn 内传"交接块"给另一个子代理是**不可能的**（独立上下文）
+
+### 2.4 结果汇总格式
+
+子代理输出必须精简（≤100 行），格式固定：
+
+```markdown
+## {{ROLE}} 输出 — {{TASK_ID}}
+
+### 结果
+PASS / FAIL / REJECT
+
+### 变更摘要
+- 文件: `src/xxx.py` (+12, -5)
+- 关键变更: [1-2 句话]
+
+### 待 Coordinator 验证
+1. [请跑 pytest 确认 xxx]
+2. [请检查 GATE 1 是否通过]
+
+### 已知限制
+- [未覆盖的边界情况，如有]
 ```
 
 ---
 
 ## 三、协作协议
 
-### 3.1 交接格式
+### 3.1 Coordinator 验证铁律
 
-当一个代理完成工作后，输出以下格式的交接块，供下一个代理读取：
-
-````markdown
-## 🔄 交接块 — {{ROLE}} → {{NEXT_ROLE}}
-
-### 变更摘要
-- 文件: `src/main.py` (+15, -8)
-- 描述: 修复熔断器时间衰减
-- Commit: `abc1234`
-
-### 变更内容
-```python
-# 修改的关键代码
-```
-
-### 已知限制
-- [任何未覆盖的边界情况]
-
-### 测试建议
-- [指导下一个代理关注什么]
-````
+| 铁律 | 说明 |
+|------|------|
+| **不可信任子代理的自报结果** | 子代理说"测试通过"不等于测试通过。Coordinator 必须自己跑 `pytest -q` |
+| **不可跳过 Reviewer** | 任何代码变更必须经过独立 Reviewer 审查 |
+| **不可并行分配冲突文件** | 同一文件只允许一个 Builder 写（见文件分配表） |
+| **GATE 未过不提交** | 4 门控任何一个失败 → 打回重做 |
 
 ### 3.2 冲突解决
 
-如果两个 Builder 修改同一文件：
-1. Coordinator（主代理）负责合并冲突。
-2. 如果合并矛盾，优先保留较早提交的变更，并通知后提交的 Builder 重新基于最新版本修改。
+如果两个 Builder 修改同一文件（分配表被违反）：
+1. Coordinator 标记冲突。
+2. 保留较早提交的变更，通知后提交的 Builder 基于最新版本重做。
+3. 如果无法合并，放弃该文件的最新变更，仅保留经 Reviewer 通过的部分。
 
 ### 3.3 失败处理
 
 | 失败类型 | 处理方式 |
 |----------|----------|
 | 单代理超时 (>5min) | Coordinator 重新分配同任务给新代理 |
-| 单代理错误输出 | Reviewer 标记 REJECT，Coordinator 重新分配 |
-| 测试失败 | Tester 输出失败日志，Coordinator 分配给 Builder 修复 |
-| Reviewer REJECT | Coordinator 分配给原 Builder 重做 |
+| 子代理输出被截断 | 要求重跑，输出 ≤100 行 |
+| 子代理假报"测试通过" | Coordinator 自己跑测试发现 → 标记该代理不可信，下次换新代理 |
+| Reviewer REJECT | 分配回原 Builder 重做（新 Spawn 阶段 1） |
+| GATE 失败 | Coordinator 直接修复（小问题）或分配 Builder（大问题） |
 
 ---
 
@@ -135,7 +160,7 @@ P0 / P1 / P2 / P3
 Teams 协作协议 ← 本协议
     │
     ├── 触发条件:
-    │   - 用户说 "用团队模式"
+    │   - 用户说 "用团队模式" / "@team start"
     │   - 任务涉及 3+ 文件修改
     │   - 需要并行审查
     │
@@ -161,21 +186,23 @@ Teams 协作协议 ← 本协议
 
 2. 任务拆解
    └── 按粒度限制 (<2 files/<5 dims) 拆解待办任务
+   └── 生成文件分配表（防撞车）
 
-3. 代理分配
-   └── 按角色分配任务 → Builder / Tester / Reviewer / Archivist
+3. 阶段 1: 并行执行（Spawn #1）
+   └── Builder/Tester 并行，最多 3 个，超时 5min
 
-4. 并行执行（Spawn）
-   └── 最多 3 代理并行，超时 5min
+4. Coordinator 验证层（不可跳过）
+   ├── git diff 检查
+   ├── python -m pytest tests/ -q
+   └── python scripts/check_test_quality.py
 
-5. 结果汇总
-   └── 收集交接块 → 合并 → 提交
+5. 阶段 2: 独立审查（Spawn #2）
+   └── Reviewer 读最终文件，输出 PASS/REJECT
 
-6. 审查闭环
-   └── Builder → Reviewer → 通过/打回 → 重做或归档
-
-7. 记录
-   └── Archivist 写入 CHANGELOG + audit_log
+6. 汇总与提交
+   ├── 通过 → git add + commit + push
+   ├── REJECT → 回步骤 3（新 Spawn 重做）
+   └── 记录 → Archivist 写入 CHANGELOG + audit_log
 ```
 
 ---
@@ -184,14 +211,25 @@ Teams 协作协议 ← 本协议
 
 | 命令 | 效果 |
 |------|------|
-| `@team start` | 启动 Teams 协作模式 |
-| `@team review <文件>` | 派 Reviewer 审查指定文件 |
-| `@team build <任务描述>` | 派 Builder 实现功能 |
-| `@team test <模块名>` | 派 Tester 补测试 |
+| `@team start` | 启动 Teams 协作模式（执行启动序列） |
+| `@team review <文件>` | 派 Reviewer 审查指定文件（阶段 2） |
+| `@team build <任务描述>` | 派 Builder 实现功能（阶段 1） |
+| `@team test <模块名>` | 派 Tester 补测试（阶段 1） |
 | `@team status` | Coordinator 输出团队当前状态 |
-| `@team handoff` | 输出当前会话的完整交接块，供下一个 Coordinator 续接 |
+| `@team handoff` | 输出交接块到 `.aionui/teams/handoff_YYYYMMDD.md`，供下一个会话续接 |
 
 ---
 
-*本协议由 agent-governance v2 实验生成。首次部署于 2026-08-03。*
+## 七、工作空间约定
+
+| 位置 | 用途 |
+|------|------|
+| `.aionui/teams/` | 团队运行状态、handoff 文件 |
+| `.aionui/teams/handoff_YYYYMMDD.md` | 每日交接块（`@team handoff` 写入） |
+| `.aionui/audit_log.md` | 审查记录（永久保留） |
+| `CHANGELOG.md` | 版本记录（Archivist 维护） |
+
+---
+
+*本协议由 agent-governance v2 实验生成。v1.0 于 2026-08-03 首版，v2.0 修正"子代理无法互相通信"架构缺陷后升级。*
 *每次 Spawn 实验后更新粒度限制参数。*
