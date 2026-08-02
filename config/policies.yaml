@@ -1,0 +1,63 @@
+# Governance Gateway — Default Policy Configuration
+# v2 iron law: policies are DATA (YAML), not CODE (hardcoded dict).
+
+name: governance-gateway
+version: "0.1.0"
+
+rules:
+  # ── block dangerous operations ──
+  - name: block-delete
+    path_pattern: /api/delete/*
+    method: POST
+    action: DENY
+    priority: 10
+    reason: "删除操作在生产环境被禁止"
+
+  - name: block-sudo
+    path_pattern: /api/admin/sudo
+    method: POST
+    action: DENY
+    priority: 10
+    reason: "sudo 操作被全局禁止"
+
+  # ── escalate sensitive config changes ──
+  - name: escalate-config-write
+    path_pattern: /api/config/*
+    method: POST
+    action: ESCALATE
+    priority: 20
+    reason: "配置修改需要人工审批"
+    escalation_timeout: 300
+    escalation_channel: slack
+
+  - name: escalate-model-update
+    path_pattern: /api/model/update
+    method: POST
+    action: ESCALATE
+    priority: 20
+    reason: "模型更新需要人工审批"
+    escalation_timeout: 600
+    escalation_channel: slack
+
+  # ── allow common API calls ──
+  - name: allow-chat
+    path_pattern: /api/chat
+    method: POST
+    action: ALLOW
+    priority: 100
+    reason: "标准聊天请求，放行"
+
+  - name: allow-query
+    path_pattern: /api/query
+    method: GET
+    action: ALLOW
+    priority: 100
+    reason: "标准查询请求，放行"
+
+  # ── catch-all: allow health endpoints ──
+  - name: allow-health
+    path_pattern: /health
+    method: GET
+    action: ALLOW
+    priority: 200
+    reason: "健康检查端点，放行"
