@@ -48,6 +48,17 @@ async def resolve_policy() -> Rule:
         return None
 
 
+def _is_dangerous(path: str, method: str) -> bool:
+    """Heuristic: operations that modify state are dangerous when uncertain."""
+    dangerous_prefixes = ("/api/delete", "/api/admin", "/api/config", "/api/model")
+    dangerous_methods = ("DELETE", "POST", "PUT", "PATCH")
+    if method.upper() in dangerous_methods:
+        for prefix in dangerous_prefixes:
+            if path.startswith(prefix):
+                return True
+    return False
+
+
 # ── handlers ────────────────────────────────────────────────────────
 
 async def intercept_handler(request: web.Request) -> web.Response:
@@ -74,11 +85,16 @@ async def intercept_handler(request: web.Request) -> web.Response:
             timeout=INTERCEPT_TIMEOUT,
         )
     except asyncio.TimeoutError:
-        # timeout → auto-ALLOW (don't block Agent traffic)
-        verdict = Verdict.ALLOW
-        reason = "策略评估超时 (>500ms)，自动放行"
+        # timeout → fail-closed for dangerous operations, escalate for others
+        # (v0.1.0 had fail-open: auto-ALLOW. CRITIQUE_V2.md #1 fixed this.)
+        if _is_dangerous(req.path, req.method):
+            verdict = Verdict.DENY
+            reason = "策略评估超时，高风险操作默认拒绝 (fail-closed)"
+        else:
+            verdict = Verdict.ESCALATE
+            reason = "策略评估超时，升级人工审批 (fail-closed)"
         matched_rule = None
-        logger.warning("policy evaluation timed out for %s %s", req.method, req.path)
+        logger.warning("policy evaluation timed out for %s %s → %s", req.method, req.path, verdict.value)
     else:
         # 2. determine verdict from matched rule
         if rule is None:
