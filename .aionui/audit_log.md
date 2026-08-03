@@ -13,7 +13,7 @@
 - 结论: **PASS**（178/178 测试 + GATE 7 绿 + 非流式零回归 + SSE 字节级透传）
 - 问题数: 0 执行期缺陷（R5/R6 预告应用生效，双子代理顺利完成）
 - Reviewer: **Spawn `S3-Reviewer-REAL004`**（独立视角）
-- Commit: `PIN_AFTER_COMMIT`
+- Commit: `3aea7d2`
 - 备注:
   - **AUDIT 侦察修正范围**: DEBT-0004 原始描述指向 `_proxy_forward`（L167），但真实流式缺口在 `chat_completions_handler`（OpenAI 兼容端点）——intercept 返回治理决策 JSON 无流式需求；契约明确 `_proxy_forward` 不改、危险工具拒绝路径不动
   - **R5 验证**: S1/S2 prompt 首行声明 "TOOL CALLS ARE ENABLED AND REQUIRED" → 双 Spawn 均 COMPLETE（无 BLOCKED/截断），14+8 turns；REAL-003 S1 的 BLOCKED 模式未复发

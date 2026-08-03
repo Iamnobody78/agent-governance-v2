@@ -44,7 +44,7 @@
       "event": "COMPLETED",
       "ts": "2026-08-03T16:15:00Z",
       "summary": "S1 Builder main (单锚点双分支重写, 34 非流式回归绿), S2 Tester (5 测试全绿, R5 声明生效无 BLOCKED), S3 Reviewer APPROVE (8 项独立审计全过). Full regression 178 passed. GATE 7 green. R5/R6 应用预告验证有效.",
-      "commit": "PIN_AFTER_COMMIT"
+      "commit": "3aea7d2"
     }
   ]
 }
