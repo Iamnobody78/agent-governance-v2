@@ -19,7 +19,7 @@
 | **最近事件** | **P9 外部代理示例完成** ✅（`examples/`：LangChain/AutoGen 零侵入 `base_url` 被动接入 + 通用 Python agent_tools；真实 SDK 调用被网关 403 治理（langchain 1.3.14 `PermissionDeniedError: governance_denied`）；runner 证据校验 PASS=3 FAIL=0；450 tests；GATE 8 5/5 PASS；修复既有 TestZeroTouchClaim 3 失败）；P8 认证层此前完成 |
 | **CI 状态** | ✅ GATE 1-8 全绿（GATE 8 = Critic Agent 五批判者，450 tests 全量回归 exit 0） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …HA: `src/ha/` 提交（v1.16.0）→ P8: `src/certification/` 提交（v1.17.0）→ P9: `examples/` 提交（v1.18.0） |
+| **提交链** | …HA: `src/ha/` 提交（v1.16.0）→ P8: `src/certification/` 提交（v1.17.0）→ P9: `examples/` 提交 `8a1bcaa`（v1.18.0） |
 
 ---
 
