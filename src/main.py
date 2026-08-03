@@ -388,6 +388,51 @@ async def trace_handler(request: web.Request) -> web.Response:
     return web.json_response({"trace_id": trace_id, "node_count": len(nodes), "nodes": nodes})
 
 
+async def metrics_handler(request: web.Request) -> web.Response:
+    """GET /metrics — Prometheus 文本格式暴露运行指标 (阶段 C1 前置)。
+
+    指标全部来自真实运行时状态:
+      - governance_uptime_seconds           进程存活时长 (gauge)
+      - governance_decisions_total          已落库裁决总数 (counter, 含历史)
+      - governance_escalations_since_resolve 自上次熔断重置以来 ESCALATE 计数
+      - governance_breaker_tripped          熔断器当前是否打开 (1/0)
+      - governance_breaker_remaining_seconds 熔断器剩余锁定秒数 (0=未熔断)
+      - governance_ast_languages            ASTGuard 已加载语言 (label 数量)
+      - governance_pending_flush            待落库缓冲条目 (运维水位)
+    暴露于 /metrics (无认证, 供 Prometheus 抓取; 不包含任何请求体/决策明细)。
+    """
+    global policy_engine, storage, escalate_count_since_resolve, breaker_tripped_until
+    now = time.time()
+    remaining = max(0.0, breaker_tripped_until - now)
+    ast_langs = 0
+    if policy_engine is not None and getattr(policy_engine, "ast_guard", None) is not None:
+        ast_langs = len(getattr(policy_engine.ast_guard, "loaded_languages", []))
+    lines = [
+        "# HELP governance_uptime_seconds Process uptime in seconds.",
+        "# TYPE governance_uptime_seconds gauge",
+        f"governance_uptime_seconds {_uptime():.3f}",
+        "# HELP governance_decisions_total Total decisions persisted to storage.",
+        "# TYPE governance_decisions_total counter",
+        f"governance_decisions_total {storage.count() if storage else 0}",
+        "# HELP governance_escalations_since_resolve ESCALATE count since last breaker reset.",
+        "# TYPE governance_escalations_since_resolve gauge",
+        f"governance_escalations_since_resolve {escalate_count_since_resolve}",
+        "# HELP governance_breaker_tripped Whether the circuit breaker is open.",
+        "# TYPE governance_breaker_tripped gauge",
+        f"governance_breaker_tripped {1 if breaker_tripped_until > now else 0}",
+        "# HELP governance_breaker_remaining_seconds Seconds until breaker auto-resets.",
+        "# TYPE governance_breaker_remaining_seconds gauge",
+        f"governance_breaker_remaining_seconds {remaining:.3f}",
+        "# HELP governance_ast_languages Number of languages loaded in ASTGuard.",
+        "# TYPE governance_ast_languages gauge",
+        f"governance_ast_languages {ast_langs}",
+        "# HELP governance_pending_flush Buffered decisions awaiting flush.",
+        "# TYPE governance_pending_flush gauge",
+        f"governance_pending_flush {storage.pending_count() if storage else 0}",
+    ]
+    return web.Response(text="\n".join(lines) + "\n", content_type="text/plain; version=0.0.4")
+
+
 # ── OpenAI-compatible endpoint (B1: LangChain zero-touch integration) ─
 
 # Tools whose invocation must be blocked at the LLM request level.
@@ -854,6 +899,7 @@ def create_app(config_path: Optional[str] = None,
     app.router.add_post("/v1/intercept", intercept_handler)
     app.router.add_post("/v1/chat/completions", chat_completions_handler)
     app.router.add_get("/v1/health", health_handler)
+    app.router.add_get("/metrics", metrics_handler)
     app.router.add_get("/v1/decisions", decisions_handler)
     # TASK-REAL-011 (C): trace 因果调用树查询端点
     app.router.add_get("/v1/trace/{trace_id}", trace_handler)

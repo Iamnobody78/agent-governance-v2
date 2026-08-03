@@ -126,7 +126,16 @@ def _collect(node: Any, parent_key: str, path: str, depth: int,
                             extra={"depth": depth},
                         ))
                         return seen + 1
-            return seen  # 容器但代码键无字符串值 → 不提取、也不递归
+            # 代码键值非字符串（嵌套容器，如 {"sql": {"query": "..."}}）：
+            # 不放弃，仅递归这些代码键的值 —— 防止危险代码藏在嵌套容器里
+            # 绕过 AST 门（实测缺陷：{'sql': {'query': 'DELETE ...'}} 曾静默漏提）。
+            for k in node:
+                if k in _KEY_HINTS and _KEY_HINTS[k] == lang:
+                    child_path = f"{path}.{k}" if path else k
+                    seen = _collect(node[k], k, child_path, depth + 1, out, seen)
+                    if seen >= MAX_FRAGMENTS:
+                        break
+            return seen
         # 普通 dict：继续递归
         for k, v in node.items():
             child_path = f"{path}.{k}" if path else k
