@@ -3,6 +3,8 @@
 The workflow's all-gates job must declare needs: over every gate job so
 branch protection can require a single check name instead of six. YAML
 is parsed from the repo's ci.yml (pyyaml is a core dependency).
+
+TASK-REAL-012: GATE_JOBS 增加 critic-gate（GATE 8 批判者代码化）。
 """
 
 import pathlib
@@ -17,6 +19,7 @@ GATE_JOBS = [
     "policy-probe",
     "meta-security",
     "policy-sync",
+    "critic-gate",
 ]
 
 

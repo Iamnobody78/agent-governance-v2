@@ -7,12 +7,15 @@
 
 | 路径 | 职责 | 测试 |
 |------|------|------|
-| `src/main.py` | Sidecar 网关：/v1/intercept + OpenAI 兼容端点 + 熔断器 | tests/test_intercept.py 等 |
-| `src/policy.py` | YAML 策略引擎（normpath 匹配） | tests/test_policy.py |
-| `src/storage.py` | SQLite 持久化（decisions 表） | tests/test_storage.py |
+| `src/main.py` | Sidecar 网关：/v1/intercept + OpenAI 兼容端点 + 熔断器 + /v1/trace 递归 CTE | tests/test_intercept.py、tests/test_trace.py |
+| `src/policy.py` | YAML 策略引擎（normpath + json_path 条件规则） | tests/test_json_path_policy.py |
+| `src/storage.py` | SQLite 持久化（decisions 表 12 列 + _migrate 无损迁移 + get_trace） | tests/test_trace.py |
 | `src/models.py` | Pydantic 模型（强类型，field_serializer 边界转换） | tests/test_models_types.py |
+| `src/norm.py` | 规范化单一来源（NFKC→confusable→casefold） | tests/test_json_path_policy.py |
+| `src/lethality.py` | Ls 工具致死性表（审计用） | tests/test_json_path_policy.py |
+| `src/critic/` | 批判者代理团队（GATE 8：audit/security/arch/test/docs + verdict + runner） | tests/test_critic.py |
 
-## CI 门控（7 个）
+## CI 门控（8 个）
 
 | GATE | 脚本 | 职责 |
 |:---:|------|------|
@@ -23,6 +26,7 @@
 | 5 | `examples/policy_probe.py` | 策略一致性（action 白名单 + 孤儿前缀） |
 | 6 | `scripts/meta_security_scanner.py` | 安全反模式（熔断放行/超时放行/静默吞异常/startswith） |
 | 7 | `scripts/policy_sync.py` | 代码-策略漂移（DENY+ESCALATE 覆盖 + action 原始值校验） |
+| 8 | `src/critic/runner.py` | 动态语义门控（5 批判者 + 一票否决/多数通过裁决） |
 
 ## 工具脚本
 
@@ -40,9 +44,13 @@
 | `CRITIQUE.md` | v1 批判（6 模块逐行验证） |
 | `CRITIQUE_V2.md` | v2 自我审查 + AUDIT-0005 外部审查 |
 | `EXPERIMENT_REPORT.md` | v1→v2 对照实验 |
-| `.aionui/audit_log.md` | 审计日志（AUDIT-0001~0006） |
+| `docs/json_path_governance_report.md` | B 阶段 json_path 工具治理报告 |
+| `docs/trace_report.md` | C 阶段 Trace 因果追踪报告 |
+| `.aionui/audit_log.md` | 审计日志（AUDIT-0001~0027） |
+| `.aionui/critic_report.md` | GATE 8 批判报告（每次运行覆盖） |
 | `.aionui/protocols/teams_collaboration.md` | 两阶段 Spawn 协议 |
 | `.aionui/protocols/pr_review_loop.md` | PR 审查闭环 |
+| `.aionui/protocols/critic_team.md` | 批判者代理团队协议（GATE 8 元提示词） |
 | `.aionui/protocols/reviewer_prompt_template.md` | 审查提示词模板 |
 
 ## 协议文件（团队协作契约）
