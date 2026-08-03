@@ -1,6 +1,6 @@
 # agent-governance v2 — 架构设计（权威参考）
 
-> **版本对应**: 快照 v1.13.0 · 提交 `d89d856` · 2026-08-03
+> **版本对应**: 快照 v1.14.0 · 提交 `9e91c03` · 2026-08-03
 > **维护铁律**: 本文档与代码同仓库、同提交链。任何架构级变更（新增模块/层、修改请求生命周期、加固点增减）必须在同一提交中同步更新本文档——「文档与代码同提交」。
 > **关联**: README.md（v1→v2 演进叙事 + ADR 附录，历史叙述）；`.aionui/context/TRIPLE_LOOP_SNAPSHOT.md`（治理快照，状态维度）。
 
@@ -34,10 +34,11 @@
 │                   SUSPEND) + DecisionRecord.rationale + context_hmac.py │
 │                   (113L, HMAC 信任门: canonical 字段序 + ±300s 防重放)   │
 ├─────────────────────────────────────────────────────────────────────────┤
-│ L2 核心网关       main.py (806L, aiohttp + intercept 中间件)             │
-│                   policy.py (363L, 规则引擎 + JsonPathIndex)            │
+│ L2 核心网关       main.py (aiohttp + intercept 中间件)                   │
+│                   auth.py (P6: TenantAuth 身份门 — 401/403 第一道门)     │
+│                   policy.py (规则引擎 + JsonPathIndex + tenant 作用域)   │
 │                   danger/lethality/norm 启发式 + semantic_hook 异步监督  │
-│                   revoke.py (62L, RevokeRegistry 撤销注册表)             │
+│                   revoke.py (RevokeRegistry 撤销注册表)                  │
 ├─────────────────────────────────────────────────────────────────────────┤
 │ L1 基础设施        storage.py (373L, SQLite WAL+批量+降级缓冲+Trace CTE) │
 │                    models.py (88L, DecisionRecord 13 列)                │
@@ -55,11 +56,12 @@
 | `rate_limiter.py` 41L | 限流 | 窗口计数 |
 | `task_scheduler.py` 90L | 治理任务 | 调度执行 |
 
-### L2 核心网关 — 拦截、判定、监督
+### L2 核心网关 — 身份、拦截、判定、监督
 | 文件 | 职责 | 关键机制 |
 |---|---|---|
-| `main.py` 806L | aiohttp 应用 + `intercept` 中间件 | 提取 trace 上下文 → 规则评估 → 写决策记录 → 响应头回传（`X-Trace-ID/X-Span-ID/X-Governance-Warning`）；`create_app(config_path)` 策略注入；P0 分级异常日志 |
-| `policy.py` 363L | 规则引擎 | `PolicyEngine.evaluate` 优先级首中即停；**P3 加固**：`JsonPathIndex` 前缀索引树（首段键桶化 + 顶层键单次收集剪枝，与线性扫描逐位等价）+ segments 预解析缓存 |
+| `auth.py` ~180L（**P6 新增**） | 服务身份认证 + 多租户隔离 | `TenantAuth`：API key → tenant_id（sha256 摘要 + 常量时间比较 + fail-closed 校验）；`Authorization: Bearer`/`X-API-Key` 认证，缺失/无效 → 401；`X-Tenant-ID` 与认证身份不符 → 403（防跨租户冒称）；`verify_service_signature` 复用 Phase 5 context_hmac（显式携带但伪造签名 → 401，服务身份边界）；启用 = `create_app(auth_override=...)` 或 `AUTH_ENABLED=1`，未启用 = 兼容模式（v1.13.0 行为完全一致） |
+| `main.py` ~860L | aiohttp 应用 + `intercept` 中间件 | **认证门最先执行**（intercept/chat/decisions/trace 四端点受保护，`/v1/health` 探针放行）；提取 trace 上下文 → 规则评估 → 写决策记录 → 响应头回传（`X-Trace-ID/X-Span-ID/X-Governance-Warning`）；`create_app(config_path)` 策略注入；P0 分级异常日志 |
+| `policy.py` ~390L | 规则引擎 | `PolicyEngine.evaluate` 优先级首中即停；**P3 加固**：`JsonPathIndex` 前缀索引树（首段键桶化 + 顶层键单次收集剪枝，与线性扫描逐位等价）+ segments 预解析缓存；**P6**：`PolicyRule.tenant_id` 作用域（None=全局），跨租户私有规则跳过（隔离语义） |
 | `danger.py`/`lethality.py`/`norm.py` | 路径/方法启发式 | 危险模式、杀伤力评估、规范性检查 |
 | `semantic_hook.py` 152L | 语义钩子 | **P1 加固**：`semantic_audit_async` 后台 fire-and-forget（原同步链路延迟消除） |
 | `revoke.py` 62L | 撤销注册表 | 进程级单例、有界；judge 服务异常时**撤销保持而不是绕过**（DENY 优先只升不降） |
@@ -81,9 +83,12 @@
 ## 2. 请求生命周期
 
 ```
-请求 ──▶ HMAC 信任门 (L3: 签名验证, 伪造→新链根隔离)
+请求 ──▶ 认证门 (P6: API key → tenant_id; 缺失/无效 → 401, X-Tenant-ID
+   │      与身份不符 → 403; /v1/health 探针豁免)
+   ──▶ HMAC 信任门 (L3: 签名验证, 伪造→新链根隔离)
    ──▶ intercept 中间件 (L2: 提取 X-Trace-ID, 组装 DecisionRecord 骨架)
-   ──▶ PolicyEngine.evaluate (L2+L3: 路径/方法规则 + json_path 条件规则[前缀索引剪枝])
+   ──▶ PolicyEngine.evaluate (L2+L3: tenant 作用域过滤 + 路径/方法规则
+   │      + json_path 条件规则[前缀索引剪枝])
    ──▶ 五级判定 (L3: action→verdict + rationale)
    ──▶ storage.save (L1: 写缓冲 → WAL 批量提交)
    ──▶ 响应头回传 (X-Span-ID / X-Governance-Warning; DENY/SUSPEND=403)
@@ -112,7 +117,8 @@
 
 ## 5. 当前状态
 
-- **测试**: 391 passed 零失败；**GATE 8**: 5/5 PASS；**覆盖率**: 87%（`--source=src` 含 meta_harness 68-70%；90.12% 为 REAL-008 期旧口径，非回归）
-- **架构**: L1-L5 全闭环；暗雷区 4/4 收官；活跃债务 3（DEBT-0018/0020/0021，无阻塞）
+- **测试**: 420 passed 零失败；**GATE 8**: 5/5 PASS；**覆盖率**: 87%（`--source=src` 含 meta_harness 68-70%；90.12% 为 REAL-008 期旧口径，非回归）
+- **架构**: L1-L5 全闭环 + **P6 身份认证/多租户**（外部评审缺口 #1 闭合）；暗雷区 4/4 收官；活跃债务 3（DEBT-0018/0020/0021，无阻塞）
+- **兼容模式**: auth 未启用 = v1.13.0 行为完全一致（零回归保障，`AUTH_ENABLED=1` 或 `auth_override` 注入时启用）
 - **已知上游怪癖**: Python 3.13 + aiohttp `AioHTTPTestCase` 的 tearDown "never awaited" RuntimeWarning（P1 前即存在，非本仓库引入，状态隔离实测有效）
-- **待裁决**: P6 身份认证 + 多租户隔离（约 200 行）——复用 Phase 5 HMAC 原语 + `tenant_id` 作用域
+- **下一候选**: P7 代理自举（`src/agent_tools/`：`self_critic/self_trace/self_heal` 复用 L4/L5 现有能力暴露为代理可调用工具）——已批准方向，防御顺序上排在 P6 之后

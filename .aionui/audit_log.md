@@ -3,6 +3,17 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0034 — P6: 服务身份认证 + 多租户隔离（外部评审缺口 #1）
+
+- PR: N/A（P6——外部评审结构性缺口 #1：身份认证缺失，L2-L5 暴露于未认证访问风险；DEBT-0027 登记清偿）
+- 标题: 网关第一道门——`TenantAuth` API key → tenant_id 认证（缺失/无效 → 401）+ `X-Tenant-ID` 一致性（不符 → 403）+ `PolicyRule.tenant_id` 租户作用域隔离 + HMAC 服务签名复用（伪造 → 401）
+- 变更文件: `src/auth.py`（新增 ~180L）、`src/policy.py`（tenant_id 字段 + evaluate 过滤 + fail-closed 校验）、`src/main.py`（_auth_gate 四端点保护 + create_app(auth_override) + AUTH_ENABLED=1 自动加载）、`config/tenants.yaml`（新增）、`tests/test_auth.py`（新增 29）
+- 测试: 单元（加载/认证/401/403/fail-closed）+ engine 级租户隔离（私有规则互不可见/全局规则全租户生效）+ aiohttp 集成（真实 401/403/兼容模式/health 豁免）+ HMAC 伪造签名 401
+- 全量回归: **420 passed**（391 + 29），零失败
+- GATE 8: PASS 5/5（`python -m src.critic.runner` exit 0）
+- 兼容: auth 未启用 = v1.13.0 行为完全一致（零回归）；`/v1/health` 探针豁免
+- 债务: DEBT-0027（身份认证缺失）清偿 ✅；架构文档同步 v1.14.0（docs/architecture.md 加 auth 层）
+
 ## AUDIT-0033 — P3: json_path 前缀索引树（暗雷区修复 #4）
 
 - PR: N/A（暗雷区 P3——json_path 规则线性匹配 O(R×N)；DEBT-0026 清偿）

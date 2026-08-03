@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.13.0
-> 快照时间: 2026-08-03（暗雷区修复 P0-P3 全部完成后更新——异常堆栈日志 / 异步弱监督 / WAL+批量提交 / json_path 前缀索引树）
-> 最近审计: AUDIT-0033（暗雷区 P3 前缀索引树）+ AUDIT-0032（暗雷区 P2 WAL+批量）+ AUDIT-0031（暗雷区 P1 异步弱监督）
+> 版本: v1.14.0
+> 快照时间: 2026-08-03（P6 身份认证 + 多租户隔离完成后更新——外部评审缺口 #1 闭合）
+> 最近审计: AUDIT-0034（P6 身份认证+多租户）+ AUDIT-0033（暗雷区 P3 前缀索引树）+ AUDIT-0032（暗雷区 P2 WAL+批量）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,14 +12,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 391 passed（370 基线 + 21 新增 P3，零失败） |
+| **测试全量** | 420 passed（391 基线 + 29 新增 P6，零失败） |
 | **覆盖率** | 87%（`--source=src` 实测 2026-08-03；门槛 ≥ 60%；较 90.12% 旧口径降低系 scope 含 meta_harness 68-70%，非回归） |
-| **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞）；DEBT-0023/0024/0025/0026 已清偿（暗雷区 P0-P3 全部完成） |
+| **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞）；DEBT-0027（P6 认证缺失）已清偿 |
 | **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受） |
-| **最近事件** | 暗雷区修复 **P0-P3 全部完成** ✅（P0 异常堆栈日志 `1ef39a0` + P1 语义钩子异步弱监督/撤销注册表 `be0b5ee` + P2 SQLite WAL/批量提交 `c40dc41` + P3 json_path 前缀索引树 `ebe9002`；GATE 8 5/5 PASS）；**暗雷区 4/4 收官，P6（身份认证+多租户）待用户裁决** |
-| **CI 状态** | ✅ GATE 1-8 全绿（GATE 8 = Critic Agent 五批判者，391 tests 全量回归 exit 0） |
+| **最近事件** | **P6 身份认证 + 多租户隔离完成** ✅（`9e91c03`：TenantAuth 401/403 + tenant 作用域 + HMAC 签名复用；420 tests；GATE 8 5/5 PASS；外部评审缺口 #1 闭合）；暗雷区 P0-P3 此前收官；**P7 代理自举（agent_tools: self_critic/self_trace/self_heal）已批准方向，待启动** |
+| **CI 状态** | ✅ GATE 1-8 全绿（GATE 8 = Critic Agent 五批判者，420 tests 全量回归 exit 0） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …暗雷区 P0: `1ef39a0` → P1: `be0b5ee` → P2: `c40dc41` → closeout → P3: `ebe9002` → closeout 提交 |
+| **提交链** | …暗雷区 P3: `ebe9002` → closeout → P6: `9e91c03` → closeout 提交 |
 
 ---
 
@@ -93,7 +93,7 @@
 1. **加载此文件**：读取当前快照，理解状态
 2. **加载协议**：读取 `.aionui/protocols/teams_collaboration.md` 获取完整协作流程
 3. **加载债务账本**：读取 `debt_registry.md`（仓库根）获取剩余债务
-4. **验证测试**：运行 `pytest tests/ -q` 确认 391 passed
+4. **验证测试**：运行 `pytest tests/ -q` 确认 420 passed
 5. **继续治理**：运行 `@governance start` 启动下一轮治理循环
 
 ---
@@ -106,12 +106,12 @@
 | DEBT-0020 | 输出侧语义评估缺失 | 🟢 LOW | 代理转发后异步补判 agent_response（待 A 就绪） |
 | DEBT-0021 | timeout 分支不覆盖 json_path 规则 | 🟢 LOW | 已文档化接受；后续可在 danger.py 增加 body 感知或接受纵深防御 |
 | DEBT-0022 | chat/completions 路径未注入 trace 上下文 | 🟢 LOW | ✅ 已清偿（REAL-011.1 `6c25bd9`：chat 提取 trace + 两处 DENY 注入 + 主路径 DecisionRecord + 全响应分支回传头 + MAX_TRACE_ID_LEN=128） |
-| DEBT-0026 | json_path 线性匹配：规则多时逐条解析路径，命中率低 | 🟢 LOW | ✅ 已清偿（暗雷区 P3 `ebe9002`：JsonPathIndex 前缀索引树——首段键桶化 + 顶层键集合单次收集剪枝 + segments 缓存，结果与线性扫描逐位等价） |
+| DEBT-0027 | 身份认证缺失：L2-L5 治理能力暴露于未认证访问（外部评审缺口 #1） | 🟢 LOW | ✅ 已清偿（P6 `9e91c03`：TenantAuth API key 认证 + X-Tenant-ID 一致性 403 + tenant 作用域隔离 + HMAC 服务签名复用；420 tests；AUTH_ENABLED 开关兼容模式） |
 
-当前治理循环扫描结论：**22 项债务已清偿（含暗雷区 DEBT-0023/0024/0025/0026），3 项活跃（DEBT-0018/0020/0021，均无阻塞）**。暗雷区修复 P0-P3 全部完成（异常堆栈日志 / 异步弱监督+撤销 / WAL+批量提交 / json_path 前缀索引树），四象限暗雷区收官。
+当前治理循环扫描结论：**23 项债务已清偿（含暗雷区 DEBT-0023~0026 与 P6 DEBT-0027），3 项活跃（DEBT-0018/0020/0021，均无阻塞）**。暗雷区 4/4 收官 + P6 身份认证/多租户闭合（外部评审缺口 #1）。
 
 下一阶段候选（按 B→C→D→E(自进化) 顺次）：
-1. **P6：身份认证 + 多租户隔离**（约 200 行，API key/HMAC 服务身份 + 租户级策略视图）——外部评审结构性缺口 #1，**待用户裁决**
+1. **P7 代理自举**（`src/agent_tools/`：`self_critic/self_trace/self_heal` 复用 L4/L5 现有能力暴露为代理可调用工具；集成 self_evolution_protocol）——**方向已批准，防御顺序排在 P6 之后（身份边界先于自我治理 API）**
 2. **D：统计反馈调节器**（5min 扫描 DENY 高频模式 → pending_rules 推荐）——已在 Phase 2（Meta-Harness 适配器 `c6a3a95`）吸收：generate_policy_suggestions + pending_rules/ 候选 YAML
 2. **外部评审后续候选**（协商/学习引擎、Tree-sitter AST、Shadow Saga、Rust）：治理大脑已裁决并入 5 层架构（L3/L2）——可解释引擎 + 五级判定（Phase 4）与 HMAC Context Hook（Phase 5）均已落地；**Tree-sitter/Rust 等阶段未来化**（无硬依赖，可随时立项）
 3. **A 生产化**：拉取 qwen2.5:7b-instruct-q4_K_M（JUDGE_MODEL 热切换零代码）或 Bastion 70M 级联，实测延迟/准确率——待硬件到位
@@ -134,6 +134,7 @@
 - **v1.11.0**（2026-08-03）：TASK-REAL-012 Phase 5 Context Hook HMAC（src/context_hmac.py + 信任门 + _signed_trace_headers + 16 测试；347 tests；AUDIT-0029；提交 be8289b；五层架构 L1-L5 全部闭环）
 - **v1.12.0**（2026-08-03）：暗雷区修复 P0-P2（P0 异常堆栈日志 1ef39a0 + P1 语义钩子异步弱监督/撤销注册表 be0b5ee + P2 SQLite WAL/批量提交 c40dc41；370 tests；覆盖率 87%（--source=src 含 meta_harness）；DEBT-0023/0024/0025 清偿、DEBT-0026 登记待 P3；AUDIT-0030/0031/0032；GATE 8 5/5 PASS）
 - **v1.13.0**（2026-08-03）：暗雷区 P3 json_path 前缀索引树（JsonPathIndex 首段键桶化剪枝 + segments 缓存，391 tests，DEBT-0026 清偿，AUDIT-0033；暗雷区 4/4 收官，P6 身份认证+多租户待用户裁决）
+- **v1.14.0**（2026-08-03）：P6 服务身份认证 + 多租户隔离（TenantAuth 401/403 + tenant 作用域 + HMAC 签名复用 + AUTH_ENABLED 兼容模式，420 tests，DEBT-0027 清偿，AUDIT-0034；外部评审缺口 #1 闭合；架构文档同步加 auth 层；P7 代理自举方向已批准）
 
 ---
 
