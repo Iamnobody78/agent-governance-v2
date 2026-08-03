@@ -11,6 +11,12 @@ DEBT-0015: the shutdown flush handler must have an independent timeout so a
 FakeConn mirrors tests/test_storage_degraded.py (sqlite3.Connection.execute is
 read-only, so a stand-in is required); it is duplicated here on purpose because
 importing across test modules is fragile under some pytest rootdir setups.
+
+P2 note (暗雷区): Storage.save() 现在先入 _write_buffer, 满 batch_size 才经
+executemany 批量提交。本文件模拟"每次写都失败"的降级盘 —— batch_size=1
+使每次 save() 都是立即写尝试, 与旧版逐条提交语义完全一致 (eviction 数学不变:
+PENDING_MAX+3 次 save → pending=PENDING_MAX + 3 条最旧记录进 fallback)。
+FakeConn 因此补 executemany(), 与 execute() 一样抛 OperationalError。
 """
 
 import asyncio
@@ -23,6 +29,8 @@ import time
 from src import main
 from src.storage import PENDING_MAX, Storage
 
+DEGRADED_BATCH = 1  # P2: 降级盘语义 = 每次 save 立即 flush 尝试
+
 
 class FakeConn:
     """Connection stand-in whose execute() always raises (degraded disk)."""
@@ -33,6 +41,13 @@ class FakeConn:
 
     def execute(self, *args, **kwargs):
         self.calls.append((args, kwargs))
+        if self._raise:
+            raise sqlite3.OperationalError("disk I/O error")
+        return FakeCursor()
+
+    def executemany(self, *args, **kwargs):
+        # P2: save() 经 _flush_write_buffer() 用 executemany 批量提交。
+        self.calls.append(("executemany", args, kwargs))
         if self._raise:
             raise sqlite3.OperationalError("disk I/O error")
         return FakeCursor()
@@ -77,7 +92,8 @@ def read_fallback(path) -> list:
 
 def test_overflow_writes_fallback_log(tmp_path):
     fb = tmp_path / "pending_fallback.log"
-    s = Storage(db_path=tempfile.mktemp(suffix=".db"), fallback_path=str(fb))
+    s = Storage(db_path=tempfile.mktemp(suffix=".db"), fallback_path=str(fb),
+                batch_size=DEGRADED_BATCH)
     s.conn = FakeConn()
     for i in range(PENDING_MAX + 3):
         s.save(make_decision(decision_id=f"fb-{i:04d}"))
@@ -92,7 +108,8 @@ def test_overflow_writes_fallback_log(tmp_path):
 
 def test_overflow_fallback_preserves_full_record(tmp_path):
     fb = tmp_path / "pending_fallback.log"
-    s = Storage(db_path=tempfile.mktemp(suffix=".db"), fallback_path=str(fb))
+    s = Storage(db_path=tempfile.mktemp(suffix=".db"), fallback_path=str(fb),
+                batch_size=DEGRADED_BATCH)
     s.conn = FakeConn()
     d = make_decision(decision_id="fb-full")
     d["reason"] = "full record survives eviction"
@@ -114,6 +131,7 @@ def test_flush_retry_cap_dumps_to_fallback(tmp_path):
         fallback_path=str(fb),
         max_flush_attempts=3,
         flush_backoff=0.0,
+        batch_size=DEGRADED_BATCH,
     )
     s.conn = FakeConn()
     s.save(make_decision(decision_id="capf-0"))
@@ -137,6 +155,7 @@ def test_flush_backoff_throttles_retries(tmp_path):
         fallback_path=str(fb),
         max_flush_attempts=1,
         flush_backoff=3600.0,  # long cooldown window for the test
+        batch_size=DEGRADED_BATCH,
     )
     s.conn = FakeConn()
     s.save(make_decision(decision_id="bk-0"))
@@ -162,6 +181,7 @@ def test_flush_success_resets_failure_counter(tmp_path):
         fallback_path=str(fb),
         max_flush_attempts=2,
         flush_backoff=0.0,
+        batch_size=DEGRADED_BATCH,
     )
     s.conn = FakeConn()
     s.save(make_decision(decision_id="rs-0"))
@@ -212,6 +232,7 @@ def test_shutdown_flush_success_path(tmp_path):
     s = Storage(
         db_path=tempfile.mktemp(suffix=".db"),
         fallback_path=str(tmp_path / "pending_fallback.log"),
+        batch_size=DEGRADED_BATCH,
     )
     s.conn = FakeConn()
     s.save(make_decision(decision_id="sd-0"))

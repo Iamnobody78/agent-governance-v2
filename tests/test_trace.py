@@ -192,6 +192,9 @@ class TestGetTrace(unittest.TestCase):
             storage.save({**base, "id": "R", "trace_id": "TC", "parent_span_id": None})
             storage.save({**base, "id": "A", "trace_id": "TC", "parent_span_id": "R"})
             storage.save({**base, "id": "B", "trace_id": "TC", "parent_span_id": "A"})
+            # P2 契约: save() 走写缓冲, 未满批不落库; 直接 SQL 需先强制 flush
+            # 否则 UPDATE 命中 0 行 (B 仍在缓冲中), 自环语义测试将失真。
+            storage._flush_write_buffer()
             storage.conn.execute(
                 "UPDATE decisions SET parent_span_id = 'B' WHERE id = 'B'"
             )

@@ -16,13 +16,20 @@ from src.storage import Storage
 
 
 class FakeConn:
-    """Connection stand-in whose execute() always raises (degraded disk)."""
+    """Connection stand-in whose execute()/executemany() always raise
+    (degraded disk). P2: batch flush uses executemany — must raise too."""
 
     def __init__(self, raise_on_execute=True):
         self._raise = raise_on_execute
         self.calls = []
 
     def execute(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+        if self._raise:
+            raise sqlite3.OperationalError("disk I/O error")
+        return FakeCursor()
+
+    def executemany(self, *args, **kwargs):
         self.calls.append((args, kwargs))
         if self._raise:
             raise sqlite3.OperationalError("disk I/O error")
@@ -43,12 +50,15 @@ class FakeCursor:
         return None
 
 
-def make_storage() -> Storage:
+def make_storage(batch_size=1) -> Storage:
     # TASK-REAL-007 (DEBT-0013): isolate the disk fallback log so eviction tests
     # never write pending_fallback.log into the repo working tree.
+    # P2: 降级测试用 batch_size=1 —— save 立即触发批量 flush，失败即入 _pending
+    # （保持"save 失败 → 缓冲立即可见"的 DEBT-0008 契约；默认 100 时失败延迟到满批）。
     return Storage(
         db_path=tempfile.mktemp(suffix=".db"),
         fallback_path=os.path.join(tempfile.mkdtemp(), "pending_fallback.log"),
+        batch_size=batch_size,
     )
 
 

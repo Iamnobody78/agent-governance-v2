@@ -12,6 +12,7 @@ PENDING_MAX = 1000  # DEBT-0009: cap on degraded-mode in-memory buffer (memory s
 FALLBACK_PATH = "pending_fallback.log"  # DEBT-0013/0014: JSONL disk fallback for records SQLite cannot accept
 MAX_FLUSH_ATTEMPTS = 5      # DEBT-0014: consecutive-failure cap before disk fallback (no infinite retry)
 FLUSH_BACKOFF_SECONDS = 2.0  # DEBT-0014: min wall-clock gap between flush retries (throttle)
+DEFAULT_BATCH_SIZE = 100    # P2 (暗雷区): 正常路径批量提交阈值 — 写锁竞争 N次/秒 → N/100次/秒
 logger = logging.getLogger(__name__)
 
 
@@ -22,23 +23,34 @@ class Storage:
         fallback_path: str = FALLBACK_PATH,            # DEBT-0013: overflow/eviction disk log
         max_flush_attempts: int = MAX_FLUSH_ATTEMPTS,  # DEBT-0014: retry cap before disk fallback
         flush_backoff: float = FLUSH_BACKOFF_SECONDS,  # DEBT-0014: throttle between retries
+        batch_size: int = DEFAULT_BATCH_SIZE,          # P2: 批量提交阈值
     ):
         self.db_path = db_path
         self.fallback_path = fallback_path
         self.max_flush_attempts = max_flush_attempts
         self.flush_backoff = flush_backoff
+        self.batch_size = batch_size
         self.conn: Optional[sqlite3.Connection] = None
         # v0.2.2 (external critique #3.1): saves now run via asyncio.to_thread
         # on the event loop; the single shared connection (check_same_thread=False)
         # must be serialized across threads → guard every operation with a lock.
         self._lock = threading.Lock()
         self._pending: List[Dict] = []  # DEBT-0008: degraded-mode in-memory buffer
+        self._write_buffer: List[Dict] = []  # P2: 正常路径批量提交缓冲
         self._flush_failures = 0        # DEBT-0014: consecutive failed flush attempts
         self._last_flush_attempt = 0.0  # DEBT-0014: monotonic clock of last flush attempt
         self._init()
 
     def _init(self) -> None:
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        # P2 (暗雷区): WAL 模式 — 写不阻塞读（100+ 并发时读侧不再等写锁）；
+        # synchronous=NORMAL 在 WAL 下是安全的降同步（崩溃最多丢最后提交，
+        # 不会损坏库）。:memory: 库返回 "memory"（no-op，不报错）。
+        try:
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA synchronous=NORMAL")
+        except sqlite3.Error:
+            logger.warning("storage: WAL pragma unavailable (db_path=%r) — 退化回默认 journal", self.db_path)
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS decisions (
                 id TEXT PRIMARY KEY,
@@ -97,43 +109,62 @@ class Storage:
         if "rationale" not in cols:
             self.conn.execute("ALTER TABLE decisions ADD COLUMN rationale TEXT")
 
-    def save(self, decision: Dict) -> str:
+    _INSERT_SQL = """INSERT INTO decisions (id, verdict, reason, matched_rule, timestamp, path, method, agent_id, tool_name, tool_lethality, trace_id, parent_span_id, rationale)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+
+    @staticmethod
+    def _entry_tuple(decision: Dict):
+        return (
+            decision["id"], decision["verdict"], decision["reason"],
+            decision.get("matched_rule"), decision["timestamp"], decision["path"],
+            decision["method"], decision.get("agent_id"), decision.get("tool_name"),
+            decision.get("tool_lethality"), decision.get("trace_id"),
+            decision.get("parent_span_id"), decision.get("rationale"),
+        )
+
+    def _buffer_or_fallback(self, entries: List[Dict]) -> None:
+        """P2: 批量 flush 失败 → 整体转降级缓冲（DEBT-0008 语义保持）;
+        超 PENDING_MAX 时最旧记录转磁盘 fallback（DEBT-0009/0013 保持）。
+        调用方必须已持有 self._lock。"""
+        for entry in entries:
+            entry.setdefault("_cached_at",
+                             datetime.now(timezone.utc).isoformat())
+        self._pending.extend(entries)
+        if len(self._pending) > PENDING_MAX:
+            overflow = self._pending[: len(self._pending) - PENDING_MAX]
+            self._pending = self._pending[len(overflow):]
+            for dropped in overflow:
+                self._append_fallback(dropped)
+            logger.warning(
+                "degraded buffer full (%d): %d oldest decision(s) backed up to %s",
+                PENDING_MAX, len(overflow), self.fallback_path)
+
+    def _flush_write_buffer(self) -> int:
+        """P2 (暗雷区): 批量提交缓冲（单事务 executemany）。持锁调用。
+        返回 flush 条数；失败 → 整体转降级缓冲（不丢记录，不抛异常）。"""
+        if not self._write_buffer:
+            return 0
+        batch = self._write_buffer
+        self._write_buffer = []
         try:
-            with self._lock:
-                self.conn.execute(
-                    """INSERT INTO decisions (id, verdict, reason, matched_rule, timestamp, path, method, agent_id, tool_name, tool_lethality, trace_id, parent_span_id, rationale)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        decision["id"],
-                        decision["verdict"],
-                        decision["reason"],
-                        decision.get("matched_rule"),
-                        decision["timestamp"],
-                        decision["path"],
-                        decision["method"],
-                        decision.get("agent_id"),
-                        decision.get("tool_name"),
-                        decision.get("tool_lethality"),
-                        decision.get("trace_id"),
-                        decision.get("parent_span_id"),
-                        decision.get("rationale"),
-                    ),
-                )
-                self.conn.commit()
+            self.conn.executemany(
+                self._INSERT_SQL,
+                [self._entry_tuple(d) for d in batch],
+            )
+            self.conn.commit()
+            return len(batch)
         except sqlite3.Error:
-            # DEBT-0008: degraded mode — buffer decision in memory with timestamp;
-            # flush_pending() retries later. Do NOT raise (gateway must not fail).
-            entry = dict(decision)
-            entry["_cached_at"] = datetime.now(timezone.utc).isoformat()
-            with self._lock:
-                self._pending.append(entry)
-                if len(self._pending) > PENDING_MAX:  # DEBT-0009: drop oldest, keep bounded
-                    dropped = self._pending.pop(0)
-                    # DEBT-0013: never lose audit records — persist the evicted
-                    # entry to the disk fallback log instead of discarding it.
-                    self._append_fallback(dropped)
-                    logger.warning("degraded buffer full (%d): oldest decision %s backed up to %s",
-                                   PENDING_MAX, dropped.get("id"), self.fallback_path)
+            self._buffer_or_fallback(batch)
+            return 0
+
+    def save(self, decision: Dict) -> str:
+        # P2 (暗雷区): 正常路径不再逐条 commit —— 入缓冲，满 batch_size 时
+        # 单事务批量提交。写锁竞争从 N 次/秒 → N/batch_size 次/秒。
+        # 审计延迟上限 = batch_size 条（读路径/close/flush_pending 都会 flush）。
+        with self._lock:
+            self._write_buffer.append(dict(decision))
+            if len(self._write_buffer) >= self.batch_size:
+                self._flush_write_buffer()
         return decision["id"]
 
     def flush_pending(self) -> int:
@@ -146,6 +177,7 @@ class Storage:
         """
         now = time.monotonic()
         with self._lock:
+            self._flush_write_buffer()  # P2: 先提交正常路径缓冲
             if not self._pending:
                 self._flush_failures = 0
                 return 0
@@ -218,6 +250,7 @@ class Storage:
 
     def get_recent(self, limit: int = 50) -> List[Dict]:
         with self._lock:
+            self._flush_write_buffer()  # P2: 读-己-写一致（flush 后查）
             rows = self.conn.execute(
                 "SELECT * FROM decisions ORDER BY timestamp DESC LIMIT ?",
                 (limit,),
@@ -226,11 +259,13 @@ class Storage:
 
     def count(self) -> int:
         with self._lock:
+            self._flush_write_buffer()  # P2: 读-己-写一致
             row = self.conn.execute("SELECT COUNT(*) FROM decisions").fetchone()
         return row[0] if row else 0
 
     def get_by_id(self, decision_id: str) -> Optional[Dict]:
         with self._lock:
+            self._flush_write_buffer()  # P2: 读-己-写一致
             row = self.conn.execute(
                 "SELECT * FROM decisions WHERE id = ?", (decision_id,)
             ).fetchone()
@@ -268,6 +303,7 @@ class Storage:
         """
         try:
             with self._lock:
+                self._flush_write_buffer()  # P2: 读-己-写一致（get_trace 可见未满批的写入）
                 rows = self.conn.execute(sql, (trace_id, trace_id, max_depth, max_nodes)).fetchall()
         except sqlite3.Error:
             logger.warning("get_trace failed (degraded): returning empty tree")
@@ -329,4 +365,9 @@ class Storage:
 
     def close(self) -> None:
         if self.conn:
+            try:
+                with self._lock:
+                    self._flush_write_buffer()  # P2: 关闭前落库未满批记录
+            except sqlite3.Error:
+                pass
             self.conn.close()
