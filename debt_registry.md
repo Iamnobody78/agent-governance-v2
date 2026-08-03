@@ -22,5 +22,5 @@
 
 | ID | 描述 | 清偿 commit | 清偿日期 |
 |----|------|------|------|
-| DEBT-0005 | YAML 策略无热更新（修改 policies.yaml 需重启网关生效） | `8dfb3b1` (TASK-REAL-001) | 2026-08-03 |
-| DEBT-0006 | check_policy.py AST 规则误报含 allow/deny 子串的 dict key（如 `allow_retry`） | `8dfb3b1` (TASK-REAL-001) | 2026-08-03 |
+| DEBT-0005 | YAML 策略无热更新（修改 policies.yaml 需重启网关生效） | `661b77f` (TASK-REAL-001) | 2026-08-03 |
+| DEBT-0006 | check_policy.py AST 规则误报含 allow/deny 子串的 dict key（如 `allow_retry`） | `661b77f` (TASK-REAL-001) | 2026-08-03 |
