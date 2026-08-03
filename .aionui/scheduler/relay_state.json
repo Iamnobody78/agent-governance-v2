@@ -1,60 +1,77 @@
 {
   "schema_version": "1.0",
-  "task_id": "TASK-SCHED-003",
-  "created_at": "2026-08-03T12:00:00Z",
+  "task_id": "TASK-REAL-001",
+  "title": "真实项目治理验证 — 清偿真实债务批次 DEBT-0005 + DEBT-0006",
+  "created_at": "2026-08-03T12:30:00Z",
   "status": "COMPLETED",
   "current_phase": "DONE",
-  "round": 1,
+  "round": 2,
   "max_rounds": 3,
-  "work_dir": ".aionui/scheduler/work/TASK-SCHED-003",
-  "builder_output": ".aionui/scheduler/work/TASK-SCHED-003/builder_report.md",
-  "tester_output": ".aionui/scheduler/work/TASK-SCHED-003/tester_report.md",
-  "reviewer_verdict": ".aionui/scheduler/work/TASK-SCHED-003/reviewer_verdict.md",
+  "work_dir": ".aionui/scheduler/work/TASK-REAL-001",
   "mcp_channel": {
     "client": "scripts/mcp_client.py",
-    "server": "filesystem_mcp_server.py (Platform Filesystem)",
+    "server": "filesystem_mcp_server.py",
     "sandbox": "BOTTLESUMO_ROOT=repo root",
-    "tools": ["write_file", "read_file", "list_directory", "file_info"],
-    "verified": true
+    "tools": ["write_file", "read_file", "list_directory", "file_info"]
+  },
+  "real_world_source": {
+    "DEBT-0005": "外部批判 2.3: YAML 策略无热更新（修改 policies.yaml 需重启网关生效）",
+    "DEBT-0006": "外部批判 6.1: check_policy.py AST 规则误报含 allow/deny 子串的普通 dict key（如 allow_retry）"
   },
   "contract": {
-    "file": "src/rate_limiter.py",
-    "class": "RateLimiter",
-    "semantics": {
-      "allow": "consume tokens; True if enough (atomic); False if insufficient (no consumption)",
-      "new_key": "auto-create bucket at full capacity",
-      "refill": "add tokens, capped at capacity",
-      "remaining_unknown_key": "returns capacity (auto-bucket semantics)",
-      "invalid": "empty/whitespace key or tokens<=0/non-int raises ValueError; __init__ capacity<=0 raises ValueError"
+    "targets": {
+      "src/policy.py": "PolicyEngine reload()/maybe_reload() + mtime 跟踪 + 原子 swap",
+      "src/main.py": "两处 handler 在 evaluate 前调用 maybe_reload",
+      "scripts/check_policy.py": "visit_Dict 精确 token 匹配",
+      "tests/test_policy_hot_reload.py": "热更新契约测试",
+      "tests/test_check_policy_ast.py": "AST 精确匹配测试"
     },
-    "methods": ["__init__(capacity=10)", "allow(key, tokens=1)", "refill(key, n)", "remaining(key)"]
+    "acceptance": [
+      "pytest 全量 ≥142 + 新增",
+      "改 policies.yaml 后 evaluate 反映新规则，无需重启",
+      "check_policy.py 对 allow_retry 类 key 不再误报",
+      "子代理 artifact 经 MCP 落盘；Reviewer 只读 MCP",
+      "DEBT-0005/0006 移入已清偿区并标注 commit"
+    ]
   },
   "history": [
     {
       "round": 1,
-      "phase": "BUILD_TEST_PARALLEL_MCP",
+      "phase": "PARALLEL_BUILD_TEST",
       "actions": {
-        "builder": "MCP write_file -> src/rate_limiter.py (round1: 1347 chars; round2 fix: 1479 chars, added _check_key to remaining())",
-        "tester": "MCP write_file -> tests/test_rate_limiter.py (3185 bytes)",
-        "reviewer": "MCP read_file/file_info only -> verified src/tests/reports; wrote reviewer_verdict.md (2872 bytes)"
+        "builder": "READ-phase truncated, 0 writes (write-early protocol triggered recovery)",
+        "tester": "MCP write_file -> tests/test_policy_hot_reload.py (4550B) + tests/test_check_policy_ast.py (2670B); tester_report.md (3587B)",
+        "reviewer": "not started"
+      },
+      "outcome": "TESTER_LANDED_BUILDER_TRUNCATED",
+      "notes": [
+        "3 passed / 7 failed initially — all 7 failures were race-pending Builder implementation (expected)",
+        "Builder v1 truncated in READ phase despite 12 turns — lesson: real-world task prompts too large for single sub-agent; recovery via v2"
+      ]
+    },
+    {
+      "round": 2,
+      "phase": "BUILDER_V2_RECOVERY + REVIEW",
+      "actions": {
+        "builder": "MCP write_file -> src/policy.py (4154B) + src/main.py (23449B) + scripts/check_policy.py (3686B); builder_report.md (2607B)",
+        "reviewer": "MCP read-only -> 10/10 tests + probes a-d PASS; verdict PASS-WITH-NOTES",
+        "coordinator": "probe e (maybe_reload x2 at L94/L471) PASS; final regression 152 passed; verdict re-applied after reviewer truncation"
       },
       "outcome": "PASS-WITH-NOTES",
       "notes": [
-        "Coordinator ruled tests-win after parallel divergence: remaining() must validate key (contract text + defense-in-depth); Builder round 2 fixed.",
-        "test_rate_limiter.py: 12 passed after fix.",
-        "Full regression: 142 passed (130 prior + 12 rate_limiter).",
-        "Reviewer note 1: coordinator probe line bug (refill() returns None, not bool) - corrected probe CONTRACT PROBE OK.",
-        "Reviewer note 2: mcp_client cp950 codec limitation on teams_collaboration.md BOM read (client-side only; server/sandbox fine).",
-        "Write-early protocol honored: first tester_report.md write was claimed but Not found (sub-agent truncation) -> rebuilt via MCP write_file with full command trail."
+        "Incident 1: mcp_client.py \\n mangling corrupted check_policy f-string -> re-committed via direct JSON-RPC to same MCP server",
+        "Incident 2: Tester contract required str() coercion + None default -> Builder 2-line minimal fix (tests authoritative)",
+        "Reviewer truncated before verdict write -> Coordinator re-applied verdict to disk per write-early protocol",
+        "Full regression: 152 passed (142 + 10 new debt tests)"
       ],
       "mcp_self_proof": {
-        "builder_report.md": "1425 bytes via file_info",
-        "tester_report.md": "1500 bytes via file_info",
-        "reviewer_verdict.md": "2872 bytes via file_info",
-        "test_rate_limiter.py": "3185 bytes via file_info",
-        "src/rate_limiter.py": "1479 chars via write_file self-report"
-      },
-      "sandbox_checks": "All paths repo-relative; no escapes attempted; server sandbox root = repo root"
+        "src/policy.py": "4154B via file_info",
+        "src/main.py": "23449B via file_info",
+        "scripts/check_policy.py": "3686B via file_info",
+        "builder_report.md": "2607B",
+        "tester_report.md": "3587B",
+        "reviewer_verdict.md": "2080B"
+      }
     }
   ]
 }

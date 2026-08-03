@@ -45,7 +45,7 @@ class HardcodedPolicyVisitor(ast.NodeVisitor):
         for key in node.keys:
             if isinstance(key, ast.Constant) and isinstance(key.value, str):
                 key_lower = key.value.lower()
-                if any(kw in key_lower for kw in ("allow", "deny", "block", "escalate", "rule")):
+                if key_lower in ("allow", "deny", "block", "escalate", "rule"):
                     action_keys.append(key.value)
 
         if len(action_keys) >= 2:

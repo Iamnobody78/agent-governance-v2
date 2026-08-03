@@ -90,6 +90,8 @@ async def intercept_handler(request: web.Request) -> web.Response:
             {"error": "invalid request body"}, status=422
         )
 
+    # 0. hot-reload policies if YAML changed (DEBT-0005)
+    await asyncio.to_thread(policy_engine.maybe_reload)
     # 1. evaluate policy with timeout guard
     try:
         rule = await asyncio.wait_for(
@@ -466,6 +468,7 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
         )
     else:
         # ordinary chat → consult policy engine (allow-chat rule)
+        await asyncio.to_thread(policy_engine.maybe_reload)
         rule = await asyncio.to_thread(
             policy_engine.evaluate, req.path, req.method
         )

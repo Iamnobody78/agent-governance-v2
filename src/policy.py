@@ -1,5 +1,6 @@
 """YAML policy loader + matching engine — declarative, not hardcoded."""
 
+import os
 import posixpath
 import re
 from dataclasses import dataclass, field
@@ -7,10 +8,6 @@ from typing import List, Literal, Optional
 
 import yaml
 
-# Valid governance actions. A typo'd action (e.g. "DENYy") would silently fall
-# through the gateway's if/elif chain into the else→ALLOW branch — a quiet
-# governance bypass. Constrain + normalize at load time (fail-closed: bad
-# config refuses to start instead of mis-serving).
 VALID_ACTIONS: tuple = ("ALLOW", "DENY", "ESCALATE")
 
 
@@ -26,7 +23,6 @@ class Rule:
     escalation_channel: str = "slack"
 
     def __post_init__(self) -> None:
-        # normalize case so YAML "deny" behaves identically to "DENY"
         normalized = str(self.action).upper()
         if normalized not in VALID_ACTIONS:
             raise ValueError(
@@ -37,17 +33,11 @@ class Rule:
         self.action = normalized
 
     def matches(self, path: str, method: str) -> bool:
-        """Check if this rule matches the request path and method."""
         method_ok = self.method is None or self.method.upper() == method.upper()
         path_ok = self._path_matches(path)
         return method_ok and path_ok
 
     def _path_matches(self, path: str) -> bool:
-        """Support exact match and wildcard patterns like /api/* or /api/config/*.
-
-        v0.2.1 (AUDIT-0006 companion): normpath normalization kills
-        '/api/config/../admin' traversal bypasses before matching.
-        """
         normalized = posixpath.normpath(path.split("?", 1)[0])
         if self.path_pattern == normalized:
             return True
@@ -67,18 +57,21 @@ class PolicyConfig:
 
 
 class PolicyEngine:
-    def __init__(self, config_path: str = "config/policies.yaml"):
+    def __init__(self, config_path: Optional[str] = "config/policies.yaml"):
+        if config_path is None:
+            config_path = "config/policies.yaml"
         self.config: PolicyConfig = PolicyConfig(name="default", version="0.1.0")
         self.rules: List[Rule] = []
-        self._load(config_path)
+        self._config_path = str(config_path)
+        self._last_mtime = 0.0
+        self._load(str(config_path))
 
     def _load(self, path: str) -> None:
         with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
         if not data:
             return
-        self.config.name = data.get("name", self.config.name)
-        self.config.version = data.get("version", self.config.version)
+        new_rules = []
         for rule_data in data.get("rules", []):
             rule = Rule(
                 name=rule_data["name"],
@@ -90,11 +83,35 @@ class PolicyEngine:
                 escalation_timeout=rule_data.get("escalation_timeout", 300),
                 escalation_channel=rule_data.get("escalation_channel", "slack"),
             )
-            self.rules.append(rule)
-        self.rules.sort(key=lambda r: r.priority)
+            new_rules.append(rule)
+        new_rules.sort(key=lambda r: r.priority)
+        self.rules = new_rules
+        self.config.name = data.get("name", self.config.name)
+        self.config.version = data.get("version", self.config.version)
+        try:
+            self._last_mtime = os.path.getmtime(path)
+        except OSError:
+            pass
+
+    def reload(self) -> bool:
+        """Re-read YAML from self._config_path. On failure keep old rules."""
+        try:
+            self._load(self._config_path)
+            return True
+        except Exception:
+            return False
+
+    def maybe_reload(self) -> bool:
+        """Hot-reload: reload only if config mtime changed (DEBT-0005)."""
+        try:
+            mtime = os.path.getmtime(self._config_path)
+        except OSError:
+            return False
+        if mtime != self._last_mtime:
+            return self.reload()
+        return False
 
     def evaluate(self, path: str, method: str) -> Optional[Rule]:
-        """Return the first matching rule, or None if nothing matches."""
         for rule in self.rules:
             if rule.matches(path, method):
                 return rule
