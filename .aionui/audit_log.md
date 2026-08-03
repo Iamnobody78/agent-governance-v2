@@ -13,7 +13,7 @@
 - 结论: **PASS**（181/181 测试 + YAML 语义独立解析通过 + GATE 7 绿 + 6 gate job 零改动）
 - 问题数: 0 执行期缺陷
 - Reviewer: **Spawn `S3-Reviewer-REAL005`**（独立视角）
-- Commit: `PIN_AFTER_COMMIT`
+- Commit: `bd3f8f1`
 - 备注:
   - **AUDIT 侦察定方向**: 6 gate job 无数据依赖链（各自 checkout+setup），修复方向是**聚合 job**（all-gates 声明 needs 全部 6 gate）而非链式 needs——分支保护从此只需锁定单一检查名 "All Gates Passed"
   - **R5 第三轮应用**: S1/S2 prompt 首行工具启用声明 → 双 Spawn 均 COMPLETE（无 BLOCKED/截断），8+4 turns；R5 可靠性已三连验证

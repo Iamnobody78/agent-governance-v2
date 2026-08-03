@@ -25,5 +25,5 @@
 | DEBT-0009 | `_pending` 内存缓存无上限（长时降级时内存占用风险） | `368907c` (TASK-REAL-003) | 2026-08-03 |
 | DEBT-0010 | `flush_pending()` 重试时机未明确（建议 main.py 启动/关闭时触发） | `368907c` (TASK-REAL-003) | 2026-08-03 |
 | DEBT-0004 | chat 端点无流式（stream:true 客户端 TTFT 退化 + SSE 语义丢失） | `3aea7d2` (TASK-REAL-004) | 2026-08-03 |
-| DEBT-0003 | CI job 间无 `needs:` 声明（依赖分支保护） | `PIN_AFTER_COMMIT` (TASK-REAL-005) | 2026-08-03 |
+| DEBT-0003 | CI job 间无 `needs:` 声明（依赖分支保护） | `bd3f8f1` (TASK-REAL-005) | 2026-08-03 |
 
