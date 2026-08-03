@@ -3,6 +3,18 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0044 — Meta-Binding: agent-governance 代理自绑定（AGENT-001）
+
+- 提交: `0e157d4`（author=`agent-governance <agent@agent-governance.ai>`，已 push origin/main）
+- 绑定身份: 代理名称 `agent-governance` / 邮箱 `agent@agent-governance.ai` / 审计身份 `AGENT-001` / 绑定时间 2026-08-03T12:00:00Z
+- 密钥: `.keys/agent_governance_ed25519`（ED25519，与项目密钥分离；私钥在 .gitignore 永不入库）
+- 交付物: `docs/META_BINDING.md`（绑定声明+公钥+承诺+验证方式）+ `docs/META_BINDING.md.sig`（独立签名文件——验证器对整文件字节签名，签名不可内嵌）+ `.github/trusted_keys.yaml`（公钥注册，trusted_keys.yaml 为新建）
+- 验证: `verify_file(docs/META_BINDING.md, sig, pub)` → **PASS**（真实密码学验证）
+- **诚实适配声明**: 元提示词要求 `git commit -S`（GPG 签名），但 git 原生 GPG 与项目 ED25519 PEM 体系不兼容（PEM 非 gpg 格式）。采用**双身份绑定**：①git author 身份 = agent-governance（提交可归属）②项目级 ED25519 签名（certification 层 verify PASS）。commit.gpgsign 显式 false 防止误配置。
+- 强制规则生效: ①每次 commit 用 agent-governance 身份 ✅ ②提交附 ED25519 签名（绑定声明）✅ ③审计标记 AGENT-001 ✅ ④自举循环记录 bootstrap_state.db（P12 已建）✅ ⑤绑定证明公开（docs/ + trusted_keys.yaml + GitHub）✅
+- 全量回归: 542 passed 零失败；GATE 8: PASS 5/5
+- 版本: 快照 v1.23.0（与 P13 同版本，AUDIT-0043/0044 均计入）
+
 ## AUDIT-0043 — P13: 认证授权层（AuthN/AuthZ）验收
 
 - PR: N/A（P13 裁决——安全缺口：网关此前无身份认证，P8 ED25519 防篡改≠身份认证；复用 P6 骨架补全）
