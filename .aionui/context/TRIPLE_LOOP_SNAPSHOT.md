@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.21.0
-> 快照时间: 2026-08-03（P12 自举运行时完成——确定性调度器：感知→诊断→修复→验证→部署，SQLite 状态持久化）
-> 最近审计: AUDIT-0041（P12 自举运行时）+ AUDIT-0040（P11 元编程声明）+ AUDIT-0039（P10 开源就绪）
+> 版本: v1.22.0
+> 快照时间: 2026-08-03（Meta-Harness 融合完成——L5 从"策略建议生成器"进化为"完整 Harness 工程自动化系统"：MH-1 trace + MH-2 proposer + MH-3 Pareto）
+> 最近审计: AUDIT-0042（MH 融合三阶段）+ AUDIT-0041（P12 自举运行时）+ AUDIT-0040（P11 元编程声明）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,14 +12,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 502 passed（488 基线 + 14 新增 bootstrap；等价性测试 16 项证明生成代码==运行时语义） |
+| **测试全量** | 542 passed（502 基线 + 40 新增 MH-1/2/3；trace 15 + proposer 14 + pareto 11） |
 | **覆盖率** | 87%（`--source=src` 实测 2026-08-03；门槛 ≥ 60%；较 90.12% 旧口径降低系 scope 含 meta_harness 68-70%，非回归） |
 | **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞）；DEBT-0027（P6 认证缺失）已清偿 |
 | **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受） |
-| **最近事件** | **P12 自举运行时完成** ✅（确定性调度器 `src/bootstrap/`：sensor 感知 git/codegen 漂移/critic/debt → diagnoser 映射可修复项（codegen 漂移→REGENERATE_CODEGEN，其余需人工）→ deployer 生成→验证→自动提交/失败回滚 → scheduler 主循环 + `bootstrap_state.db` SQLite 持久化（cycles/cycles_failures 表）；人类 in-the-loop：auto_push 默认 False、dry_run 演练模式；复用 agent_tools/meta_harness.sandbox/codegen.generator；502 tests；P11 元编程声明此前完成）；GATE 8 5/5 PASS |
+| **最近事件** | **Meta-Harness 融合完成** ✅（斯坦福 Meta-Harness 三阶段：MH-1 `src/trace/` 完整执行轨迹（store 文件系统持久化 manifest+steps+artifacts / capture 上下文管理器+fail 标记 / token 预算 10M）；MH-2 `src/proposer/` 提议器=变异算子（reader 只读检索 search/grep/cat / writer 完整候选 harness→`candidates/{id}/src/`+血缘 candidate.json）；MH-3 `src/pareto/`（frontier 质量vs成本 Pareto 非支配集 / loop 提议→评分→合并 ≥3 轮+严格裁决门）；三阶段各自提交验证，最终 542 tests；融合演示：3 轮迭代→2 候选进入前沿（1 被支配拒绝），traces/ + candidates/ 文件系统真相层落地；P12 自举运行时此前完成） |
 | **CI 状态** | ✅ GATE 1-8 全绿（GATE 8 = Critic Agent 五批判者，全量回归 exit 0） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …P11: `src/codegen+docs/META_CAPABILITIES` 提交 `44bab7e`（v1.20.0）→ P12: `src/bootstrap+tests/test_bootstrap` 提交 `（v1.21.0）` |
+| **提交链** | …P12: `src/bootstrap` 提交 `43aec94`（v1.21.0）→ MH-1: `src/trace` 提交 `（v1.22.0 前序）`→ MH-2: `src/proposer` 提交 `（v1.22.0 前序）`→ MH-3: `src/pareto` 提交 `（v1.22.0）` |
 
 ---
 

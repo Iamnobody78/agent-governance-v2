@@ -3,6 +3,21 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0042 — Meta-Harness 融合（MH-1/2/3: trace → proposer → Pareto）
+
+- PR: N/A（MH 元提示词——斯坦福 Meta-Harness "冻结模型、进化 harness" 整合到 L5）
+- 裁决: **三阶段按序执行，每阶段提交验证**——MH-1 执行轨迹捕获 → MH-2 提议器（文件系统变异算子）→ MH-3 Pareto 前沿 + 迭代循环
+- 新增:
+  - **MH-1** `src/trace/`：`store.py`（TraceStore——traces/{trace_id}/manifest.json + steps/NNN_*.json 增量落盘 + artifacts/；schema mh-trace/v1；token_estimate 4字符≈1token，10M 预算反馈裁剪；路径越界防护）+ `capture.py`（TraceCapture 上下文管理器——异常自动 failed、`fail()` 显式标记、artifact 文本/字节/文件复制；capture_run 函数包装；traced 装饰器）+ 15 测试
+  - **MH-2** `src/proposer/`：`reader.py`（TraceReader 只读——read/list/search（子串）/grep（正则）/cat（LLM 可消费全文）/feedback_budget（10M 预算统计））+ `writer.py`（CandidateWriter——create 候选→`candidates/{candidate_id}/src/` 完整 harness 文件树（非补丁）+ candidate.json 血缘（parent_trace_id/变异说明）+ import_trace_artifacts 父轨迹产物导入 + write_tree 整树复制 + set_metrics）+ 14 测试
+  - **MH-3** `src/pareto/`：`frontier.py`（Point/dominates——quality↑ cost↓ 双目标支配；ParetoFrontier 增量插入剔除 + best 线性加权 + plot_ascii）+ `loop.py`（EvolutionLoop——propose→score→merge ≥3 轮；严格裁决门=被支配拒绝合并；每轮轨迹落盘闭环）+ 11 测试
+- 关键实现: ①完整候选而非补丁（harness 变异是整树操作）；②文件系统是唯一真相（traces/ + candidates/ 即数据库，.gitignore 忽略为运行时产物）；③融合演示真实执行——3 轮迭代生成 3 候选 3 轨迹，2 候选进入前沿（1 被支配拒绝），frontier best=0.79/44.6
+- 修复的 bug: ①TestTraceCapture bytes 字面量含中文语法错误；②TraceCapture 缺 trace_id/status 属性；③proposer fixture 异常泄漏（预期 RuntimeError 需捕获）；④grep/search 期望值修正（"no drift" 含 "drift" 子串）；⑤dominates 同 quality 低 cost 判定测试反转；⑥Candidate 缺 id 属性（与 Point.id 兼容）；⑦pareto best 权重测试期望修正（0.7 权重下廉价 0.8/5 胜 0.9/15 属正确 Pareto 行为）；⑧评分异常需 `fail()` 显式标记轨迹 failed（否则 __exit__ 覆盖为 ok）
+- 全量回归: **542 passed**（502 基线 + 40 MH）零失败
+- GATE 8: PASS 5/5
+- AC 验收: AC1 trace manifest+steps+artifacts ✅ / AC2 proposer reader+writer 候选完整 harness ✅ / AC3 Pareto frontier+loop ≥3 轮 ✅ / AC4 ≥488（实测 542）✅ / AC5 每阶段独立提交 ✅ / AC6 融合报告含 GitHub 链接 ✅ / AC7 快照 v1.22.0 ✅
+- 版本: 快照 v1.22.0；架构文档同步（README + docs/architecture.md 版本行 + TRIPLE_LOOP_SNAPSHOT）
+
 ## AUDIT-0041 — P12: 自举运行时（确定性调度器 + SQLite 状态持久化）
 
 - PR: N/A（P12——用户裁决：不是独立进程，而是确定性调度器：感知→诊断→修复→验证→部署）
