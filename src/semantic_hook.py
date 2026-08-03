@@ -116,3 +116,37 @@ async def semantic_hook(user_prompt: str, timeout: float = SEMANTIC_HOOK_TIMEOUT
     if score >= SEMANTIC_HOOK_THRESHOLD:
         return {"override": "ESCALATE", "score": score, "flags": [str(f) for f in flags]}
     return {"override": None, "score": score, "flags": [str(f) for f in flags]}
+
+
+# ── P1 (暗雷区) 异步弱监督 ────────────────────────────────────────────
+# 主链路不再 await judge（消除启用时 +150ms 阻塞）。后台任务（create_task）
+# 调用 judge → 高风险时撤销 trace 链；judge 被注入攻破最坏 = 多撤一条链
+# （SUSPEND 待人工复审），绝不放行 DENY —— 只升不降原则保持。
+
+async def semantic_audit_async(trace_id: str, user_prompt: str,
+                               base_reason: str = "") -> Optional[Dict]:
+    """后台弱监督审计（fire-and-forget，供 asyncio.create_task 调度）。
+
+    返回 judge 结果（{override, score, flags} 或 None）。副作用:
+      - score >= 阈值 → revoke_registry.revoke(trace_id)（后续请求短路 SUSPEND）
+      - 审计事件以 warning 日志记录（撤销的持久化发生在后续请求的
+        SUSPEND DecisionRecord 落库时 —— 见 main.py intercept 入口）
+    永不抛异常（fail-soft：judge 不可用 → 返回 None，静默降级）。
+    """
+    from .revoke import revoke_registry
+    if not is_enabled():
+        return None
+    try:
+        result = await semantic_hook(user_prompt)
+    except Exception as e:  # noqa: BLE001 — background task must never crash loop
+        logger.warning("semantic audit crashed (%.80s) — trace=%s", e, trace_id)
+        return None
+    if result and result.get("override") == "ESCALATE":
+        score = result.get("score", 0.0)
+        flags = result.get("flags", [])
+        reason = (f"语义审计撤销 (score={score}, flags={flags})"
+                  f"{' | ' + base_reason if base_reason else ''}")
+        revoke_registry.revoke(trace_id, reason, score)
+        logger.warning("semantic audit REVOKED trace=%s score=%s flags=%s",
+                       trace_id, score, flags)
+    return result

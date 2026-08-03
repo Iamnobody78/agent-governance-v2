@@ -19,6 +19,7 @@ from .models import InterceptRequest, InterceptResponse, DecisionRecord, Verdict
 from .lethality import lethality_for_tool
 from .policy import PolicyEngine, Rule, _json_extract
 from .storage import Storage
+from .revoke import revoke_registry  # P1 (暗雷区): 异步弱监督撤销注册表
 from . import context_hmac  # TASK-REAL-012 Phase 5: Context Hook HMAC（防头伪造）
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,8 @@ def _signed_trace_headers(trace_id: str, span_id: str) -> dict:
 from .danger import DANGEROUS_PREFIXES, DANGEROUS_METHODS, is_dangerous as _is_dangerous
 
 # TASK-REAL-009 (A-phase): semantic bypass hook — external LLM-Judge, opt-in.
-from .semantic_hook import extract_prompt, is_enabled as semantic_hook_enabled, semantic_hook
+from .semantic_hook import (extract_prompt, is_enabled as semantic_hook_enabled,
+                            semantic_hook, semantic_audit_async)
 
 # Only these headers are forwarded to the upstream backend (never Authorization)
 FORWARD_HEADER_WHITELIST = ("content-type", "accept", "user-agent", "x-agent-id")
@@ -208,18 +210,24 @@ async def intercept_handler(request: web.Request) -> web.Response:
                     breaker_tripped_until,
                 )
 
+    # 2.4 P1 (暗雷区) 撤销检查: 后台语义审计已判定高风险并撤销该 trace →
+    # 后续请求短路 SUSPEND（403 挂起待人工复审）。静态 DENY 优先保留
+    # （撤销不覆盖更严厉的规则裁决）。撤销原因随 SUSPEND 决策落库（可审计）。
+    if verdict != Verdict.DENY and revoke_registry.is_revoked(trace_id):
+        verdict = Verdict.SUSPEND
+        reason = (revoke_registry.reason_for(trace_id)
+                  or "该 trace 已被语义审计撤销 (高风险)")
+        matched_rule = matched_rule or "revoked-trace"
+
     # 2.5 semantic bypass hook (TASK-REAL-009 / A-phase): the static verdict may
     # be upgraded to ESCALATE by the external LLM-Judge — NEVER downgraded
     # (DENY stays final). Fail-soft: judge down/timeout -> verdict unchanged.
+    # P1 (暗雷区): 异步弱监督 — 主链路不再 await judge（消除 +150ms 阻塞）。
+    # 后台审计高风险 → 撤销 trace 链（后续请求短路 SUSPEND，见入口检查）。
     if verdict != Verdict.DENY and semantic_hook_enabled():
         _prompt = extract_prompt(req.body)
-        _semantic = await semantic_hook(_prompt)
-        if _semantic and _semantic.get("override") == "ESCALATE":
-            verdict = Verdict.ESCALATE
-            reason = (
-                f"{reason} | Semantic Judge: score={_semantic.get('score')} "
-                f"flags={_semantic.get('flags')}"
-            )
+        asyncio.create_task(semantic_audit_async(
+            trace_id=trace_id, user_prompt=_prompt, base_reason=reason))
 
     # 3. persist decision (strong-typed model, serialized at DB edge)
     _tname, _tleth = _audit_tool_fields(req)
