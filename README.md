@@ -38,7 +38,7 @@ v1 不是废品。它的价值不在代码而在三个层面：
 | # | 铁律 | 检查方式 |
 |:--:|------|----------|
 | 1 | **每个宣称必须有可执行的代码证据** | PR Review 时用 `grep` 验证：宣称 A → 代码必须有 A 的实现（不能是空壳/正则/阈值） |
-| 2 | **每个测试必须验证真实运行时行为** | 禁止 `assert x == y` 式的 dataclass 赋值测试；每个测试必须涉及 IO/网络/状态迁移 |
+| 2 | **每个测试必须验证真实运行时行为** | 禁止 `assert obj.field == value` 式的 dataclass 字段赋值测试；断言必须验证真实运行时状态——HTTP 响应字段（`resp.status`）、函数调用结果（`engine.evaluate().action`）、状态迁移值（`flushed == 1`）。由 GATE 1（`scripts/check_test_quality.py`）静态扫描强制：豁免裸 Name 比较、HTTP 根、调用根与 Subscript 链 |
 | 3 | **文档与代码同一仓库、同一提交** | 架构决策记录（ADR）与实现代码在同一 PR 中提交 |
 
 ---
@@ -134,8 +134,8 @@ Request → [Parse] → [PolicyMatch] → [Verdict] → Forward / Deny / Escalat
 
 **v1 教训**：v1 的裁决是纯内存运算，无超时、无熔断、无人工审批通道。v2 必须实现：
 
-- **超时**：单次裁决 > 500ms 自动降级为 ALLOW（不阻塞 Agent）
-- **熔断**：连续 10 次 ESCALATE 未获审批 → 自动 ALLOW（不卡死管道）
+- **超时**：单次裁决 > 500ms 自动降级为 DENY/ESCALATE（**fail-closed**，不因性能降级放行攻击面）
+- **熔断**：连续 10 次 ESCALATE 未获审批 → 熔断 DENY（**fail-closed**，v0.2.x 起熔断状态持久化，重启不重置冷却）
 - **人工审批**：Webhook 推送 → 外部系统确认 → 回调继续
 
 #### L3: 策略层
@@ -224,7 +224,7 @@ rules:
 POST /v1/intercept
   - 请求体: 原始 Agent 请求的完整副本（method, path, headers, body）
   - 响应: ALLOW(200, 转发) / DENY(403) / ESCALATE(202, 挂起)
-  - 超时: 500ms（超时自动 ALLOW）
+  - 超时: 500ms（超时自动 DENY/ESCALATE，fail-closed）
 
 GET /v1/health
   - 返回: {"status": "ok", "uptime": 3600, "decisions": 1423}
@@ -258,7 +258,7 @@ GET /v1/decisions?from=2026-08-01T00:00:00Z&to=2026-08-02T00:00:00Z
 - [ ] `POST /v1/intercept` 返回 `ALLOW` 当无匹配策略时
 - [ ] `POST /v1/intercept` 返回 `DENY` 当匹配禁止策略时
 - [ ] `POST /v1/intercept` 返回 `ESCALATE` 当匹配升级策略时
-- [ ] 超时 500ms 后自动 `ALLOW`（不阻塞 Agent）
+- [ ] 超时 500ms 后自动 DENY/ESCALATE（fail-closed，不阻塞 Agent 但绝不放行攻击面）
 - [ ] 所有决策写入 SQLite（可查询、不可篡改）
 - [ ] `GET /v1/health` 返回运行状态
 - [ ] 测试：包含真实的 HTTP 请求/响应（非 dataclass 赋值）
@@ -303,10 +303,10 @@ GET /v1/decisions?from=2026-08-01T00:00:00Z&to=2026-08-02T00:00:00Z
 | 持久化 | 内存字典 | SQLite / PostgreSQL |
 | 可观测性 | `get_state()` 字典 | Prometheus 指标 + Grafana |
 | 人工审批 | 无 | Webhook 推送 + 回调 |
-| 超时/熔断 | 无 | 500ms 超时 + 连续失败熔断 |
+| 超时/熔断 | 无 | 500ms 超时 fail-closed + 连续失败熔断 fail-closed（状态持久化） |
 | 测试 | dataclass 赋值验证 | 真实 HTTP/gRPC 请求 |
 | 诚实度 | 学术名词堆砌 | 每个宣称有代码证据 |
 
 ---
 
-*本文档随 agent-governance v2 的每次架构变更更新。最后更新：2026-08-02。*
+*本文档随 agent-governance v2 的每次架构变更更新。最后更新：2026-08-03（TASK-REAL-008：铁律 2 措辞与 GATE 1 对齐；超时/熔断 fail-closed 表述修正）。*

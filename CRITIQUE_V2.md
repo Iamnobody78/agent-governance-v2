@@ -6,6 +6,25 @@
 
 ---
 
+## ✅ 修复状态总览（2026-08-03 更新，TASK-REAL-008 / DEBT-0016）
+
+> 本文档的缺陷正文保留为**历史审计线索**，不删除、不改写。以下为逐缺陷的当前状态（均有对应测试证据，见 `tests/`）：
+
+| 缺陷 | 原严重度 | 当前状态 | 修复证据 |
+|------|:---:|------|------|
+| 缺陷 1：500ms 超时即 ALLOW | 🔴 HIGH | ✅ **已修复** — 超时降级为 fail-closed（DENY/ESCALATE），不再放行 | DEBT-0001（TASK-REAL-002/003）；`tests/test_timeout.py` |
+| 缺陷 2：AST 扫描器硬编码白名单 | 🟡 MEDIUM | ✅ **已修复** — GATE 1 改为"调用根/HTTP 根/裸 Name"豁免语义，豁免列表不再硬编码变量名 | DEBT-0017（GATE 1 漂移修复，TASK-REAL-006）；`scripts/check_test_quality.py` |
+| 缺陷 3：并发单线程瓶颈 | 🟡 LOW | 🔄 **部分修复** — 策略评估已入 `asyncio.to_thread`；SQLite 写走带锁单连接；文档已声明 Python 性能边界 | `src/storage.py`；`README.md` §2.2 |
+| 缺陷 4：check_policy.py 硬编码 | 🟡 LOW | ✅ **接受为已知设计** — 门控工具的白名单是显式策略，非隐蔽魔法；GATE 3 行为由 CI 锁定 | `scripts/check_policy.py` |
+| 缺陷 5：熔断 DDoS 绕过后门 | 🔴 HIGH | ✅ **已修复** — 熔断降级改为 fail-closed（DENY），且状态持久化（重启不重置） | DEBT-0011（TASK-REAL-006）；`tests/test_breaker_persistence.py` |
+| 缺陷 6：`_is_dangerous()` 路径绕过 | 🔴 HIGH | ✅ **已修复** — 三层防御（normpath 规范化 + 边界匹配 + 段级防御） | AUDIT-0005；`tests/test_security_hardening.py` |
+| 缺陷 7：全局可变状态竞态 | 🟡 MEDIUM | ✅ **已修复** — `asyncio.Lock` 保护计数器 | AUDIT-0005；`tests/test_security_hardening.py` |
+| 缺陷 8：代理转发透传 Authorization | 🟡 MEDIUM | ✅ **已修复** — `FORWARD_HEADER_WHITELIST` 白名单转发 | AUDIT-0005；`tests/test_security_hardening.py` |
+
+**当前测试基线**：201 passed（本文档原记录 44/44 为 AUDIT-0005 时点快照）；覆盖率 88.71% ≥ 60%；CI GATE 1-7 全绿。
+
+---
+
 ## 🔴 缺陷 1：500ms 超时即 ALLOW —— 攻击面
 
 ### 代码位置
