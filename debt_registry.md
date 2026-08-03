@@ -8,9 +8,16 @@
 
 ## 活跃债务
 
-## 活跃债务
+| ID | 描述 | 严重度 | 创建日期 | 阻塞? | 来源 |
+|----|------|:---:|------|:---:|------|
+| DEBT-0011 | 熔断状态不持久化（escalate_count/last_escalate/breaker_tripped_until 内存变量，重启清零 → 攻击者重启后可立即发起攻击绕过冷却窗口） | HIGH | 2026-08-03 | 是* | 外部批判 R1.1 / R2 3.1（已源码证实 L37-39） |
+| DEBT-0012 | 空 policies.yaml 静默启动（`_load` 遇空 data 直接 return → rules 空 → 所有请求 ALLOW，违反 fail-closed） | HIGH | 2026-08-03 | 是* | 外部批判 R2 4.1（已源码证实 L72-73） |
+| DEBT-0013 | `_pending` 超限丢弃最旧记录无持久化备份（长期 DB 不可用 → 审计记录永久丢失） | MEDIUM | 2026-08-03 | 否 | 外部批判 R1 3.1 / R2 5.1 |
+| DEBT-0014 | `flush_pending()` 无重试上限与退避（DB 持续不可用 → 每次 save 无限重试循环） | MEDIUM | 2026-08-03 | 否 | 外部批判 R1 3.2 / R2 5.2 |
+| DEBT-0015 | `_flush_pending_on_shutdown` 与 shutdown_timeout=10 未联动（flush 超时 → aiohttp 强制终止，待决记录丢失） | MEDIUM | 2026-08-03 | 否 | 外部批判 R1 1.3 / R2 3.3 |
+| DEBT-0016 | 文档诚实性：CRITIQUE_V2.md 过时（标注"500ms 超时 ALLOW"但已修复 fail-closed）；EXPERIMENT_REPORT.md 未反映 v2 当前已知缺陷 | MEDIUM | 2026-08-03 | 否 | 外部批判 R2 9.1/9.2 |
 
-> ✅ **无活跃债务（10/10 已清偿，2026-08-03）** —— 里程碑：三循环治理引擎完成首轮全清偿闭环。
+> *阻塞标记：DEBT-0011/0012 为批判者认定的"部署前必须修复"项，标记阻塞生产部署（不阻塞 B3 验证）。
 
 ## 已清偿
 
