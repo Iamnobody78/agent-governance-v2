@@ -3,6 +3,27 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0026 — 2026-08-03T23:30:00Z
+
+- PR: N/A（TASK-REAL-011 C 阶段——Trace 因果追踪，用户裁决 B→C→D 顺次批准 C）
+- 标题: Trace 因果追踪——trace_id/parent_span_id 12 列 + 递归 CTE 调用树端点 + 响应头协议——"多智能体调用链可见性"第一层
+- 变更文件: `src/models.py`（DecisionRecord + trace_id/parent_span_id；InterceptResponse + trace_id）、`src/storage.py`（decisions 表 12 列 + _migrate() 无损扩容 4 列 + idx_trace 索引（_migrate 后创建）+ get_trace() 递归 CTE）、`src/main.py`（_trace_context 头提取/生成 + intercept 入口集成 + X-Trace-ID/X-Span-ID 响应头 + trace_handler + 路由 + v0.4.0）、`tests/test_trace.py`（新建 20 测试）、`tests/test_intercept.py`（health version 断言 0.4.0）、`docs/trace_report.md`（新建报告，登记 DEBT-0022）、`debt_registry.md`（DEBT-0019 → 已清偿 + 登记 DEBT-0022）
+- 变更行数: 核心 +566/-18（提交 d95f83c 统计，含测试与报告；核心 ~130 行，超出确认表 ~100 行预估）
+- 评级: 自验证 A → **270/270 测试**（250 基线 + 20 新增）+ 覆盖率 **90.12%**（门槛 60%）+ GATE 1-7 全绿（exit 0，完整验证无截断）
+- 结论: **PASS**（Trace 因果追踪落地；DEBT-0019 清偿；DEBT-0022 新登记 LOW）
+- 问题数: 执行期自发现 4（idx_trace 在 _migrate 前创建 → 旧库 ALTER 前无列 → 移到 _migrate 后 + 移除重复 _migrate 调用；环测试在单父链下结构不可能 → 替换为 self-loop detach + deep-chain depth bound 两测试并文档化结构事实；GATE 1 违规 ×2 —— set-comprehension LHS / 非豁免根 tree.status → 改调用根 sorted(...) 与 resp 命名），修复后 0
+- Reviewer: N/A（门控即审查者）
+- Commit: `d95f83c`（TASK-REAL-011 代码）+ closeout 提交（debt/AUDIT-0026/relay/snapshot v1.9.0）
+- 备注:
+  - **span 模型**: span_id == decision.id；单父链；无 X-Parent-Span-ID → NULL（链根锚点，非随机 UUID——随机占位无法被 CTE 锚定，这是对确认表"生成"的唯一自洽落地，已在报告 §3.1 记录设计裁决）
+  - **递归 CTE 防护**: 根锚点 parent_span_id IS NULL + UNION 去重 + max_depth=50 + max_nodes=500；单父架构下可达环数学上不可能（改父即脱树），防护针对 self-loop/deep-chain（测试锚定：self-loop 返回 {R,A}、60 层截断 51 节点）
+  - **头协议**: X-Trace-ID（根，缺省生成 UUID）/ X-Parent-Span-ID（父决策 id，缺省 NULL）/ X-Span-ID（响应头 = decision.id，传递链根身份）
+  - **B 阶段衔接**: tool_lethality 作为 Trace 边权重——每节点显示杀伤半径，审计快速定位"哪一步引入最大风险"（test_lethality_as_edge_weight 锚定）
+  - **执行期发现 3 条**: ① chat/completions 路径未注入 trace（→ DEBT-0022 登记）；② idx_trace 索引顺序依赖（→ 代码注释固化）；③ 环结构不可能（→ 测试语义修正 + 报告文档化）
+  - 新登记债务: DEBT-0022（chat 路径断链，LOW）；活跃 4（0018/0020/0021/0022 均无阻塞）
+
+---
+
 ## AUDIT-0025 — 2026-08-03T22:40:00Z
 
 - PR: N/A（TASK-REAL-010 B 阶段——json_path 工具治理 + 可解释主控 Step 1 审计 Schema 扩充，用户裁决 B 优先）

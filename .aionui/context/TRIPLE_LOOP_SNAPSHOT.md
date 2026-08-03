@@ -1,7 +1,7 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.8.0
-> 快照时间: 2026-08-03（TASK-REAL-010 B 阶段——json_path 工具治理 + 可解释主控 Step 1 审计 Schema 落地后更新）
+> 版本: v1.9.0
+> 快照时间: 2026-08-03（TASK-REAL-011 C 阶段——Trace 因果追踪落地后更新）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -11,14 +11,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 250 passed |
-| **覆盖率** | 90.07%（门槛 ≥ 60%） |
-| **债务清偿率** | 16/16 已清偿（TASK-REAL-001..008）+ 活跃 4（DEBT-0018/0019/0020/0021，无阻塞） |
-| **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0019（Trace-ID, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受） |
-| **最近事件** | TASK-REAL-010 ✅（B 阶段：json_path 工具治理——零依赖 JSONPath 子集 + 条件规则 + Ls 权重表 + 审计 Schema 10 列迁移；35 测试；GATE 5/7 联动更新） |
-| **CI 状态** | ✅ GATE 1-7 全绿（GATE 1: 511 asserts 0 违规） |
+| **测试全量** | 270 passed |
+| **覆盖率** | 90.12%（门槛 ≥ 60%） |
+| **债务清偿率** | 17/17 已清偿（TASK-REAL-001..008 十六项 + DEBT-0019 于 REAL-011）+ 活跃 4（DEBT-0018/0020/0021/0022，无阻塞） |
+| **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）、DEBT-0022（chat/completions 路径未注入 trace, LOW） |
+| **最近事件** | TASK-REAL-011 ✅（C 阶段：Trace 因果追踪——trace_id/parent_span_id 12 列迁移 + 递归 CTE 调用树端点 + X-Trace-ID/X-Parent-Span-ID/X-Span-ID 头协议 + v0.4.0；20 测试；DEBT-0019 清偿、DEBT-0022 登记） |
+| **CI 状态** | ✅ GATE 1-7 全绿（270 tests 全量回归 exit 0） |
 | **约束体系** | R1-R6 已固化（REAL-003..010 八连验证） |
-| **提交链** | …REAL-008: `e3f575d` → REAL-009: `665d693` → REAL-010: `HEAD` |
+| **提交链** | …REAL-009: `665d693` → REAL-010: `e45a02b` → REAL-011: `d95f83c`（+ closeout 提交） |
 
 ---
 
@@ -92,7 +92,7 @@
 1. **加载此文件**：读取当前快照，理解状态
 2. **加载协议**：读取 `.aionui/protocols/teams_collaboration.md` 获取完整协作流程
 3. **加载债务账本**：读取 `debt_registry.md`（仓库根）获取剩余债务
-4. **验证测试**：运行 `pytest tests/ -q` 确认 250 passed
+4. **验证测试**：运行 `pytest tests/ -q` 确认 270 passed
 5. **继续治理**：运行 `@governance start` 启动下一轮治理循环
 
 ---
@@ -101,16 +101,16 @@
 
 | 债务 | 内容 | 优先级 | 修复方向 |
 |------|------|--------|----------|
-| DEBT-0018 | 请求/响应无大小上限 | 🟡 MEDIUM | 网关层 body 上限（B 阶段顺带方向，未并入） |
-| DEBT-0019 | 无 Trace-ID 因果关联 | 🟡 MEDIUM | C 阶段：trace_id/parent_span_id 列 + 递归 CTE 查询端点 |
+| DEBT-0018 | 请求/响应无大小上限 | 🟡 MEDIUM | 网关层 body 上限（独立任务或并入 D 阶段） |
 | DEBT-0020 | 输出侧语义评估缺失 | 🟢 LOW | 代理转发后异步补判 agent_response（待 A 就绪） |
 | DEBT-0021 | timeout 分支不覆盖 json_path 规则 | 🟢 LOW | 已文档化接受；后续可在 danger.py 增加 body 感知或接受纵深防御 |
+| DEBT-0022 | chat/completions 路径未注入 trace 上下文 | 🟢 LOW | 将 _trace_context 提取到共享中间件/装饰器，chat 落库决策补 trace_id/parent_span_id |
 
-当前治理循环扫描结论：**16/16 已清偿，4 项活跃（均无阻塞）**。B 阶段（json_path 工具治理）完成，Step 1 审计 Schema 就绪。
+当前治理循环扫描结论：**17/17 已清偿（含 DEBT-0019），4 项活跃（均无阻塞）**。C 阶段（Trace 因果追踪）完成，多智能体调用链可见性第一层落地。
 
 下一阶段候选（按 B→C→D 顺次）：
-1. **C：Trace 因果追踪**（trace_id/parent_span_id 列 + 递归 CTE 查询端点，~100 行）——DEBT-0019；json_path 工具审计字段（tool_lethality）天然成为边权重输入
-2. **D：统计反馈调节器**（5min 扫描 DENY 高频模式 → pending_rules 推荐，~150 行）——补自演进闭环
+1. **D：统计反馈调节器**（5min 扫描 DENY 高频模式 → pending_rules 推荐，~150 行）——补自演进闭环（用户已批准 B→C→D 顺次，D 为自然下一步）
+2. **外部评审"治理大脑"候选**（设计哲学消息 + 四层蓝图消息，未裁决）：可解释引擎 rationale 字段 + 五级判定 ALLOW_WITH_WARNING/SUSPEND（Phase 1，<500 行）/ Tree-sitter AST 硬阻断 + Payload Extractor + HMAC Context Hook + Shadow Transaction/Saga + Rust 重写（P0-P4 roadmap）——待用户裁决，建议 D 阶段后或与之并行立项
 3. **A 生产化**：拉取 qwen2.5:7b-instruct-q4_K_M（JUDGE_MODEL 热切换零代码）或 Bastion 70M 级联，实测延迟/准确率——待硬件到位
 4. **可解释主控 Step 2+**：CoT 推理链 / 上下文漂移（标记"待 A 就绪"）；Ls 权重表届时迁移 YAML
 5. **输出侧语义**（DEBT-0020）：代理转发后异步补判 agent_response
@@ -125,7 +125,8 @@
 - **v1.5.0**（2026-08-03）：REAL-007 清偿 DEBT-0013/0014/0015（201 tests；FALLBACK_PATH 落盘备份 + MAX_FLUSH_ATTEMPTS 重试上限/退避 + SHUTDOWN_FLUSH_TIMEOUT=8 独立超时；覆盖率 88.71%；AUDIT-0022；提交 f61e5fa + closeout；DEBT-0017 补登 dfaef6b）
 - **v1.6.0**（2026-08-03）：REAL-008 清偿 DEBT-0016 文档诚实性（纯文档零代码；CRITIQUE_V2 修复横幅 + EXPERIMENT_REPORT 第 7 章 + README 铁律 2/fail-closed 6 处；201 tests 回归；AUDIT-0023；提交 e3f575d + closeout；**16/16 债务清零**）
 - **v1.7.0**（2026-08-03）：REAL-009 A 阶段语义旁路 LLM-Judge（judge/llm_judge.py + src/semantic_hook.py + main.py 集成 + 14 测试；215 tests；架构全链路验证 PASS；0.5b 模型边界诚实记录；DEBT-0018/0019/0020 登记；AUDIT-0024）
-- **v1.8.0**（2026-08-03）：REAL-010 B 阶段 json_path 工具治理 + 可解释主控 Step 1（src/policy.py 零依赖 JSONPath 子集 + 条件规则 + norm.py/lethality.py 新建 + DecisionRecord/storage 10 列审计 Schema + _migrate 无损迁移 + policies.yaml v0.2.0 两条 json_path 规则 + GATE 5/7 联动；250 tests；覆盖率 90.07%；DEBT-0021 登记；AUDIT-0025）
+- **v1.8.0**（2026-08-03）：REAL-010 B 阶段 json_path 工具治理 + 可解释主控 Step 1（src/policy.py 零依赖 JSONPath 子集 + 条件规则 + norm.py/lethality.py 新建 + DecisionRecord/storage 10 列审计 Schema + _migrate 无损迁移 + policies.yaml v0.2.0 两条 json_path 规则 + GATE 5/7 联动；250 tests；覆盖率 90.07%；DEBT-0021 登记；AUDIT-0025；提交 e45a02b）
+- **v1.9.0**（2026-08-03）：REAL-011 C 阶段 Trace 因果追踪（DecisionRecord/InterceptResponse + trace_id/parent_span_id + storage 12 列迁移 + idx_trace（_migrate 后）+ get_trace 递归 CTE（max_depth=50/max_nodes=500）+ intercept 入口 X-Trace-ID/X-Parent-Span-ID 集成 + X-Span-ID 响应头 + GET /v1/trace/{trace_id} + v0.4.0；20 测试；270 tests；覆盖率 90.12%；DEBT-0019 清偿（d95f83c）、DEBT-0022 登记；AUDIT-0026）
 
 ---
 
