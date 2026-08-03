@@ -201,3 +201,22 @@
   - 🔴 截断容错实测: Tester v1 5 turns 被截断 → 测试文件未落盘 → 接力中断; 修复 = TEST(2) 轮强制"先写文件再运行" + Coordinator 每轮验证产物存在/完整（行数/字节数），缺失即自动修复轮
   - 🟢 验证: Builder SELF-CHECK OK + Tester 21 passed + Reviewer 独立重跑 21 passed（0.08s）+ AST ['TaskScheduler'] 精确 + 方法无多余 + 契约探测（空 pop None / peek 非破坏 / ValueError）全过; 双报告交叉一致; 全量回归 **130 passed**（109+21）
   - 防口头通过: Reviewer 未信任 Builder/Tester 报告，全部独立重跑; 发现的唯一偏差为运行时长噪声（0.10s vs 0.08s）非矛盾
+
+
+## AUDIT-0012 · 2026-08-03T12:15:00Z
+
+- PR: N/A · 调度层接力: MCP 工具共享（TASK-SCHED-003）
+- 主题: 子代理经 MCP 共享工具通道 —— Builder/Tester 写、Reviewer 读，全部 artifact 经 MCP 落盘
+- 变更文件: src/rate_limiter.py (+新建 RateLimiter token bucket，1479 chars，含 remaining() key 校验), 	ests/test_rate_limiter.py (+新建 3185 bytes，12 测试), scripts/mcp_client.py (+新建 MCP 客户端 CLI: tools/call，\n 转义，exit 0/1/2), .aionui/scheduler/relay_state.json (TASK-SCHED-003 COMPLETED + MCP channel 自证), .aionui/protocols/teams_collaboration.md (更新), .aionui/tools/agent_registry.yaml (更新)
+- 变更量: +550/-0
+- 结果: **TASK-SCHED-003 PASS-WITH-NOTES** —— MCP 共享通道验证成功；142 passed（130+12）
+- 问题: 2（均为非 artifact 缺陷）
+- Reviewer: SCHED003_Reviewer（Spawn），PASS-WITH-NOTES，verdict 落盘 reviewer_verdict.md
+- Commit: 本次提交
+- 结论:
+  - 主: MCP 共享通道全链路验证 —— Builder write_file(1479) + Tester write_file(3185) 并行 → Reviewer 仅经 MCP read_file/file_info 读取（8/8 OK）→ 独立重跑 12 passed + AST OK + 契约探测 OK；沙箱拒绝路径逃逸，全部 repo-relative
+  - 主: 写后审协议再次兑现 —— 首次 tester_report.md 声称写入但 file_info Not found（子代理截断）→ 经 MCP 通道重建并带完整命令轨迹
+  - 主: 并行分歧裁决 —— Tester 对契约严格解释（remaining() 也校验空键）vs Builder 宽松实现 → 协调者判测试优先（契约原文 + 纵深防御），Builder round 2 修复后 12 passed
+  - 次: note1 = 协调者 probe 脚本行 bug（refill() 返回 None 非 bool），修正后 CONTRACT PROBE OK，非 artifact 缺陷
+  - 次: note2 = mcp_client cp950 codec 读取带 BOM 的 teams_collaboration.md 失败（仅客户端显示问题，服务器/沙箱正常）
+  - 防口頭验证: Reviewer 未信任任何报告，全部独立重跑；MCP file_info 逐文件自证大小（1425/1500/2872/3185 bytes 全部匹配）

@@ -41,3 +41,24 @@ Reviewer:
   write: ["*.verdict.md", ".aionui/scheduler/work/**"]
   deny: ["src/", "tests/", "config/"]
 ```
+
+
+## MCP 共享通道（阶段 3，TASK-SCHED-003 验证）
+
+| 项 | 值 |
+|----|----|
+| 服务器 | `filesystem_mcp_server.py`（BottleSumo 平台 stdio MCP，JSON-RPC 2.0） |
+| 客户端 CLI | `scripts/mcp_client.py`（tools / call；`\n` 转义；exit 0/1/2） |
+| 沙箱 | `BOTTLESUMO_ROOT`=repo root；路径逃逸拒绝 |
+| 工具 | read_file / write_file / list_directory / create_directory / file_info |
+| 验证 | TASK-SCHED-003：Builder 写 1479B + Tester 写 3185B + Reviewer 只读 8/8 OK；file_info 全匹配 |
+
+### 通道纪律（8.2，写后审 + 自证）
+1. 子代理经 MCP 写入 artifact 后必须立即 `file_info` 自证大小（防截断丢失）
+2. Reviewer 只读 MCP（read_file/file_info），禁止原生 Read
+3. PowerShell 内容含双引号 → 必须经 Python subprocess 传单 argv（helper 脚本）
+4. "声称写入但 Not found"（截断）→ 重建并保留完整命令轨迹
+
+### 路由仲裁规则（新增第 8 条）
+8. 任务需工具级共享（Reviewer 读、Builder/Tester 写同一模块）→ 启用 MCP 通道；
+   并行写不同文件允许；Reviewer 必须经 MCP 读取并独立重跑

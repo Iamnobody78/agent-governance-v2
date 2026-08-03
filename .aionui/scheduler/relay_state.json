@@ -1,48 +1,60 @@
 {
   "schema_version": "1.0",
-  "task_id": "TASK-SCHED-002",
-  "created_at": "2026-08-03T11:00:00Z",
-  "completed_at": "2026-08-03T11:30:00Z",
-  "status": "DONE_PASS",
-  "current_phase": "COMPLETE",
+  "task_id": "TASK-SCHED-003",
+  "created_at": "2026-08-03T12:00:00Z",
+  "status": "COMPLETED",
+  "current_phase": "DONE",
   "round": 1,
   "max_rounds": 3,
-  "work_dir": ".aionui/scheduler/work/TASK-SCHED-002",
-  "builder_output": ".aionui/scheduler/work/TASK-SCHED-002/builder_output.md",
-  "tester_output": ".aionui/scheduler/work/TASK-SCHED-002/tester_output.md",
-  "reviewer_verdict": ".aionui/scheduler/work/TASK-SCHED-002/reviewer_verdict.md",
+  "work_dir": ".aionui/scheduler/work/TASK-SCHED-003",
+  "builder_output": ".aionui/scheduler/work/TASK-SCHED-003/builder_report.md",
+  "tester_output": ".aionui/scheduler/work/TASK-SCHED-003/tester_report.md",
+  "reviewer_verdict": ".aionui/scheduler/work/TASK-SCHED-003/reviewer_verdict.md",
+  "mcp_channel": {
+    "client": "scripts/mcp_client.py",
+    "server": "filesystem_mcp_server.py (Platform Filesystem)",
+    "sandbox": "BOTTLESUMO_ROOT=repo root",
+    "tools": ["write_file", "read_file", "list_directory", "file_info"],
+    "verified": true
+  },
   "contract": {
-    "file": "src/task_scheduler.py",
-    "class": "TaskScheduler",
-    "priority_semantics": "smaller number = higher priority",
-    "fifo_rule": "same priority → FIFO (insertion order)",
-    "empty_behavior": "pop()/peek() return None on empty queue",
-    "methods": ["push(task_id, priority, payload=None)", "pop()", "peek()", "size()", "is_empty()", "clear()"]
+    "file": "src/rate_limiter.py",
+    "class": "RateLimiter",
+    "semantics": {
+      "allow": "consume tokens; True if enough (atomic); False if insufficient (no consumption)",
+      "new_key": "auto-create bucket at full capacity",
+      "refill": "add tokens, capped at capacity",
+      "remaining_unknown_key": "returns capacity (auto-bucket semantics)",
+      "invalid": "empty/whitespace key or tokens<=0/non-int raises ValueError; __init__ capacity<=0 raises ValueError"
+    },
+    "methods": ["__init__(capacity=10)", "allow(key, tokens=1)", "refill(key, n)", "remaining(key)"]
   },
   "history": [
     {
       "round": 1,
-      "phase": "PARALLEL_BUILD_TEST_1",
-      "agent": "SCHED002_Builder + SCHED002_Tester",
-      "result": "PARTIAL",
-      "evidence": "Builder OK (SELF-CHECK OK, 90 lines); Tester CUT OFF before writing test file (5 turns)",
-      "outcome": "parallel spawn works for independent artifacts; truncated sub-agent lost its file"
-    },
-    {
-      "round": 1,
-      "phase": "TEST_2",
-      "agent": "SCHED002_Tester_v2",
-      "result": "OK",
-      "evidence": "21 passed in 0.10s; tests landed FIRST; 0 test bugs; no implementation defect found",
-      "outcome": "tests/test_task_scheduler.py (177 lines) + tester_output.md landed"
-    },
-    {
-      "round": 1,
-      "phase": "REVIEW_1",
-      "agent": "SCHED002_Reviewer",
-      "result": "PASS",
-      "evidence": "21 passed (independently); AST ['TaskScheduler'] clean; methods exact 6 no extras; contract probes all pass; Builder/Tester reports cross-consistent",
-      "outcome": "reviewer_verdict.md landed; 0 fixes required"
+      "phase": "BUILD_TEST_PARALLEL_MCP",
+      "actions": {
+        "builder": "MCP write_file -> src/rate_limiter.py (round1: 1347 chars; round2 fix: 1479 chars, added _check_key to remaining())",
+        "tester": "MCP write_file -> tests/test_rate_limiter.py (3185 bytes)",
+        "reviewer": "MCP read_file/file_info only -> verified src/tests/reports; wrote reviewer_verdict.md (2872 bytes)"
+      },
+      "outcome": "PASS-WITH-NOTES",
+      "notes": [
+        "Coordinator ruled tests-win after parallel divergence: remaining() must validate key (contract text + defense-in-depth); Builder round 2 fixed.",
+        "test_rate_limiter.py: 12 passed after fix.",
+        "Full regression: 142 passed (130 prior + 12 rate_limiter).",
+        "Reviewer note 1: coordinator probe line bug (refill() returns None, not bool) - corrected probe CONTRACT PROBE OK.",
+        "Reviewer note 2: mcp_client cp950 codec limitation on teams_collaboration.md BOM read (client-side only; server/sandbox fine).",
+        "Write-early protocol honored: first tester_report.md write was claimed but Not found (sub-agent truncation) -> rebuilt via MCP write_file with full command trail."
+      ],
+      "mcp_self_proof": {
+        "builder_report.md": "1425 bytes via file_info",
+        "tester_report.md": "1500 bytes via file_info",
+        "reviewer_verdict.md": "2872 bytes via file_info",
+        "test_rate_limiter.py": "3185 bytes via file_info",
+        "src/rate_limiter.py": "1479 chars via write_file self-report"
+      },
+      "sandbox_checks": "All paths repo-relative; no escapes attempted; server sandbox root = repo root"
     }
   ]
 }

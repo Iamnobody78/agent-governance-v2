@@ -288,3 +288,29 @@ Teams 协作协议 ← 本协议
 *每次 Spawn 实验后更新粒度限制参数。*
 
 
+
+
+## 八、MCP 工具共享（阶段 3，TASK-SCHED-003）
+
+**目标**: 子代理经统一 MCP 共享通道交换 artifact（Builder/Tester 写，Reviewer 读），
+不再依赖"各自写文件 + Coordinator 代读"的间接模式。
+
+### 8.1 通道
+- 服务器: `filesystem_mcp_server.py`（BottleSumo 平台 stdio MCP 服务器，JSON-RPC 2.0，JSON-lines framing）
+- 客户端 CLI: `scripts/mcp_client.py`（`tools` / `call <tool> k=v...`；`\n` → 换行；exit 0/1/2）
+- 沙箱: `BOTTLESUMO_ROOT` env var 设根；路径逃逸拒绝（"Access denied: path escapes project root"）
+- 工具集: `read_file` / `write_file` / `list_directory` / `create_directory` / `file_info`
+
+### 8.2 纪律（写后审 + 自证）
+1. **写后审优先**: 子代理先经 MCP 写入 artifact（verdict/report/源码），再深入审查；中继只判断已落盘文件
+2. **每轮自证**: 每次 MCP 写后立即 `file_info` 核对大小（防截断丢失；本轮 1425/1500/2872/3185 全匹配）
+3. **Reviewer 只读 MCP**: Reviewer 禁止原生 Read，只能 read_file/file_info；本轮 8/8 读取 OK
+4. **单 argv 传递**: PowerShell 下内容含双引号会拆分命令 → 用 Python subprocess 传单 argv（helper 脚本）
+
+### 8.3 并行分歧裁决先例
+Tester 对契约严格解释（remaining() 也校验空键）vs Builder 宽松实现 → **测试优先**（契约原文 + 纵深防御）。
+裁决记录在 relay_state.json history。
+
+### 8.4 已知限制
+- mcp_client cp950 codec 读取带 BOM 的 UTF-8 文件失败（仅客户端显示问题；服务器正常）—— 客户端应强制 UTF-8
+- 子代理可能"声称写入但未落盘"（截断）→ 必须 file_info 自证，缺失即重建
