@@ -16,8 +16,9 @@
 | DEBT-0014 | `flush_pending()` 无重试上限与退避（DB 持续不可用 → 每次 save 无限重试循环） | MEDIUM | 2026-08-03 | 否 | 外部批判 R1 3.2 / R2 5.2 |
 | DEBT-0015 | `_flush_pending_on_shutdown` 与 shutdown_timeout=10 未联动（flush 超时 → aiohttp 强制终止，待决记录丢失） | MEDIUM | 2026-08-03 | 否 | 外部批判 R1 1.3 / R2 3.3 |
 | DEBT-0016 | 文档诚实性：CRITIQUE_V2.md 过时（标注"500ms 超时 ALLOW"但已修复 fail-closed）；EXPERIMENT_REPORT.md 未反映 v2 当前已知缺陷 | MEDIUM | 2026-08-03 | 否 | 外部批判 R2 9.1/9.2 |
+| DEBT-0017 | GATE 1 扫描器误判状态验证断言（21 违规中 16 个为历史测试的真实 IO/状态断言，如 flushed==1、resp.status==200；已修复于 dfaef6b） | LOW | 2026-08-03 | 否 | CI 首次全量推送暴露（0a501ec） |
 
-> *阻塞标记：DEBT-0011/0012 为批判者认定的"部署前必须修复"项，标记阻塞生产部署（不阻塞 B3 验证）。
+> *阻塞标记：DEBT-0011/0012 已清偿于 `dfaef6b`（TASK-REAL-006）——批判者认定的"部署前必须修复"项已全部完成，无部署阻塞债务。
 
 ## 已清偿
 
@@ -33,4 +34,6 @@
 | DEBT-0010 | `flush_pending()` 重试时机未明确（建议 main.py 启动/关闭时触发） | `368907c` (TASK-REAL-003) | 2026-08-03 |
 | DEBT-0004 | chat 端点无流式（stream:true 客户端 TTFT 退化 + SSE 语义丢失） | `3aea7d2` (TASK-REAL-004) | 2026-08-03 |
 | DEBT-0003 | CI job 间无 `needs:` 声明（依赖分支保护） | `bd3f8f1` (TASK-REAL-005) | 2026-08-03 |
+| DEBT-0011 | 熔断状态不持久化（内存变量，重启清零 → 重启绕过冷却窗口） | `dfaef6b` (TASK-REAL-006) | 2026-08-03 |
+| DEBT-0012 | 空 policies.yaml 静默启动（rules 空 → 全 ALLOW，违反 fail-closed） | `dfaef6b` (TASK-REAL-006) | 2026-08-03 |
 

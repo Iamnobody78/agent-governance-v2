@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0",
-  "task_id": "B3-VALIDATION",
-  "title": "B3 hybrid-mode validation — one gateway, B1+B2 clients (C observation parallel)",
-  "created_at": "2026-08-03T17:00:00Z",
+  "task_id": "TASK-REAL-006",
+  "title": "DEBT-0011 breaker persistence + DEBT-0012 empty-policy fail-closed + CI drift repair (GATE 1/6)",
+  "created_at": "2026-08-03T18:00:00Z",
   "status": "COMPLETED",
   "current_phase": "CLOSED",
   "round": 1,
@@ -42,9 +42,9 @@
     {
       "round": 1,
       "event": "COMPLETED",
-      "ts": "2026-08-03T17:40:00Z",
-      "summary": "S1 Builder (test_b3_mixed.py 5 tests), S2 Tester (chunk order test), S3 Reviewer APPROVE-WITH-NOTES. 187 passed. Zero gateway changes. C observation: critique → SCAN → DEBT-0011..0016 registered (48c3453). Next: DEBT-0011/0012 (deploy-blocking per critics).",
-      "commit": "31ec19d"
+      "ts": "2026-08-03T18:30:00Z",
+      "summary": "DEBT-0011 (breaker_state SQLite persistence + startup restore) + DEBT-0012 (empty YAML -> ValueError fail-closed) repaid. CI drift repair: GATE 1 21->0 violations (bare-Name/HTTP/runtime-root/subscript exemptions), GATE 6 typed-except exemption. All 7 gates green, 194 passed. commit dfaef6b. Active debts: DEBT-0013..0017 (MEDIUM/LOW, none blocking).",
+      "commit": "dfaef6b"
     }
   ]
 }

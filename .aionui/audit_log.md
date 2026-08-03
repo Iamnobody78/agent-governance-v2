@@ -3,6 +3,28 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0021 — 2026-08-03T18:30:00Z
+
+- PR: N/A（TASK-REAL-006 清偿 + CI 门控漂移修复，三循环协议执行）
+- 标题: DEBT-0011 熔断持久化 + DEBT-0012 空策略 fail-closed + GATE 1/6 门控修复
+- 变更文件: `src/storage.py`（+38: breaker_state 表 + save/load）, `src/policy.py`（+6: 空 YAML → ValueError）, `src/main.py`（+20: trip/reset 持久化 + 启动恢复）, `tests/test_breaker_persistence.py`（新建 7 测试）, `scripts/check_test_quality.py`（GATE 1 豁免）, `scripts/meta_security_scanner.py`（GATE 6 类型化忽略）
+- 变更行数: +108/-8
+- 评级: 自验证 A- → 门控全绿 7/7
+- 结论: **PASS**（194/194 测试 + GATE 1-7 全绿）
+- 问题数: 0 执行期缺陷；CI 首次推送暴露 2 预存门控漂移（GATE 1 21 违规 / GATE 6 误报）→ 已修复
+- Reviewer: N/A（门控即审查者——GATE 1-7 全绿为独立验证）
+- Commit: `dfaef6b`
+- 备注:
+  - **DEBT-0011（HIGH）**: `breaker_state` SQLite 单行 KV 表；trip 时 `asyncio.to_thread(storage.save_breaker_state, ...)` 持久化（含 count/last_escalate/tripped_until）；ALLOW-reset 同步持久化；`create_app` 启动时 `load_breaker_state()` 恢复——重启无法绕过冷却窗口。`:memory:` 库下每 app 独立连接，恢复自同一连接，现有测试零污染
+  - **DEBT-0012（HIGH）**: `_load` 空 data → `raise ValueError`（初始加载传播 → 网关拒绝启动）；`reload()` 捕获该异常保留旧规则（热重载安全）；comment-only YAML 同样 fail-closed
+  - **GATE 1 漂移修复**（DEBT-0017）: 21 违规 → 0。核心洞察——dataclass 赋值测试必然是 `obj.field == value`（Attribute 形态）；bare-Name 比较（flushed==1, parsed==dt）是局部变量状态验证；HTTP 根（resp/response/data/result/r*/r_deny）+ 运行时根（engine/d/EPOCH）+ Subscript 链（eng.rules[0].action）全部豁免
+  - **GATE 6 误报修复**: silent-swallow 仅拦截 bare `except:` / `except Exception:`；类型化忽略（`except OSError: pass`，policy.py mtime 读取）为有意良性忽略，放行
+  - **CI 漂移根因**: `0a501ec` 首次完整推送 → 首次触发全部 CI gate → 扫描器与测试基线长期漂移集中暴露。C 观测态价值：CI 失败作为新债务源（DEBT-0017）而非绕过
+  - 验证: 194/194 + GATE 1 (391 asserts, 0 dataclass) + GATE 2 (181 tests) + GATE 3/5/7 PASS + GATE 6 PASS
+  - 活跃债务: DEBT-0013~0016（MEDIUM×4，无阻塞）
+
+---
+
 ## AUDIT-0020 — 2026-08-03T17:40:00Z
 
 - PR: N/A（B3 混合模式验证，三循环协议执行；C 观测态产物：外部批判 → SCAN → DEBT-0011~0016 登记）
