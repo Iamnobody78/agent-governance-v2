@@ -11,7 +11,6 @@
 | ID | 描述 | 严重度 | 创建日期 | 阻塞? | 来源 |
 |----|------|:---:|------|:---:|------|
 | DEBT-0003 | CI job 间无 `needs:` 声明（依赖分支保护） | LOW | 2026-08-03 | 否 | Reviewer A3 发现 |
-| DEBT-0004 | `_proxy_forward` 请求体一次性加载（无流式） | LOW | 2026-08-03 | 否 | AUDIT-0005 审查 |
 ## 已清偿
 
 | ID | 描述 | 清偿 commit | 清偿日期 |
@@ -24,4 +23,5 @@
 | DEBT-0007 | `web.run_app` 未显式 shutdown_timeout（依赖 aiohttp 默认 60s） | `368907c` (TASK-REAL-003) | 2026-08-03 |
 | DEBT-0009 | `_pending` 内存缓存无上限（长时降级时内存占用风险） | `368907c` (TASK-REAL-003) | 2026-08-03 |
 | DEBT-0010 | `flush_pending()` 重试时机未明确（建议 main.py 启动/关闭时触发） | `368907c` (TASK-REAL-003) | 2026-08-03 |
+| DEBT-0004 | chat 端点无流式（stream:true 客户端 TTFT 退化 + SSE 语义丢失） | `PIN_AFTER_COMMIT` (TASK-REAL-004) | 2026-08-03 |
 

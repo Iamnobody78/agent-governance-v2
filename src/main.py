@@ -497,6 +497,8 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
 
     # forward to upstream LLM (AGENT_BACKEND_URL + /v1/chat/completions)
     upstream = f"{AGENT_BACKEND_URL}/v1/chat/completions"
+    stream = bool(body and body.get("stream"))
+    sse = None
     try:
         async with ClientSession(timeout=ClientTimeout(total=10, connect=3)) as session:
             async with session.post(
@@ -507,17 +509,37 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
                 },
                 json=body,
             ) as resp:
-                text = await resp.text()
-                try:
-                    return web.json_response(json.loads(text), status=resp.status)
-                except json.JSONDecodeError:
-                    return web.Response(text=text, status=resp.status)
+                if not stream:
+                    # non-streaming: buffer the full JSON response (legacy path)
+                    text = await resp.text()
+                    try:
+                        return web.json_response(json.loads(text), status=resp.status)
+                    except json.JSONDecodeError:
+                        return web.Response(text=text, status=resp.status)
+                # DEBT-0004: SSE streaming pass-through — forward upstream
+                # text/event-stream chunk-by-chunk without buffering (TTFT
+                # no longer waits for the full response; client gets chunks
+                # as they arrive). Content-Type is forced so OpenAI SDK
+                # clients parse the stream correctly.
+                sse = web.StreamResponse(
+                    status=resp.status,
+                    headers={"Content-Type": "text/event-stream"},
+                )
+                await sse.prepare(request)
+                async for chunk in resp.content.iter_chunked(1024):
+                    await sse.write(chunk)
+                await sse.write_eof()
+                return sse
     except Exception as e:
         logger.warning("chat forward failed: %s", e)
-        return web.json_response(
-            {"error": {"message": "upstream LLM unreachable", "type": "upstream_error"}},
-            status=502,
-        )
+        if sse is None:
+            return web.json_response(
+                {"error": {"message": "upstream LLM unreachable", "type": "upstream_error"}},
+                status=502,
+            )
+        # stream already started — propagate so aiohttp terminates the
+        # connection; the client sees a truncated SSE stream (standard).
+        raise
 
 
 # ── app factory ─────────────────────────────────────────────────────

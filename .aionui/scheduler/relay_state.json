@@ -1,13 +1,13 @@
 {
   "schema_version": "1.0",
-  "task_id": "TASK-REAL-003",
-  "title": "危险路径解耦 + shutdown/flush 时机 + pending 上限 — DEBT-0002/0007/0009/0010",
-  "created_at": "2026-08-03T14:30:00Z",
+  "task_id": "TASK-REAL-004",
+  "title": "DEBT-0004 streaming pass-through (chat_completions_handler SSE)",
+  "created_at": "2026-08-03T16:00:00Z",
   "status": "COMPLETED",
   "current_phase": "CLOSED",
   "round": 1,
   "max_rounds": 3,
-  "work_dir": ".aionui/scheduler/work/TASK-REAL-003",
+  "work_dir": ".aionui/scheduler/work/TASK-REAL-004",
   "mcp_channel": {
     "client": "scripts/mcp_client.py",
     "server": "filesystem_mcp_server.py",
@@ -15,46 +15,36 @@
     "tools": ["write_file", "read_file", "list_directory", "file_info"]
   },
   "real_world_source": {
-    "DEBT-0002": "私有 API _is_dangerous 耦合: examples/policy_probe.py L19 依赖 src.main 私有符号",
-    "DEBT-0007": "web.run_app 未显式 shutdown_timeout (依赖 aiohttp 默认 60s, 调参偏好)",
-    "DEBT-0009": "_pending 内存缓存无上限 (DEBT-0008 引入, 长时降级内存占用风险)",
-    "DEBT-0010": "flush_pending() 重试时机未明确 (建议 main.py 启动/关闭时触发)"
+    "DEBT-0004": "chat_completions_handler 无流式: resp.text() 一次性缓冲 → stream:true 客户端 TTFT 退化 + SSE 语义丢失 (json.loads 失败落入文本 fallback)"
   },
   "contract": {
-    "r4_split_plan": "任务规模 >6 锚点 → 按 R4 拆分 3 次 Spawn: [S1] Builder main 组(新建 danger.py + main.py 修改) [S2] Builder storage 组(DEBT-0009) [S3] Tester(测试扩展 + policy_probe 公共导入)",
+    "r4_split_plan": "2 Spawn (≤6 锚点): [S1] Builder main 组 (转发块 L498-520 单锚点重写为流式/非流式双分支) [S2] Tester (新建 tests/test_chat_streaming.py 5 测试) → S3 Reviewer 独立审计",
+    "scope_decision": "AUDIT 侦察修正: DEBT-0004 真实落点是 chat_completions_handler 而非 _proxy_forward (intercept 返回治理 JSON 无流式需求); 不改范围: _proxy_forward 保持原样, 危险工具拒绝路径不动, DEBT-0003 本轮不附加",
     "targets": {
-      "src/danger.py": "新建: DANGEROUS_PREFIXES/DANGEROUS_METHODS 常量 + is_dangerous(path, method) 公共函数(从 main.py 迁移逻辑, 含 normpath/边界匹配/segment fallback 三层防御)",
       "src/main.py": [
-        "删除模块级 DANGEROUS_PREFIXES/DANGEROUS_METHODS/_is_dangerous 定义, 改为: from src.danger import DANGEROUS_PREFIXES, DANGEROUS_METHODS, is_dangerous as _is_dangerous (保留 _is_dangerous 名向后兼容测试)",
-        "create_app 增加 app.on_cleanup.append(_flush_pending_on_shutdown) — shutdown 时调用 storage.flush_pending() (DEBT-0010)",
-        "新增 _flush_pending_on_shutdown(app) 函数: try storage.flush_pending() except 记录日志",
-        "__main__ 块: web.run_app(app, port=9000, shutdown_timeout=10) 显式声明 (DEBT-0007)"
+        "转发块改造: stream = bool(body and body.get('stream')); 非流式 if not stream: 保留 json.loads + JSONDecodeError 文本 fallback (零回归)",
+        "流式: web.StreamResponse(Content-Type: text/event-stream) + iter_chunked(1024) 逐块透传 + write_eof() (TTFT 不再等全量缓冲)",
+        "错误处理: sse is None → 502 JSON (流未开始); 流中途异常 → raise (aiohttp 终止连接, 客户端见截断 SSE)"
       ],
-      "src/storage.py": [
-        "新增 PENDING_MAX = 1000 模块常量",
-        "save() 降级分支: if len(self._pending) >= PENDING_MAX: self._pending.pop(0) (丢最旧 + logger.warning)"
-      ],
-      "examples/policy_probe.py": "L19 改为 from src.danger import is_dangerous, DANGEROUS_PREFIXES (消除对 src.main 私有符号依赖, DEBT-0002 核心)",
-      "tests/test_danger_module.py": "新建: is_dangerous 公共 API 存在且行为与 _is_dangerous 一致; danger.py 可独立导入",
-      "tests/test_storage_degraded.py": "扩展: pending 上限(填充 PENDING_MAX+1 条 → 只保留 PENDING_MAX 且最旧被丢); 新增 test_shutdown_flushes_pending(on_cleanup 触发 flush)"
+      "tests/test_chat_streaming.py": "新建 5 测试: SSE 字节级透传断言 (body == SSE_BODY 非重序列化), stream:false 缓冲 JSON, 默认非流式, 流式请求危险工具仍 403, 上游不可达 502"
     },
     "acceptance": [
-      "pytest tests/ 全量通过(159 + 新增/扩展)",
-      "policy_probe.py 不再依赖 src.main 私有符号 (grep 验证: examples/policy_probe.py 无 _is_dangerous/DANGEROUS_ 导入自 src.main)",
-      "is_dangerous 行为与旧 _is_dangerous 完全一致 (test_security_hardening 13 测试保持通过)",
-      "pending 上限生效: 超 PENDING_MAX 丢最旧 + 警告",
-      "shutdown 时 flush_pending 触发 (on_cleanup)",
-      "R4 拆分实战: 3 次 Spawn 各自 ≤6 锚点, 无单子代理截断",
-      "DEBT-0002/0007/0009/0010 移入已清偿区并标注 commit"
+      "pytest tests/ 全量 (173 + 5 = 178 预期)",
+      "非流式路径零回归: test_integration_langchain.py + test_integration_autogen.py 34 passed",
+      "流式字节完整性: SSE fixture 字节级相等断言",
+      "治理顺序不变: dangerous_tools 403 / policy evaluate / 决策落库均在转发块之前",
+      "GATE 7 policy_sync PASS (4 prefixes)",
+      "git diff 范围: 仅 src/main.py + tests/test_chat_streaming.py",
+      "_proxy_forward 未动 (L167 原样)"
     ]
   },
   "history": [
     {
       "round": 1,
       "event": "COMPLETED",
-      "ts": "2026-08-03T15:30:00Z",
-      "summary": "S1 Builder main (R3 Coordinator fallback: sub-agent BLOCKED 0 edits, design verified; + policy_sync AST migration + on_cleanup async fix), S2 Builder storage (done), S3 Tester (12+2 tests, probe migrated), S4 Reviewer APPROVE. Full regression 173 passed. GATE 7 green.",
-      "commit": "368907c"
+      "ts": "2026-08-03T16:15:00Z",
+      "summary": "S1 Builder main (单锚点双分支重写, 34 非流式回归绿), S2 Tester (5 测试全绿, R5 声明生效无 BLOCKED), S3 Reviewer APPROVE (8 项独立审计全过). Full regression 178 passed. GATE 7 green. R5/R6 应用预告验证有效.",
+      "commit": "PIN_AFTER_COMMIT"
     }
   ]
 }

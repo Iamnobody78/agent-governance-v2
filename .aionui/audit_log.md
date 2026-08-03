@@ -3,6 +3,29 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0018 — 2026-08-03T16:15:00Z
+
+- PR: N/A（TASK-REAL-004 真实治理验证，三循环协议执行）
+- 标题: DEBT-0004 流式代理 — chat_completions_handler SSE 透传
+- 变更文件: `src/main.py`（转发块 L498-520 → 流式/非流式双分支，+31/-9）, `tests/test_chat_streaming.py`（新建 141 行）, `.aionui/scheduler/relay_state.json`
+- 变更行数: +31/-9（src）+ 141（tests）
+- 评级: 自验证 A- → S4 Reviewer **APPROVE**（独立审计 8 项全过）
+- 结论: **PASS**（178/178 测试 + GATE 7 绿 + 非流式零回归 + SSE 字节级透传）
+- 问题数: 0 执行期缺陷（R5/R6 预告应用生效，双子代理顺利完成）
+- Reviewer: **Spawn `S3-Reviewer-REAL004`**（独立视角）
+- Commit: `PIN_AFTER_COMMIT`
+- 备注:
+  - **AUDIT 侦察修正范围**: DEBT-0004 原始描述指向 `_proxy_forward`（L167），但真实流式缺口在 `chat_completions_handler`（OpenAI 兼容端点）——intercept 返回治理决策 JSON 无流式需求；契约明确 `_proxy_forward` 不改、危险工具拒绝路径不动
+  - **R5 验证**: S1/S2 prompt 首行声明 "TOOL CALLS ARE ENABLED AND REQUIRED" → 双 Spawn 均 COMPLETE（无 BLOCKED/截断），14+8 turns；REAL-003 S1 的 BLOCKED 模式未复发
+  - **R6 验证**: 改造前枚举 chat 端点全部消费者（langchain/autogen 集成测试 15+ 引用 + b1/b2 e2e 脚本）→ 纳入回归清单，34 非流式测试全绿
+  - **技术要点**: SSE 透传用 `web.StreamResponse` + `iter_chunked(1024)` + 强制 `Content-Type: text/event-stream`（OpenAI SDK 解析依赖）；流中途异常 `raise` 让 aiohttp 终止连接（客户端见截断 SSE，标准语义）；流开始前 502 JSON fail-closed
+  - **字节完整性**: 测试断言 `body == SSE_BODY`（字节级相等，非重序列化）——证明透传无篡改
+  - **治理顺序锁定**: dangerous_tools 403（L442-448）/ policy evaluate（L452-454）/ 决策落库（L484）均在转发块（L500+）之前
+  - 验证: 178/178 + policy_sync GATE 7 PASS（4 前缀）+ git diff 仅 2 文件 + `_proxy_forward` 原样
+  - 已知限制: DEBT-0003（CI needs）未在本轮范围（用户裁决聚焦 DEBT-0004）；SSE chunk 1024 较小（TTFT 友好，低开销关注）；上游超时 10s/3s 沿用旧路径
+
+---
+
 ## AUDIT-0017 — 2026-08-03T15:30:00Z
 
 - PR: N/A（TASK-REAL-003 真实治理验证，三循环协议执行）
