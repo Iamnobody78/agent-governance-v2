@@ -50,11 +50,19 @@ class Storage:
                 method TEXT NOT NULL,
                 agent_id TEXT,
                 tool_name TEXT,
-                tool_lethality REAL
+                tool_lethality REAL,
+                trace_id TEXT,
+                parent_span_id TEXT
             )
         """)
         self.conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_ts ON decisions(timestamp DESC)
+        """)
+        # 注意: idx_trace 必须在 _migrate() 之后创建 — 旧库此时才具备
+        # trace_id 列, 提前建索引会触发 "no such column" (TASK-REAL-011 修复)
+        self._migrate()
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_trace ON decisions(trace_id)
         """)
         # DEBT-0011: persisted circuit-breaker state (single-row KV) so a gateway
         # restart cannot reset escalate counters and bypass the cooldown window.
@@ -64,29 +72,33 @@ class Storage:
                 value TEXT NOT NULL
             )
         """)
-        self._migrate()
         self.conn.commit()
 
     def _migrate(self) -> None:
-        """TASK-REAL-010 (Step 1): additive schema migration for audit columns.
+        """TASK-REAL-010 (Step 1) + TASK-REAL-011 (C): additive schema migrations.
 
-        Pre-existing 8-column databases gain tool_name / tool_lethality via
-        SQLite ALTER TABLE ADD COLUMN (non-destructive, defaults NULL);
-        fresh databases already carry them in CREATE TABLE. Old rows read
-        back with NULL audit fields — no data loss, no backfill.
+        Pre-existing databases gain tool_name / tool_lethality (REAL-010) and
+        trace_id / parent_span_id (REAL-011) via SQLite ALTER TABLE ADD COLUMN
+        (non-destructive, defaults NULL); fresh databases already carry all
+        columns in CREATE TABLE. Old rows read back with NULL — no data loss,
+        no backfill. All migrations are additive and idempotent.
         """
         cols = {r[1] for r in self.conn.execute("PRAGMA table_info(decisions)")}
         if "tool_name" not in cols:
             self.conn.execute("ALTER TABLE decisions ADD COLUMN tool_name TEXT")
         if "tool_lethality" not in cols:
             self.conn.execute("ALTER TABLE decisions ADD COLUMN tool_lethality REAL")
+        if "trace_id" not in cols:
+            self.conn.execute("ALTER TABLE decisions ADD COLUMN trace_id TEXT")
+        if "parent_span_id" not in cols:
+            self.conn.execute("ALTER TABLE decisions ADD COLUMN parent_span_id TEXT")
 
     def save(self, decision: Dict) -> str:
         try:
             with self._lock:
                 self.conn.execute(
-                    """INSERT INTO decisions (id, verdict, reason, matched_rule, timestamp, path, method, agent_id, tool_name, tool_lethality)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    """INSERT INTO decisions (id, verdict, reason, matched_rule, timestamp, path, method, agent_id, tool_name, tool_lethality, trace_id, parent_span_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         decision["id"],
                         decision["verdict"],
@@ -98,6 +110,8 @@ class Storage:
                         decision.get("agent_id"),
                         decision.get("tool_name"),
                         decision.get("tool_lethality"),
+                        decision.get("trace_id"),
+                        decision.get("parent_span_id"),
                     ),
                 )
                 self.conn.commit()
@@ -141,8 +155,8 @@ class Storage:
             for entry in self._pending:
                 try:
                     self.conn.execute(
-                        """INSERT INTO decisions (id, verdict, reason, matched_rule, timestamp, path, method, agent_id, tool_name, tool_lethality)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        """INSERT INTO decisions (id, verdict, reason, matched_rule, timestamp, path, method, agent_id, tool_name, tool_lethality, trace_id, parent_span_id)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             entry["id"],
                             entry["verdict"],
@@ -154,6 +168,8 @@ class Storage:
                             entry.get("agent_id"),
                             entry.get("tool_name"),
                             entry.get("tool_lethality"),
+                            entry.get("trace_id"),
+                            entry.get("parent_span_id"),
                         ),
                     )
                     self.conn.commit()
@@ -214,6 +230,49 @@ class Storage:
             ).fetchone()
         return self._row_to_dict(row) if row else None
 
+    def get_trace(self, trace_id: str, max_depth: int = 50, max_nodes: int = 500) -> List[Dict]:
+        """TASK-REAL-011 (C 阶段): 递归 CTE 返回整条因果调用树。
+
+        根 = 该 trace 下 parent_span_id IS NULL 的节点; 子 = parent_span_id
+        指向父决策 id 的行 (span_id == decision.id)。按 depth + timestamp
+        排序。防护: UNION 去重天然终止环 (SQLite 递归 CTE 语义) + max_depth
+        上限双保险 + max_nodes 上限防滥用。无记录返回 [] (调用方 404)。
+        """
+        sql = """
+        WITH RECURSIVE tree(
+            id, verdict, reason, matched_rule, timestamp, path, method,
+            agent_id, tool_name, tool_lethality, trace_id, parent_span_id, depth
+        ) AS (
+            SELECT id, verdict, reason, matched_rule, timestamp, path, method,
+                   agent_id, tool_name, tool_lethality, trace_id, parent_span_id, 0
+            FROM decisions
+            WHERE trace_id = ? AND parent_span_id IS NULL
+            UNION
+            SELECT d.id, d.verdict, d.reason, d.matched_rule, d.timestamp, d.path,
+                   d.method, d.agent_id, d.tool_name, d.tool_lethality,
+                   d.trace_id, d.parent_span_id, t.depth + 1
+            FROM decisions d JOIN tree t ON d.parent_span_id = t.id
+            WHERE d.trace_id = ? AND t.depth < ?
+        )
+        SELECT id, verdict, reason, matched_rule, timestamp, path, method,
+               agent_id, tool_name, tool_lethality, trace_id, parent_span_id, depth
+        FROM tree
+        ORDER BY depth, timestamp
+        LIMIT ?
+        """
+        try:
+            with self._lock:
+                rows = self.conn.execute(sql, (trace_id, trace_id, max_depth, max_nodes)).fetchall()
+        except sqlite3.Error:
+            logger.warning("get_trace failed (degraded): returning empty tree")
+            return []
+        out = []
+        for row in rows:
+            node = self._row_to_dict(row[:12])
+            node["depth"] = row[12]
+            out.append(node)
+        return out
+
     def save_breaker_state(self, count: int, last_escalate: float, tripped_until: float) -> None:
         """DEBT-0011: persist circuit-breaker state across restarts."""
         state = {"count": count, "last_escalate": last_escalate, "tripped_until": tripped_until}
@@ -257,6 +316,8 @@ class Storage:
             "agent_id": row[7],
             "tool_name": row[8],
             "tool_lethality": row[9],
+            "trace_id": row[10],
+            "parent_span_id": row[11],
         }
 
     def close(self) -> None:

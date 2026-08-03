@@ -53,6 +53,24 @@ def _uptime() -> float:
 
 # ── handlers ────────────────────────────────────────────────────────
 
+def _trace_context(headers) -> tuple:
+    """TASK-REAL-011 (C 阶段): 提取/生成 Trace 因果上下文。
+
+    返回 (trace_id, parent_span_id):
+      - trace_id:       X-Trace-ID 头; 缺失 → 新 UUID (本请求开启新调用链)。
+      - parent_span_id: X-Parent-Span-ID 头; 缺失 → None (链根节点, 递归 CTE
+                        锚点)。当前请求自身的 span_id == decision.id (判定后
+                        生成), 通过响应头 X-Span-ID 回传, 下游请求携带
+                        X-Parent-Span-ID 指向它即形成因果链。
+    设计裁决: 用户确认表"若无 X-Parent-Span-ID 则生成"落地为"生成新链根
+    语义"——随机占位 UUID 无法被 CTE 锚定 (parent 必须指向真实父决策 id),
+    None 才是唯一自洽的根标记 (详见 docs/trace_report.md §3)。
+    """
+    trace_id = headers.get("X-Trace-ID") or str(uuid.uuid4())
+    parent_span_id = headers.get("X-Parent-Span-ID") or None
+    return trace_id, parent_span_id
+
+
 async def intercept_handler(request: web.Request) -> web.Response:
     global escalate_count_since_resolve, last_escalate_time, breaker_tripped_until
 
@@ -69,6 +87,9 @@ async def intercept_handler(request: web.Request) -> web.Response:
         return web.json_response(
             {"error": "invalid request body"}, status=422
         )
+
+    # TASK-REAL-011 (C): 入口处提取 Trace 上下文 — 贯穿本请求全部决策分支
+    trace_id, parent_span_id = _trace_context(request.headers)
 
     # 0. hot-reload policies if YAML changed (DEBT-0005)
     await asyncio.to_thread(policy_engine.maybe_reload)
@@ -168,6 +189,8 @@ async def intercept_handler(request: web.Request) -> web.Response:
         agent_id=req.agent_id,
         tool_name=_tname,
         tool_lethality=_tleth,
+        trace_id=trace_id,
+        parent_span_id=parent_span_id,
     )
     # v0.2.2 (external critique #3.1): sqlite3 writes are synchronous — run in
     # the thread pool so the event loop is not blocked (Storage has an internal
@@ -179,23 +202,26 @@ async def intercept_handler(request: web.Request) -> web.Response:
     if verdict == Verdict.ALLOW and AGENT_BACKEND_URL:
         response_body = await _proxy_forward(req)
 
-    # 5. build response
+    # 5. build response — TASK-REAL-011: 回传 trace 上下文供下游链接
+    #    (span_id == decision.id; 下游用 X-Parent-Span-ID 指向它)
     resp = InterceptResponse(
         verdict=verdict,
         reason=reason,
         decision_id=decision.id,
         matched_rule=matched_rule,
+        trace_id=trace_id,
     )
+    _trace_headers = {"X-Trace-ID": trace_id, "X-Span-ID": decision.id}
 
     if verdict == Verdict.DENY:
-        return web.json_response(resp.model_dump(mode="json"), status=403)
+        return web.json_response(resp.model_dump(mode="json"), status=403, headers=_trace_headers)
     elif verdict == Verdict.ESCALATE:
-        return web.json_response(resp.model_dump(mode="json"), status=202)
+        return web.json_response(resp.model_dump(mode="json"), status=202, headers=_trace_headers)
     else:
         result = resp.model_dump(mode="json")
         if response_body:
             result["upstream_response"] = response_body
-        return web.json_response(result, status=200)
+        return web.json_response(result, status=200, headers=_trace_headers)
 
 
 async def _proxy_forward(req: InterceptRequest) -> Optional[dict]:
@@ -232,7 +258,7 @@ async def _proxy_forward(req: InterceptRequest) -> Optional[dict]:
 async def health_handler(request: web.Request) -> web.Response:
     return web.json_response({
         "status": "ok",
-        "version": "0.3.0",
+        "version": "0.4.0",
         "uptime_seconds": round(_uptime(), 2),
         "decisions_total": storage.count(),
     })
@@ -242,6 +268,20 @@ async def decisions_handler(request: web.Request) -> web.Response:
     limit = int(request.query.get("limit", 50))
     decisions = storage.get_recent(limit)
     return web.json_response({"total": len(decisions), "decisions": decisions})
+
+
+async def trace_handler(request: web.Request) -> web.Response:
+    """TASK-REAL-011 (C): GET /v1/trace/{trace_id} — 返回整条因果调用树。
+
+    递归 CTE (storage.get_trace) 按 depth+timestamp 排序; 节点含杀伤半径
+    审计字段 (tool_lethality) 作为边权重, 审计人员可快速定位"哪一步引入
+    最大风险"。trace 不存在 → 404 (诚实语义: 资源不存在)。
+    """
+    trace_id = request.match_info["trace_id"]
+    nodes = await asyncio.to_thread(storage.get_trace, trace_id)
+    if not nodes:
+        return web.json_response({"error": f"trace {trace_id} not found"}, status=404)
+    return web.json_response({"trace_id": trace_id, "node_count": len(nodes), "nodes": nodes})
 
 
 # ── OpenAI-compatible endpoint (B1: LangChain zero-touch integration) ─
@@ -633,13 +673,15 @@ def create_app() -> web.Application:
     app.router.add_post("/v1/chat/completions", chat_completions_handler)
     app.router.add_get("/v1/health", health_handler)
     app.router.add_get("/v1/decisions", decisions_handler)
+    # TASK-REAL-011 (C): trace 因果调用树查询端点
+    app.router.add_get("/v1/trace/{trace_id}", trace_handler)
     return app
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     app = create_app()
-    logger.info("governance-gateway v0.3.0 starting on :9000")
+    logger.info("governance-gateway v0.4.0 starting on :9000")
     # DEBT-0007: explicit shutdown_timeout (default 60s) — fast graceful
     # shutdown lets on_cleanup flush pending decisions (DEBT-0010) quickly.
     web.run_app(app, port=9000, shutdown_timeout=10)

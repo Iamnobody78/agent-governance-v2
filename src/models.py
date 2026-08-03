@@ -33,6 +33,8 @@ class InterceptResponse(BaseModel):
     decision_id: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     matched_rule: Optional[str] = None
+    # TASK-REAL-011 (C): trace_id 回传给调用方 — 串联多 Agent 调用链
+    trace_id: Optional[str] = None
 
 
 class HealthResponse(BaseModel):
@@ -62,6 +64,11 @@ class DecisionRecord(BaseModel):
     #   tool_lethality — 对应 Ls (0.0-1.0, 见 src/lethality.py); None = 无工具声明
     tool_name: Optional[str] = None
     tool_lethality: Optional[float] = None
+    # TASK-REAL-011 (C 阶段 Trace): 因果链字段 — 串联多 Agent 调用链
+    #   trace_id       — 整条调用链根标识 (X-Trace-ID 或入口生成的新 UUID)
+    #   parent_span_id — 父决策的 id (span_id == decision.id; NULL = 链根)
+    trace_id: Optional[str] = None
+    parent_span_id: Optional[str] = None
 
     @field_serializer("verdict")
     def serialize_verdict(self, value: Verdict) -> str:
