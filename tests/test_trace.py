@@ -320,6 +320,80 @@ class TestTraceEndpoint(AioHTTPTestCase):
         data = await resp.json()
         assert "error" in data
 
+    # ── TASK-REAL-011.1 (Critic-Security / DEBT-0022) ──────────────────
+    # chat/completions 路径全部决策分支必须携带 trace 上下文 — 修复前
+    # _deny_decision 与 chat 主路径均无 trace 注入 (HIGH: 宣称-实现断层,
+    # relay_state 曾宣称"两处构造点注入"但 chat 分支实际缺失)。
+
+    @unittest_run_loop
+    async def test_e2e_chat_malformed_deny_carries_trace(self):
+        """chat 畸形工具声明 DENY — 决策落库必须携带生成的 trace_id。"""
+        resp = await self.client.post(
+            "/v1/chat/completions",
+            json={"model": "gpt-4o", "tools": {"bad": "not-a-list"}},
+        )
+        assert resp.status == 400
+        assert resp.headers.get("X-Trace-ID")  # 新生成的链根 UUID
+        span = resp.headers.get("X-Span-ID")
+        assert span
+        # 决策可在 trace 端点追到 (修复前: chat DENY 决策 trace_id=None → 不可追)
+        tree = await self.client.get(f"/v1/trace/{resp.headers['X-Trace-ID']}")
+        data = await tree.json()
+        assert data["node_count"] == 1
+        assert data["nodes"][0]["id"] == span
+        assert data["nodes"][0]["verdict"] == "DENY"
+
+    @unittest_run_loop
+    async def test_e2e_chat_dangerous_deny_carries_trace(self):
+        """chat 危险工具 DENY — 同样携带 trace 上下文 (403 分支)。"""
+        resp = await self.client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "gpt-4o",
+                "messages": [
+                    {"role": "user", "content": "hi"},
+                    {"role": "assistant", "tool_calls": [
+                        {"function": {"name": "delete_file", "arguments": "{}"}},
+                    ]},
+                ],
+            },
+        )
+        assert resp.status == 403
+        assert resp.headers.get("X-Trace-ID")
+        tree = await self.client.get(f"/v1/trace/{resp.headers['X-Trace-ID']}")
+        data = await tree.json()
+        assert data["node_count"] == 1
+        assert data["nodes"][0]["id"] == resp.headers["X-Span-ID"]
+        assert data["nodes"][0]["verdict"] == "DENY"
+
+    @unittest_run_loop
+    async def test_e2e_oversized_trace_header_treated_missing(self):
+        """超长 X-Trace-ID (>128) — fail-safe 降级为缺失语义: 生成新链根。"""
+        big = "x" * 200
+        resp = await self.client.post(
+            "/v1/intercept",
+            json={"path": "/api/query", "method": "POST", "body": {}},
+            headers={"X-Trace-ID": big},
+        )
+        assert resp.status == 200
+        emitted = resp.headers.get("X-Trace-ID")
+        assert emitted and emitted != big  # 被替换为新 UUID
+        assert len(emitted) == 36  # uuid4 规范长度
+
+    @unittest_run_loop
+    async def test_e2e_oversized_parent_header_treated_root(self):
+        """超长 X-Parent-Span-ID (>128) — 降级为 None (链根), 不产生悬空引用。"""
+        resp = await self.client.post(
+            "/v1/intercept",
+            json={"path": "/api/query", "method": "POST", "body": {}},
+            headers={"X-Trace-ID": "oversized-parent-root", "X-Parent-Span-ID": "y" * 200},
+        )
+        assert resp.status == 200
+        tree = await self.client.get("/v1/trace/oversized-parent-root")
+        data = await tree.json()
+        assert data["node_count"] == 1
+        assert data["nodes"][0]["parent_span_id"] is None
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -27,6 +27,7 @@ CIRCUIT_BREAKER_LIMIT = 10    # consecutive ESCALATE without resolution → DENY
 CIRCUIT_COOLDOWN_SECONDS = 30.0  # breaker trip cooldown window (DEBT-0001)
 AGENT_BACKEND_URL = "http://localhost:8000"   # upstream Agent (for proxy mode)
 SHUTDOWN_FLUSH_TIMEOUT = 8  # DEBT-0015: independent cap for shutdown flush; must stay < shutdown_timeout=10
+MAX_TRACE_ID_LEN = 128  # TASK-REAL-011.1 (Critic-Security): trace 头值长度上限（超长视为缺失）
 
 # Shared heuristic constants — single source of truth moved to src/danger.py (DEBT-0002)
 from .danger import DANGEROUS_PREFIXES, DANGEROUS_METHODS, is_dangerous as _is_dangerous
@@ -68,6 +69,14 @@ def _trace_context(headers) -> tuple:
     """
     trace_id = headers.get("X-Trace-ID") or str(uuid.uuid4())
     parent_span_id = headers.get("X-Parent-Span-ID") or None
+    # TASK-REAL-011.1 (Critic-Security): 超长头值拒绝持久化 — 防止索引膨胀/
+    # 存储滥用。>MAX_TRACE_ID_LEN 视为缺失 (fail-safe): trace_id → 新链根,
+    # parent_span_id → None (根锚点)。截断会破坏链引用, 拒绝/降级为缺失是
+    # 唯一不引入悬空引用的语义。
+    if len(trace_id) > MAX_TRACE_ID_LEN:
+        trace_id = str(uuid.uuid4())
+    if parent_span_id is not None and len(parent_span_id) > MAX_TRACE_ID_LEN:
+        parent_span_id = None
     return trace_id, parent_span_id
 
 
@@ -278,6 +287,11 @@ async def trace_handler(request: web.Request) -> web.Response:
     最大风险"。trace 不存在 → 404 (诚实语义: 资源不存在)。
     """
     trace_id = request.match_info["trace_id"]
+    # TASK-REAL-011.1 (Critic-Security): URL 超长 trace_id 无 DB 风险 (参数化
+    # 查询 + 无匹配即空), 但拒绝无意义的大查询 — 与 _trace_context 的
+    # MAX_TRACE_ID_LEN 上限保持一致。
+    if len(trace_id) > MAX_TRACE_ID_LEN:
+        return web.json_response({"error": "trace_id too long"}, status=404)
     nodes = await asyncio.to_thread(storage.get_trace, trace_id)
     if not nodes:
         return web.json_response({"error": f"trace {trace_id} not found"}, status=404)
@@ -429,12 +443,16 @@ def _malformed_tool_declaration(req) -> str | None:
     return None
 
 
-async def _deny_decision(req, reason, status, matched_rule, tool_name=None, tool_lethality=None) -> web.Response:
+async def _deny_decision(req, reason, status, matched_rule, tool_name=None, tool_lethality=None,
+                         trace_id=None, parent_span_id=None) -> web.Response:
     """Record a DENY decision and return the gateway rejection response.
 
     Shared by the malformed-declaration path and the dangerous-tool path
     so persistence + error shape stay identical. tool_name / tool_lethality
     (TASK-REAL-010 Step 1) audit the highest-lethality tool in the request.
+    trace_id / parent_span_id (TASK-REAL-011.1, Critic-Security): 所有决策
+    分支必须携带 trace 上下文 — 否则该 DENY 决策脱离调用链 (无法被
+    GET /v1/trace/{trace_id} 追到), 破坏 C 阶段"全部决策在链上"承诺。
     """
     decision = DecisionRecord(
         id=str(uuid.uuid4()),
@@ -446,11 +464,14 @@ async def _deny_decision(req, reason, status, matched_rule, tool_name=None, tool
         agent_id=req.agent_id,
         tool_name=tool_name,
         tool_lethality=tool_lethality,
+        trace_id=trace_id,
+        parent_span_id=parent_span_id,
     )
     # v0.2.2 (external critique #3.1): sqlite3 writes are synchronous — run in
     # the thread pool so the event loop is not blocked (Storage has an internal
     # threading.Lock to serialize access to the shared connection).
     await asyncio.to_thread(storage.save, decision.model_dump(mode="json"))
+    _trace_headers = {"X-Trace-ID": trace_id, "X-Span-ID": decision.id}
     return web.json_response(
         {
             "error": {
@@ -460,6 +481,7 @@ async def _deny_decision(req, reason, status, matched_rule, tool_name=None, tool
             }
         },
         status=status,
+        headers=_trace_headers,
     )
 
 
@@ -471,6 +493,10 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
     gateway inspects the request (tools + tool_calls) against governance
     policy BEFORE forwarding upstream.
     """
+    # TASK-REAL-011.1 (Critic-Security/DEBT-0022): 入口处提取 Trace 上下文 —
+    # chat 路径全部决策分支 (malformed DENY / dangerous DENY / 主路径) 必须
+    # 携带 trace_id/parent_span_id, 否则多 Agent 链跨端点断链。
+    trace_id, parent_span_id = _trace_context(request.headers)
     try:
         raw = await request.read()
         body = json.loads(raw) if raw else None
@@ -502,6 +528,8 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
             matched_rule="malformed-tool-declaration",
             tool_name=_tname,
             tool_lethality=_tleth,
+            trace_id=trace_id,
+            parent_span_id=parent_span_id,
         )
 
     # Reviewer REJECT fix: compare NORMALIZED names (NFKC + casefold) on
@@ -522,6 +550,8 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
             matched_rule="block-dangerous-tools",
             tool_name=_tname,
             tool_lethality=_tleth,
+            trace_id=trace_id,
+            parent_span_id=parent_span_id,
         )
     else:
         # ordinary chat → consult policy engine (allow-chat rule)
@@ -557,11 +587,14 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
         agent_id=req.agent_id,
         tool_name=_tname,
         tool_lethality=_tleth,
+        trace_id=trace_id,
+        parent_span_id=parent_span_id,
     )
     # v0.2.2 (external critique #3.1): sqlite3 writes are synchronous — run in
     # the thread pool so the event loop is not blocked (Storage has an internal
     # threading.Lock to serialize access to the shared connection).
     await asyncio.to_thread(storage.save, decision.model_dump(mode="json"))
+    _trace_headers = {"X-Trace-ID": trace_id, "X-Span-ID": decision.id}
 
     if verdict is not Verdict.ALLOW:
         return web.json_response(
@@ -573,6 +606,7 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
                 }
             },
             status=status,
+            headers=_trace_headers,
         )
 
     # forward to upstream LLM (AGENT_BACKEND_URL + /v1/chat/completions)
@@ -593,9 +627,11 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
                     # non-streaming: buffer the full JSON response (legacy path)
                     text = await resp.text()
                     try:
-                        return web.json_response(json.loads(text), status=resp.status)
+                        return web.json_response(json.loads(text), status=resp.status,
+                                                 headers=_trace_headers)
                     except json.JSONDecodeError:
-                        return web.Response(text=text, status=resp.status)
+                        return web.Response(text=text, status=resp.status,
+                                            headers=_trace_headers)
                 # DEBT-0004: SSE streaming pass-through — forward upstream
                 # text/event-stream chunk-by-chunk without buffering (TTFT
                 # no longer waits for the full response; client gets chunks
@@ -606,6 +642,11 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
                     headers={"Content-Type": "text/event-stream"},
                 )
                 await sse.prepare(request)
+                # TASK-REAL-011.1 (Critic-Security): 流式转发分支同样回传
+                # trace 头 — 客户端 (LangChain 回调) 可读取 X-Span-ID 关联
+                # 本次决策的决策记录。
+                sse.headers["X-Trace-ID"] = trace_id
+                sse.headers["X-Span-ID"] = decision.id
                 async for chunk in resp.content.iter_chunked(1024):
                     await sse.write(chunk)
                 await sse.write_eof()

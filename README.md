@@ -166,6 +166,8 @@ rules:
 
 **v0.3.0 新增（TASK-REAL-010，B 阶段 json_path 工具治理）**：规则可携带 `json_path`（零依赖 JSONPath 子集：`$` `.key` `..`（递归下降） `[N]` `[*]`）+ `json_pattern`（正则），命中路径/方法后再检查**请求体 JSON**：
 
+**v0.4.0 新增（TASK-REAL-011，C 阶段 Trace 因果追踪 + TASK-REAL-011.1 批判修复）**：决策全链路可追踪——`trace_id`/`parent_span_id` 12 列持久化（`_migrate` 无损扩容）+ `GET /v1/trace/{trace_id}` 递归 CTE 调用树端点 + `X-Trace-ID`/`X-Parent-Span-ID`/`X-Span-ID` 头协议（intercept 与 chat/completions 两个入口全覆盖，含 DENY/流式/非流式全分支）+ 超长头值 fail-safe 降级（>128 视为缺失）+ 网关版本 0.4.0。
+
 ```yaml
   # 任意内部路径 + body 声明 shell 工具 → DENY
   - name: block-shell-tool
@@ -247,6 +249,14 @@ GET /v1/health
 
 GET /v1/decisions?from=2026-08-01T00:00:00Z&to=2026-08-02T00:00:00Z
   - 返回: 决策记录列表（分页）
+
+GET /v1/trace/{trace_id}   （v0.4.0，TASK-REAL-011 C 阶段）
+  - 返回: 该 trace 的完整调用树（递归 CTE：parent_span_id IS NULL 为根，
+    每节点含 tool_name/tool_lethality 边权重；depth ≤ 50，节点 ≤ 500）
+  - 404: trace_id 未知或超长（>128 字符）
+  - Trace 头协议: 请求带 X-Trace-ID（缺省生成 UUID 链根）/
+    X-Parent-Span-ID（缺省 NULL=根锚点）; 响应回传 X-Span-ID（=decision.id）;
+    超长头值（>128）fail-safe 降级为缺失语义
 ```
 
 ### 4.3 数据流
