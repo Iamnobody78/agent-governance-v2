@@ -3,6 +3,27 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0023 — 2026-08-03T20:10:00Z
+
+- PR: N/A（TASK-REAL-008 清偿 DEBT-0016，三循环协议执行）
+- 标题: 文档诚实性——CRITIQUE_V2 / EXPERIMENT_REPORT / README 与 v0.2.x 现状对齐
+- 变更文件: `CRITIQUE_V2.md`（+修复状态总览横幅+35）、`EXPERIMENT_REPORT.md`（+第 7 章能力边界+30）、`README.md`（铁律 2 + 超时/熔断 fail-closed 6 处修正）、`debt_registry.md`（0016 → 已清偿，活跃表清空）
+- 变更行数: +57/-9（纯文档，零代码变更）
+- 评级: 自验证 A → 全量回归 201/201 + GATE 1/2 绿 + git status 仅 3 文档
+- 结论: **PASS** —— DEBT-0016 清偿，**16/16 债务清零，零活跃债务**
+- 问题数: 执行期自发现 1（横幅初稿引用不存在的 `test_timeout_fail_closed.py` → 修正为真实 `tests/test_timeout.py`——文档诚实性修复自身触发了一次诚实性校验）
+- Reviewer: N/A（门控即审查者）
+- Commit: `e3f575d`（文档修复）+ closeout 提交（迁移/审计/快照）
+- 备注:
+  - **CRITIQUE_V2.md**: 顶部新增"修复状态总览"表——逐缺陷标注当前状态（缺陷 1/2/5-8 已修复、3 部分修复、4 接受为设计），每条附测试证据；缺陷正文保留为历史审计线索未改写；测试基线 44/44 → 201
+  - **EXPERIMENT_REPORT.md**: 新增第 7 章"当前 v2 能力边界"——6 项 fail-closed 能力对照表（实验期 vs 当前，含证据）+ 4 项已知设计边界（LLM 语义理解缺失等 + 演进方向）；第 1-6 章声明为未改写的实验期原始记录；附录 A 时间线延伸至 REAL-001..007
+  - **README.md**: 铁律 2 措辞与 GATE 1 实际豁免语义对齐（裸 Name/HTTP 根/调用根/Subscript）；3 处"超时 500ms 自动 ALLOW"→ fail-closed DENY/ESCALATE；熔断 ALLOW → fail-closed + 持久化；最后更新日期 08-03
+  - **诚实性自校验**: 横幅引用的测试文件名经 Glob 逐名验证（`test_timeout_fail_closed.py` 不存在 → 修正为 `tests/test_timeout.py`）——文档诚实性任务本身绝不引入伪证据
+  - **验证**: 201/201 + GATE 1 (417 asserts, 0 dataclass) + GATE 2 (188 tests) + git status 仅 3 文档
+  - 活跃债务: **无**（16/16 清零）
+
+---
+
 ## AUDIT-0022 — 2026-08-03T19:15:00Z
 
 - PR: N/A（TASK-REAL-007 清偿 + DEBT-0017 迁移，三循环协议执行）

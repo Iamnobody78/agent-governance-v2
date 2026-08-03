@@ -1,13 +1,13 @@
 {
   "schema_version": "1.0",
-  "task_id": "TASK-REAL-007",
-  "title": "DEBT-0013 pending overflow fallback log + DEBT-0014 flush retry cap/backoff + DEBT-0015 shutdown flush timeout",
-  "created_at": "2026-08-03T18:45:00Z",
+  "task_id": "TASK-REAL-008",
+  "title": "DEBT-0016 document honesty — CRITIQUE_V2 / EXPERIMENT_REPORT / README aligned with v0.2.x reality",
+  "created_at": "2026-08-03T19:50:00Z",
   "status": "COMPLETED",
   "current_phase": "CLOSED",
   "round": 1,
   "max_rounds": 3,
-  "work_dir": ".aionui/scheduler/work/REAL-007",
+  "work_dir": ".aionui/scheduler/work/REAL-008",
   "mcp_channel": {
     "client": "scripts/mcp_client.py",
     "server": "filesystem_mcp_server.py",
@@ -16,21 +16,21 @@
   },
   "validation_scope": {
     "propositions": [
-      "DEBT-0013: buffer overflow backs evicted record up to JSONL fallback log (never silent loss)",
-      "DEBT-0014: flush_pending caps consecutive failures (MAX_FLUSH_ATTEMPTS=5) with backoff throttle; cap-hit -> fallback dump + buffer clear (no infinite retry)",
-      "DEBT-0015: _flush_pending_on_shutdown bounded by SHUTDOWN_FLUSH_TIMEOUT=8 < shutdown_timeout=10; TimeoutError handled, handler never blocks graceful shutdown",
-      "DEBT-0017: GATE 1 fix (dfaef6b) migrated to settled ledger",
-      "R6: all flush_pending consumers enumerated pre-migration; test fixture isolates fallback path (zero repo pollution)"
+      "DEBT-0016: CRITIQUE_V2.md no longer claims '500ms timeout -> ALLOW' (marked fixed, original text preserved as audit trail)",
+      "EXPERIMENT_REPORT.md gains chapter 7 'current v2 capability boundaries' with fail-closed evidence matrix",
+      "README.md Iron Law 2 wording matches GATE 1 exemption semantics exactly; timeout/breaker fail-closed statements corrected",
+      "Zero code changes — full regression green, git status shows only the 3 docs",
+      "All test-file references in new docs verified real via Glob (honesty self-check caught one phantom reference)"
     ],
-    "evidence": "201/201 tests (194+7), coverage 88.71% (>=60), GATE 1 (417 asserts 0 dataclass) / GATE 2 (188 tests) / GATE 3/4/5/6/7 ALL PASS locally"
+    "evidence": "201/201 tests, GATE 1 (417 asserts 0 dataclass) / GATE 2 (188 tests) green; debt ledger 16/16 cleared — zero active debts"
   },
   "history": [
     {
       "round": 1,
       "event": "COMPLETED",
-      "ts": "2026-08-03T19:15:00Z",
-      "summary": "DEBT-0013/0014/0015 repaid in single batch (3 anchors <= R4 cap). Fallback log: JSONL best-effort append, never raises. Flush retry cap + 3600s-window backoff test proves zero DB touch during cooldown. Shutdown flush timeout proven via caplog TimeoutError branch (deterministic, avoids asyncio.run executor wall-clock artifact). 2 self-found test issues fixed (read_fallback missing-file tolerance; caplog-based timeout proof). GATE 1 caught 1 comprehension-compare in new test -> bare-Name style, 0 violations after. All 7 gates green, 201 passed. commit f61e5fa. DEBT-0017 migrated (dfaef6b). Active debts: DEBT-0016 only (MEDIUM docs, non-blocking).",
-      "commit": "f61e5fa"
+      "ts": "2026-08-03T20:10:00Z",
+      "summary": "Pure-document task, zero code changes. CRITIQUE_V2.md: fix-status banner per flaw with test evidence (flaw 1/2/5-8 fixed, 3 partial, 4 accepted), baseline 44->201. EXPERIMENT_REPORT.md: chapter 7 capability boundaries (6 fail-closed items + 4 known design boundaries incl. LLM-semantics gap with evolution path), ch1-6 declared unmodified history, timeline extended. README.md: Iron Law 2 aligned to GATE 1 exemptions; 3 timeout-ALLOW sites + breaker-ALLOW -> fail-closed + persistence; date bump. Honesty self-check: banner initially cited nonexistent test_timeout_fail_closed.py -> corrected to tests/test_timeout.py (Glob-verified). commit e3f575d. Debt ledger 16/16 cleared, zero active.",
+      "commit": "e3f575d"
     }
   ]
 }

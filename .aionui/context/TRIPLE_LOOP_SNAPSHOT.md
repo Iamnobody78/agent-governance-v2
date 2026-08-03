@@ -1,7 +1,7 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.5.0
-> 快照时间: 2026-08-03（TASK-REAL-007 清偿 DEBT-0013/0014/0015 + DEBT-0017 补登后更新）
+> 版本: v1.6.0
+> 快照时间: 2026-08-03（TASK-REAL-008 清偿 DEBT-0016 — **16/16 债务清零**后更新）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,12 +12,12 @@
 | 指标 | 值 |
 |------|-----|
 | **测试全量** | 201 passed |
-| **债务清偿率** | 15/16 已清偿（DEBT-0001..0015 + 0017）+ 活跃 1（DEBT-0016，MEDIUM，无阻塞） |
-| **活跃债务** | DEBT-0016（CRITIQUE_V2/EXPERIMENT_REPORT 文档过时, MEDIUM） |
-| **最近事件** | TASK-REAL-007 ✅（DEBT-0013 落盘备份 + DEBT-0014 重试上限/退避 + DEBT-0015 shutdown 独立超时）+ DEBT-0017 补登已清偿区 |
+| **债务清偿率** | **16/16 已清偿（DEBT-0001..0017）—— 零活跃债务** |
+| **活跃债务** | **无**（下一轮治理循环扫描从零基线重新开始） |
+| **最近事件** | TASK-REAL-008 ✅（DEBT-0016 文档诚实性：CRITIQUE_V2 修复横幅 + EXPERIMENT_REPORT 第 7 章 + README 铁律 2/fail-closed 修正，纯文档零代码变更） |
 | **CI 状态** | ✅ GATE 1-7 全绿（GATE 1: 417 asserts 0 违规；覆盖率 88.71% ≥ 60%） |
-| **约束体系** | R1-R6 已固化（REAL-003/004/005/006/007 五连验证） |
-| **提交链** | …REAL-006: `dfaef6b` → REAL-006 closeout: `ac5eb1f` → REAL-007: `f61e5fa` → closeout: `HEAD` |
+| **约束体系** | R1-R6 已固化（REAL-003..008 六连验证） |
+| **提交链** | …REAL-007: `f61e5fa` → closeout: `a68288d` → REAL-008 文档: `e3f575d` → closeout: `HEAD` |
 
 ---
 
@@ -102,7 +102,15 @@
 |------|------|--------|----------|
 | DEBT-0016 | CRITIQUE_V2/EXPERIMENT_REPORT 过时 | 🟡 MEDIUM | 文档更新/标注已修复 |
 
-当前治理循环扫描结论：**无 HIGH/MEDIUM 存储类活跃债务，无部署阻塞项**。DEBT-0013/0014/0015 已同批清偿于 TASK-REAL-007（`f61e5fa`）；DEBT-0017（GATE 1 漂移）已补登已清偿区（`dfaef6b`）。下一候选：DEBT-0016（文档诚实性，低风险可独立执行）。
+当前治理循环扫描结论：**16/16 债务清零，零活跃债务，无部署阻塞项**。DEBT-0016（文档诚实性）已清偿于 TASK-REAL-008（`e3f575d`）。
+
+下一阶段候选（外部评审"绞杀藤模式"四层增强，零重建，共 <500 行 + 1 旁路进程）：
+1. **语义旁路 Hook**（LLM-Judge 本地模型 UDS 调用，150ms 超时降级，score≥0.85 升级 ESCALATE）——补"AI 语义"空白，最贴合"治理智能体"定位
+2. **json_path 工具治理**（YAML 可选字段 + jsonpath-ng 预处理，~60 行）——补 Tool Calling 粒度
+3. **Trace 追踪**（trace_id/parent_span_id 列 + 递归 CTE 查询端点，~100 行）——补多智能体拓扑
+4. **统计反馈调节器**（5min 扫描 DENY 高频模式 → pending_rules 推荐，~150 行）——补自演进闭环
+
+或宣告 **"零债务 + 文档诚实" v2 稳定态**，冻结治理循环进入维护模式。
 
 ### 版本历史
 
@@ -112,6 +120,7 @@
 - **v1.3.0**（2026-08-03）：B3 验证 + 批判 SCAN（187 tests；DEBT-0011~0016 登记；AUDIT-0020；提交 48c3453+31ec19d）
 - **v1.4.0**（2026-08-03）：REAL-006 + CI 门控修复（194 tests；DEBT-0011/0012 清偿；GATE 1 21→0 + GATE 6 修复；AUDIT-0021；提交 dfaef6b）
 - **v1.5.0**（2026-08-03）：REAL-007 清偿 DEBT-0013/0014/0015（201 tests；FALLBACK_PATH 落盘备份 + MAX_FLUSH_ATTEMPTS 重试上限/退避 + SHUTDOWN_FLUSH_TIMEOUT=8 独立超时；覆盖率 88.71%；AUDIT-0022；提交 f61e5fa + closeout；DEBT-0017 补登 dfaef6b）
+- **v1.6.0**（2026-08-03）：REAL-008 清偿 DEBT-0016 文档诚实性（纯文档零代码；CRITIQUE_V2 修复横幅 + EXPERIMENT_REPORT 第 7 章 + README 铁律 2/fail-closed 6 处；201 tests 回归；AUDIT-0023；提交 e3f575d + closeout；**16/16 债务清零**）
 
 ---
 

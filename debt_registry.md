@@ -12,7 +12,7 @@
 |----|------|:---:|------|:---:|------|
 | DEBT-0016 | 文档诚实性：CRITIQUE_V2.md 过时（标注"500ms 超时 ALLOW"但已修复 fail-closed）；EXPERIMENT_REPORT.md 未反映 v2 当前已知缺陷 | MEDIUM | 2026-08-03 | 否 | 外部批判 R2 9.1/9.2 |
 
-> 当前无阻塞债务：DEBT-0011/0012（部署前必修复项）已清偿于 `dfaef6b`；DEBT-0013/0014/0015 已清偿于 `f61e5fa`（TASK-REAL-007）。
+> **当前活跃债务：无（16/16 已清偿）** —— DEBT-0016 已清偿于 `e3f575d`（TASK-REAL-008）。自 DEBT-0001 登记以来，外部批判与 CI 暴露的全部债务已闭环。下一轮治理循环扫描将从零基线重新开始。
 
 ## 已清偿
 
@@ -34,4 +34,5 @@
 | DEBT-0014 | `flush_pending()` 无重试上限与退避（DB 持续不可用 → 无限重试循环） | `f61e5fa` (TASK-REAL-007) | 2026-08-03 |
 | DEBT-0015 | `_flush_pending_on_shutdown` 与 shutdown_timeout=10 未联动（flush 超时 → aiohttp 强制终止，待决记录丢失） | `f61e5fa` (TASK-REAL-007) | 2026-08-03 |
 | DEBT-0017 | GATE 1 扫描器误判状态验证断言（21 违规中 16 个为历史测试的真实 IO/状态断言；门控豁免逻辑已修复） | `dfaef6b` (TASK-REAL-006) | 2026-08-03 |
+| DEBT-0016 | 文档诚实性：CRITIQUE_V2.md 过时（标注"500ms 超时 ALLOW"但已修复 fail-closed）；EXPERIMENT_REPORT.md 未反映 v2 当前已知缺陷 | `e3f575d` (TASK-REAL-008) | 2026-08-03 |
 
