@@ -3,9 +3,15 @@
 import posixpath
 import re
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import yaml
+
+# Valid governance actions. A typo'd action (e.g. "DENYy") would silently fall
+# through the gateway's if/elif chain into the else→ALLOW branch — a quiet
+# governance bypass. Constrain + normalize at load time (fail-closed: bad
+# config refuses to start instead of mis-serving).
+VALID_ACTIONS: tuple = ("ALLOW", "DENY", "ESCALATE")
 
 
 @dataclass
@@ -13,11 +19,22 @@ class Rule:
     name: str
     path_pattern: str
     method: Optional[str] = None
-    action: str = "ALLOW"
+    action: Literal["ALLOW", "DENY", "ESCALATE"] = "ALLOW"
     reason: str = ""
     priority: int = 100
     escalation_timeout: int = 300
     escalation_channel: str = "slack"
+
+    def __post_init__(self) -> None:
+        # normalize case so YAML "deny" behaves identically to "DENY"
+        normalized = str(self.action).upper()
+        if normalized not in VALID_ACTIONS:
+            raise ValueError(
+                f"rule '{self.name}': invalid action {self.action!r} — "
+                f"must be one of {VALID_ACTIONS} "
+                f"(fail-closed: refusing to start with invalid policy)"
+            )
+        self.action = normalized
 
     def matches(self, path: str, method: str) -> bool:
         """Check if this rule matches the request path and method."""

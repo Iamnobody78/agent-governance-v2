@@ -50,6 +50,20 @@ class AssertVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     @staticmethod
+    def _has_call_root(node) -> bool:
+        """True if node is (or is an attribute/subscript chain rooted in) a
+        function call — i.e. a *runtime result* (engine.evaluate(...).action,
+        extract_tool_names(...)[0]), never a dataclass field.
+
+        v0.2.2 (external critique #6.2): previously only Name-rooted attribute
+        chains were exempted, so `engine.evaluate(...).action == 'DENY'` was
+        wrongly flagged as a dataclass assert.
+        """
+        while isinstance(node, (ast.Attribute, ast.Subscript)):
+            node = node.value
+        return isinstance(node, ast.Call)
+
+    @staticmethod
     def _is_simple_equality(comp: ast.Compare) -> bool:
         """Detect patterns like `assert x == y` or `assert x.attr == "value"`.
 
@@ -60,6 +74,7 @@ class AssertVisitor(ast.NodeVisitor):
         AND neither side involves:
         - HTTP response patterns (resp.status, data["key"], result.verdict)
         - function calls (len(), set(), json.loads())
+        - attribute chains rooted in a call (runtime results)
         - comparison operators other than ==
         """
         if len(comp.ops) != 1 or not isinstance(comp.ops[0], ast.Eq):
@@ -68,6 +83,10 @@ class AssertVisitor(ast.NodeVisitor):
         left = comp.left
         right = comp.comparators[0]
 
+        # Reject: runtime function-call results on either side
+        # (engine.evaluate(...).action, _extract_tool_names(...)["a"])
+        if AssertVisitor._has_call_root(left) or AssertVisitor._has_call_root(right):
+            return False
         # Reject: runtime subscript access (data["verdict"], resp["status"])
         if isinstance(left, ast.Subscript) or isinstance(right, ast.Subscript):
             return False
@@ -82,7 +101,7 @@ class AssertVisitor(ast.NodeVisitor):
             return False
         # Reject: simple variable names from HTTP/async context
         if isinstance(left, ast.Name):
-            if left.id in ("actual", "expected", "results", "tasks", "ids"):
+            if left.id in ("actual", "expected", "results", "tasks", "ids", "names"):
                 return False
         # Reject: HTTP response patterns — resp.status, data.verdict, result.x
         if isinstance(left, ast.Attribute):

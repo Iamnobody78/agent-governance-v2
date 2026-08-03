@@ -150,3 +150,22 @@
   - GATE 2 豁免: 53 > 50 上限，`# GATE2-APPROVED:` 标记（理由：全部为真实运行时验证，非 v1 式假测试膨胀）
 
 ---
+
+## AUDIT-0009 — 2026-08-03T09:00:00Z
+
+- PR: N/A（B 阶段 B2: AutoGen 零侵入集成 + 外部批判证据核验 + v0.2.2 工程修复）
+- 标题: AutoGen GroupChat 多 Agent 零侵入集成完成 + 外部批判 15 项声明逐条证据核验
+- 变更文件: `src/main.py` (+_deny_decision async, +3x storage.save to_thread), `src/policy.py` (Rule Literal + __post_init__ fail-closed + 大小写归一), `src/storage.py` (threading.Lock 序列化共享连接), `tests/test_policy_config_validation.py` (+7), `scripts/b2_e2e.py` (断言修复: proposer 合法转发 vs 危险声明转发), `EXPERIMENT_B_REPORT.md` (+B2 章节), `debt_registry.md` (+DEBT-0005..0008), `.aionui/decisions/DECISION-0002-B2-AUTOGEN.md` (+阶段4日志)
+- 变更行数: +250/-40
+- 评级: 外部批判(网页版 DeepSeek) 15 项声明 → 证据核验后: 12 STALE(已修复) + 2 夸大 + 2 VALID(本轮修复) + 1 部分有效(登记债务)
+- 结论: **B2 E2E PASS**（safe→ALLOW 4 转发 / dangerous→403 0 危险声明上游 / 6 决策入库）; 全量回归 **94/94**
+- 问题数: VALID 2（YAML action 无校验 typo 静默放行、storage.save 同步阻塞事件循环）→ 已修复; 债务 4 条登记（DEBT-0005..0008）
+- Reviewer: 外部独立批判（网页版 DeepSeek）+ 本会话逐条证据核验（防口头通过协议）
+- Commit: 待提交
+- 备注:
+  - 🔴 VALID #2.1: `Rule.action: str` 无约束 → `Literal["ALLOW","DENY","ESCALATE"]` + `__post_init__` 校验 fail-closed（typo 配置拒绝启动而非静默 ALLOW）; 顺带修复大小写 bug: YAML `deny` 原与 `== "DENY"` 严格比较不匹配会静默变 ALLOW
+  - 🟡 VALID #3.1: `storage.save` 3 处同步直调阻塞事件循环 → `await asyncio.to_thread` + Storage 内部 `threading.Lock` 序列化共享 sqlite3 连接（check_same_thread=False）; `_deny_decision` 需同步改 `async def`（2 调用点加 await）
+  - 🟢 STALE 清单（批判基于 v0.1.0 快照行号）: 熔断器 fail-open(1.1)、路径 startswith 绕过(1.2)、无并发锁(1.3)、上游无超时(1.4)、通配符边界(2.2)、连接新建(3.2)、无索引(3.3)、models 类型断层(4.1)、body 类型(4.2)、测试导入 examples(5.1)、外部服务依赖(5.2)、熔断与 README 不一致(7.2) — 均已在 AUDIT-0005/0008 修复
+  - 🟡 夸大: 无优雅停机(1.5, aiohttp 默认 shutdown_timeout=60s)、请求体全量内存(1.6, 拦截 JSON 决策量级小)
+  - 验证: 94/94 测试（87 + 7 新增异常路径）+ `b2_e2e.py` 真实 AutoGen E2E PASS + 三文件 py_compile OK
+  - 防口头通过: 本审计所有"已修复"声明均有当前源码行号证据（见会话核验表）

@@ -153,7 +153,10 @@ async def intercept_handler(request: web.Request) -> web.Response:
         method=req.method,
         agent_id=req.agent_id,
     )
-    storage.save(decision.model_dump(mode="json"))
+    # v0.2.2 (external critique #3.1): sqlite3 writes are synchronous — run in
+    # the thread pool so the event loop is not blocked (Storage has an internal
+    # threading.Lock to serialize access to the shared connection).
+    await asyncio.to_thread(storage.save, decision.model_dump(mode="json"))
 
     # 4. if ALLOW and proxy mode → forward to upstream Agent
     response_body = None
@@ -376,7 +379,7 @@ def _malformed_tool_declaration(req) -> str | None:
     return None
 
 
-def _deny_decision(req, reason, status, matched_rule) -> web.Response:
+async def _deny_decision(req, reason, status, matched_rule) -> web.Response:
     """Record a DENY decision and return the gateway rejection response.
 
     Shared by the malformed-declaration path and the dangerous-tool path
@@ -391,7 +394,10 @@ def _deny_decision(req, reason, status, matched_rule) -> web.Response:
         method=req.method,
         agent_id=req.agent_id,
     )
-    storage.save(decision.model_dump(mode="json"))
+    # v0.2.2 (external critique #3.1): sqlite3 writes are synchronous — run in
+    # the thread pool so the event loop is not blocked (Storage has an internal
+    # threading.Lock to serialize access to the shared connection).
+    await asyncio.to_thread(storage.save, decision.model_dump(mode="json"))
     return web.json_response(
         {
             "error": {
@@ -435,7 +441,7 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
     # reject the request outright (never silently forward upstream).
     malformed = _malformed_tool_declaration(req)
     if malformed:
-        return _deny_decision(
+        return await _deny_decision(
             req,
             reason=f"工具声明畸形，无法验证 — fail-closed 拒绝: {malformed}",
             status=400,
@@ -452,7 +458,7 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
     ]
 
     if dangerous_tools:
-        return _deny_decision(
+        return await _deny_decision(
             req,
             reason=f"LLM 请求声明危险工具调用 {dangerous_tools} — 拒绝转发",
             status=403,
@@ -489,7 +495,10 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
         method=req.method,
         agent_id=req.agent_id,
     )
-    storage.save(decision.model_dump(mode="json"))
+    # v0.2.2 (external critique #3.1): sqlite3 writes are synchronous — run in
+    # the thread pool so the event loop is not blocked (Storage has an internal
+    # threading.Lock to serialize access to the shared connection).
+    await asyncio.to_thread(storage.save, decision.model_dump(mode="json"))
 
     if verdict is not Verdict.ALLOW:
         return web.json_response(
