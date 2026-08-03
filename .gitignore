@@ -11,3 +11,7 @@ env/
 
 # certification layer keys (P8) — private key never committed
 .keys/
+
+# Meta-Harness runtime artifacts (MH-1/MH-2) — filesystem truth layer
+traces/
+candidates/
