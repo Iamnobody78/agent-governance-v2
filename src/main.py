@@ -18,6 +18,7 @@ from .models import InterceptRequest, InterceptResponse, DecisionRecord, Verdict
 from .lethality import lethality_for_tool
 from .policy import PolicyEngine, Rule, _json_extract
 from .storage import Storage
+from . import context_hmac  # TASK-REAL-012 Phase 5: Context Hook HMAC（防头伪造）
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,17 @@ CIRCUIT_COOLDOWN_SECONDS = 30.0  # breaker trip cooldown window (DEBT-0001)
 AGENT_BACKEND_URL = "http://localhost:8000"   # upstream Agent (for proxy mode)
 SHUTDOWN_FLUSH_TIMEOUT = 8  # DEBT-0015: independent cap for shutdown flush; must stay < shutdown_timeout=10
 MAX_TRACE_ID_LEN = 128  # TASK-REAL-011.1 (Critic-Security): trace 头值长度上限（超长视为缺失）
+
+
+def _signed_trace_headers(trace_id: str, span_id: str) -> dict:
+    """构造响应 trace 头并附加 HMAC 签名（Phase 5）。
+
+    未启用 CONTEXT_HMAC_KEY 时 sign_headers 返回空 dict —— 响应头与
+    v0.5.0 完全一致（向后兼容）；启用后下游可验证治理头未被篡改。
+    """
+    hdrs = {"X-Trace-ID": trace_id, "X-Span-ID": span_id}
+    hdrs.update(context_hmac.sign_headers(hdrs))
+    return hdrs
 
 # Shared heuristic constants — single source of truth moved to src/danger.py (DEBT-0002)
 from .danger import DANGEROUS_PREFIXES, DANGEROUS_METHODS, is_dangerous as _is_dangerous
@@ -67,8 +79,19 @@ def _trace_context(headers) -> tuple:
     语义"——随机占位 UUID 无法被 CTE 锚定 (parent 必须指向真实父决策 id),
     None 才是唯一自洽的根标记 (详见 docs/trace_report.md §3)。
     """
-    trace_id = headers.get("X-Trace-ID") or str(uuid.uuid4())
-    parent_span_id = headers.get("X-Parent-Span-ID") or None
+    # TASK-REAL-012 Phase 5 (Context Hook HMAC): 启用时验证治理头签名。
+    #   - None（未启用）      → 兼容模式，按 v0.5.0 逻辑提取（现状不变）
+    #   - ("", "")（伪造/缺失签名）→ 降级为新链根（伪造头永不进入审计链）
+    #   - (trace_id, parent) → 可信上下文，沿用（仍过长度 fail-safe）
+    signed = context_hmac.validate_trace_headers(dict(headers))
+    if signed is None:
+        trace_id = headers.get("X-Trace-ID") or str(uuid.uuid4())
+        parent_span_id = headers.get("X-Parent-Span-ID") or None
+    elif signed == ("", ""):
+        trace_id = str(uuid.uuid4())  # 伪造头 → 隔离为孤立根节点
+        parent_span_id = None
+    else:
+        trace_id, parent_span_id = signed
     # TASK-REAL-011.1 (Critic-Security): 超长头值拒绝持久化 — 防止索引膨胀/
     # 存储滥用。>MAX_TRACE_ID_LEN 视为缺失 (fail-safe): trace_id → 新链根,
     # parent_span_id → None (根锚点)。截断会破坏链引用, 拒绝/降级为缺失是
@@ -233,7 +256,7 @@ async def intercept_handler(request: web.Request) -> web.Response:
         matched_rule=matched_rule,
         trace_id=trace_id,
     )
-    _trace_headers = {"X-Trace-ID": trace_id, "X-Span-ID": decision.id}
+    _trace_headers = _signed_trace_headers(trace_id, decision.id)
     # TASK-REAL-012 Phase 4 (治理大脑 Phase 1): 五级响应输出 —
     # ALLOW_WITH_WARNING → 200 + X-Governance-Warning 头（可观测警告）;
     # SUSPEND → 403（挂起审查，语义区别于 DENY）。
@@ -492,7 +515,7 @@ async def _deny_decision(req, reason, status, matched_rule, tool_name=None, tool
     # the thread pool so the event loop is not blocked (Storage has an internal
     # threading.Lock to serialize access to the shared connection).
     await asyncio.to_thread(storage.save, decision.model_dump(mode="json"))
-    _trace_headers = {"X-Trace-ID": trace_id, "X-Span-ID": decision.id}
+    _trace_headers = _signed_trace_headers(trace_id, decision.id)
     return web.json_response(
         {
             "error": {
@@ -630,7 +653,7 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
     # the thread pool so the event loop is not blocked (Storage has an internal
     # threading.Lock to serialize access to the shared connection).
     await asyncio.to_thread(storage.save, decision.model_dump(mode="json"))
-    _trace_headers = {"X-Trace-ID": trace_id, "X-Span-ID": decision.id}
+    _trace_headers = _signed_trace_headers(trace_id, decision.id)
 
     if verdict in (Verdict.DENY, Verdict.SUSPEND, Verdict.ESCALATE):
         return web.json_response(
