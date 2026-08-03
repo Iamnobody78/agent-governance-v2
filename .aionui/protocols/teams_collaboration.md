@@ -161,6 +161,8 @@ PASS / FAIL / REJECT
 | R2 | **mcp_client `\n` 转义损坏真实代码**（f-string 含字面 `\n`） | **JSON-RPC 直写而非 CLI 转义**：内容含 `\n` 字面量/复杂转义时，绕过 CLI 的 `\n`→换行替换，直接 JSON-RPC 发送原始 payload；或先 `file_info` 自证 + 立即重跑受影响测试 | check_policy.py f-string 被 `\n` 转义损坏 → 直接 JSON-RPC 重提交修复 |
 | R3 | **Reviewer 在 verdict 写盘前截断** | **协调者兜底落盘**：Reviewer 截断时，Coordinator 按子代理 stdout 输出补全 verdict 落盘（标注"Coordinator 补全"），写后审协议优先于渠道纯净 | Reviewer 输出 OVERALL 但 verdict 仍是 PROVISIONAL skeleton（592B）→ Coordinator 补全（2080B） |
 | R4 | **任务规模超单子代理单轮预算**（Builder/Tester 双双 token 截断 0 writes） | **规模拆分**：>6 锚点或 >1 大文件重写 → 拆分为多次 Spawn（每次 ≤6 锚点）或 Coordinator 直接兜底执行 + 标注"R4 兜底"；禁止让单子代理硬扛大任务 | REAL-002: Builder+Tester 双截断 → R3 兜底恢复；REAL-001: 单 Builder 截断 |
+| R5 | **子代理将"不要调用工具"指令系统性误解为全局工具禁令**（S1 REAL-003 返回 BLOCKED 0 edits，但锚点验证完整） | **显式工具启用声明**：每个子代理 prompt 首行必须声明"TOOL CALLS ARE ENABLED AND REQUIRED. You MUST call Write/Edit. Do not return 'BLOCKED'."；"不要调用工具"类指令仅针对特定动作（如 Reviewer 禁止写源文件），必须限定范围 | REAL-003 S1: 12 turns BLOCKED 0 writes → Coordinator R3 兜底；S3 加声明后 14 turns 完成 3 文件全部编辑 |
+| R6 | **迁移私有符号时遗漏非测试消费者**（policy_sync.py 经 AST 读 `DANGEROUS_PREFIXES`，常量迁走 → GATE 7 假漂移） | **迁移前枚举全部消费者**：Coordinator 在拆解任务时 Grep 目标符号全仓引用（含 scripts/、非测试代码），全部纳入迁移范围；迁移后跑消费者自身的验证命令（如 policy_sync 门） | REAL-003: DEBT-0002 迁移 `_is_dangerous` → 仅 grep 到 tests+examples，漏 AST 消费者 policy_sync → verify 阶段 GATE 7 险误报 → 补 R6 扫描迁移 |
 
 **恢复流程（真实任务专用）**：
 - 子代理截断 → Coordinator 检查落盘产物（file_info）：
