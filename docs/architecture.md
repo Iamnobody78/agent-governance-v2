@@ -1,6 +1,6 @@
 # agent-governance v2 — 架构设计（权威参考）
 
-> **版本对应**: 快照 v1.18.0 · 提交 P9（examples/ 外部代理接入） · 2026-08-03
+> **版本对应**: 快照 v1.19.0 · 提交 P10（开源就绪：CONTRIBUTING/CI/认证指南/推送） · 2026-08-03
 > **维护铁律**: 本文档与代码同仓库、同提交链。任何架构级变更（新增模块/层、修改请求生命周期、加固点增减）必须在同一提交中同步更新本文档——「文档与代码同提交」。
 > **关联**: README.md（v1→v2 演进叙事 + ADR 附录，历史叙述）；`.aionui/context/TRIPLE_LOOP_SNAPSHOT.md`（治理快照，状态维度）。
 
@@ -107,7 +107,7 @@
 | **内环**（调度器自动发现） | GATE 8 批判者发现 FAIL/REVISION | runner → critic_report → 因果修复（例：A3 多阶段语义修复使基线 328→331，GATE 8 自我修复 `ae311aa`） |
 | **外环**（Agent 治理） | 多 Agent 协作任务 | `tools/agent_registry.yaml` 注册表 + `protocols/`（pr_review_loop/teams_collaboration/self_evolution_protocol 等 5 协议）+ `scheduler/work/` 任务档案 + `handoffs/` 移交 |
 
-治理工作文件：`audit_log.md`（AUDIT-0001~0038 永久审计链）、`TRIPLE_LOOP_SNAPSHOT.md`（v1.18.0）、`debt_registry.md`（22 清偿/3 活跃）、`critic_report.md`、`audit/health_score.md`。
+治理工作文件：`audit_log.md`（AUDIT-0001~0039 永久审计链）、`TRIPLE_LOOP_SNAPSHOT.md`（v1.19.0）、`debt_registry.md`（22 清偿/3 活跃）、`critic_report.md`、`audit/health_score.md`。
 
 ## 4. 暗雷区加固（P0-P3，架构韧性）
 
@@ -140,4 +140,4 @@ regression（pytest 失败）——每项含 category + hint + evidence。
 - **HA 部署拓扑**: 单写者模型——主实例唯一写 storage，副本只读 + 租约轮询；主崩溃 → 租约过期（TTL 5s）→ 副本接管（脑裂防护 = FileLock + 租约双重判定）
 - **认证层**: ED25519 签名所有证明文件（`python -m src.certification.sign --file <f>`）；防伪造证明链 = 签名 → 审计 → 公开
 - **已知上游怪癖**: Python 3.13 + aiohttp `AioHTTPTestCase` 的 tearDown "never awaited" RuntimeWarning（P1 前即存在，非本仓库引入，状态隔离实测有效）
-- **下一候选**: P10 开源就绪（CONTRIBUTING/CI/GitHub）→ P11 元编程声明 → P12 自举运行时（如仍需要）——按用户裁决 A 排定
+- **下一候选**: P11 元编程声明 → P12 自举运行时（如仍需要）——P10 开源就绪已完成，按用户裁决 A 排定

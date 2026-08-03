@@ -8,3 +8,6 @@ __pycache__/
 .venv*/
 venv/
 env/
+
+# certification layer keys (P8) — private key never committed
+.keys/

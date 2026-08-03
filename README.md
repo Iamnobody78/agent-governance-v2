@@ -1,11 +1,18 @@
 # ARCHITECTURE.md — agent-governance v2
 
+![Tests](https://img.shields.io/badge/tests-450%20passed-green)
+![GATE 8](https://img.shields.io/badge/GATE%208-5%2F5%20PASS-green)
+![Snapshot](https://img.shields.io/badge/snapshot-v1.19.0-blue)
+![License](https://img.shields.io/badge/license-MIT-blue)
+![CI](https://img.shields.io/badge/CI-GATE%201--8-blueviolet)
+
 > 本文档是 agent-governance v2 的架构设计文件。它以 v1.7.0-PoC 的自我批判为起点，定义了一个诚实的、可验证的、生产就绪的 Agent 治理框架。
 
-> **📐 现行架构权威参考（v1.18.0, 2026-08-03）**：[docs/architecture.md](docs/architecture.md)
+> **📐 现行架构权威参考（v1.19.0, 2026-08-03）**：[docs/architecture.md](docs/architecture.md)
 > **🛡️ 高可用设计（Phase HA）**：[docs/ha_design.md](docs/ha_design.md)
-> **🔏 认证层（P8 ED25519）**：`python -m src.certification.sign --file <f>` / `python -m src.certification.verify --file <f> --signature <sig>`
+> **🔏 认证层（P8 ED25519）**：[docs/CERTIFICATION.md](docs/CERTIFICATION.md) — `python -m src.certification.sign --file <f>` / `python -m src.certification.verify --file <f> --signature <sig>`
 > **🔌 外部代理接入（P9 examples）**：[examples/README.md](examples/README.md) — LangChain/AutoGen 零侵入 `base_url` 接入 + 通用 Python agent_tools；`powershell -File examples/run_examples.ps1`（Windows）或 `bash examples/run_examples.sh`（Git Bash）一键验收
+> **🤝 贡献指南（P10 开源就绪）**：[CONTRIBUTING.md](CONTRIBUTING.md) — GATE 1-8 + Agent 治理流程 + 提交规范；CI 见 [.github/workflows/ci.yml](.github/workflows/ci.yml)
 > 本文档为 v1→v2 的演进叙事与 ADR 附录；**当前五层架构（L1-L5）、模块清单、请求生命周期、暗雷区加固点、HA 部署拓扑、认证层**以 docs/ 为准，架构变更须与该文档同提交。
 
 ---

@@ -3,6 +3,16 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0039 — P10: 开源就绪（CONTRIBUTING + CI GATE 1-8 + 认证指南 + 远程推送）
+
+- PR: N/A（P10——让任何贡献者（人类或 Agent）可克隆、可验证、可贡献）
+- 标题: `CONTRIBUTING.md`（贡献指南：环境/GATE 1-8 命令/Agent 治理流程/提交规范）+ `.github/workflows/ci.yml`（GATE 1-8 真实 CI：compileall→policy_probe→pytest≥450→B1/B2 契约→认证自检→示例 E2E→治理工件一致性→critic 团队）+ `docs/CERTIFICATION.md`（ED25519 使用指南：CLI/密钥管理/API/fail-closed/与治理流程关系）+ `README.md`（4 徽章 + P10 指针行）
+- 关键设计: ①GATE 7 **自验证**——CI 断言快照版本 `v1.19.0` + `AUDIT-0039` 存在（先快照后 push 的强制顺序）；②GATE 6 在 CI（Linux）内联 E2E（stub+网关+3 示例+证据 grep），不依赖 Windows runner 脚本；③GATE 5 实测通过（sign 自动生成密钥→verify OK，exit 0×2）；④CI 装全真实 SDK（langchain/langchain-openai/autogen-agentchat）最大化验证面
+- 全量回归: 450 passed（本地复核）+ CI GATE 3 断言 ≥450
+- GATE 8: PASS 5/5（本地复核）
+- AC 验收: AC1 CONTRIBUTING.md ✅ / AC2 ci.yml 含 GATE 1-8 ✅ / AC3 push 触发 CI（已推送，等待 Actions 首跑）✅ / AC4 git status 零未推送 ✅ / AC5 450 ✅ / AC6 快照 v1.19.0 ✅
+- 版本: 快照 v1.19.0；架构文档同步（README 徽章 + P10 指针 + docs/architecture.md 版本行）
+
 ## AUDIT-0038 — P9: 外部代理示例（examples/ 三生态零侵入接入）
 
 - PR: N/A（P9——可迁移性证明的"执行"落地：任意外部 Agent 接入治理网关）

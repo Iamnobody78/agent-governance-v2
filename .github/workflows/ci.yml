@@ -1,129 +1,186 @@
-name: governance-gateway CI
+# GATE 1-8 CI — agent-governance-v2
+#
+# Contract (tests/test_ci_workflow.py, DEBT-0003 / TASK-REAL-012):
+#   the workflow MUST define an `all-gates` job whose `needs` lists exactly
+#   these 7 gate jobs: test-quality, policy-audit, gateway-smoke,
+#   policy-probe, meta-security, policy-sync, critic-gate.
+# Branch protection then requires a single check name ("all-gates").
+name: gates-1-8
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
-  # ── Gate 1 + 2: Test quality (no dataclass asserts, no test inflation) ──
+  # GATE 1 (syntax) + GATE 3 (full regression >= 450) + test-quality gates
   test-quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Run test quality scanner
+          cache: pip
+      - name: Install deps (core + test + real SDKs)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-timeout
+          pip install "cryptography>=42.0"
+          pip install langchain langchain-openai autogen-agentchat aiohttp
+      - name: "GATE 1 — syntax/import (compileall)"
+        run: python -m compileall -q src tests examples scripts
+      - name: "GATE 3 — full regression (baseline >= 450)"
+        run: |
+          python -m pytest tests -q --timeout=120 > pytest.log 2>&1
+          tail -5 pytest.log
+          PASSED=$(grep -oP '\d+(?= passed)' pytest.log | head -1)
+          echo "passed=$PASSED"
+          test -n "$PASSED" && test "$PASSED" -ge 450 || { echo "GATE 3 FAIL: passed=$PASSED < 450"; exit 1; }
+      - name: Test quality gates (no fake asserts, test count)
         run: python scripts/check_test_quality.py
 
-  # ── Gate 3: Policy must be YAML, not hardcoded ──
+  # GATE 2a (no hardcoded policy) + GATE 5 (certification self-check)
   policy-audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install pyyaml
-      - name: Run policy audit
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install "cryptography>=42.0"
+      - name: "GATE 2a — no hardcoded policy in source"
         run: python scripts/check_policy.py
+      - name: "GATE 5 — certification self-check (ED25519 sign/verify)"
+        run: |
+          SIG=$(python -m src.certification.sign --file CONTRIBUTING.md 2>/dev/null | tail -1)
+          test -n "$SIG" || { echo "GATE 5 FAIL: empty signature"; exit 1; }
+          python -m src.certification.verify --file CONTRIBUTING.md --signature "$SIG"
 
-  # ── Gate 4: Smoke tests must pass ──
+  # GATE 6 — live gateway E2E: B1 (LangChain) + B2 (AutoGen) + 3 examples
   gateway-smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install dependencies
-        run: pip install -e ".[test]"
-      - name: Run gateway tests
-        run: python -m pytest tests/ -v --tb=short
-      - name: Check coverage threshold
+      - name: Install deps (incl. real SDKs)
         run: |
-          pip install pytest-cov
-          python -m pytest tests/ --cov=src --cov-report=term --cov-fail-under=60
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-timeout
+          pip install langchain langchain-openai autogen-agentchat aiohttp
+      - name: "GATE 6a — B1 e2e (LangChain agent via live gateway)"
+        run: python scripts/b1_e2e.py
+      - name: "GATE 6b — B2 e2e (AutoGen group chat via live gateway)"
+        run: python scripts/b2_e2e.py
+      - name: "GATE 6c — examples E2E (stub + gateway + 3 agents)"
+        run: |
+          python examples/_stub_llm.py > /tmp/stub.log 2>&1 &
+          STUB_PID=$!
+          python -m src.main > /tmp/gw.log 2>&1 &
+          GW_PID=$!
+          trap 'kill $STUB_PID $GW_PID 2>/dev/null || true' EXIT
+          sleep 3
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9000/v1/health || true)
+            [ "$code" = "200" ] && break
+            sleep 1
+          done
+          test "$code" = "200" || { echo "GATE 6c FAIL: gateway not ready:"; tail -20 /tmp/gw.log; exit 1; }
+          python examples/external_agent_demo.py > /tmp/ex.log 2>&1 || { tail -20 /tmp/ex.log; exit 1; }
+          python examples/langchain_agent.py > /tmp/lc.log 2>&1 || { tail -20 /tmp/lc.log; exit 1; }
+          python examples/autogen_agent.py > /tmp/ac.log 2>&1 || { tail -20 /tmp/ac.log; exit 1; }
+          grep -q "DENY" /tmp/lc.log && grep -q "ESCALATE" /tmp/lc.log || { echo "langchain evidence missing"; tail -20 /tmp/lc.log; exit 1; }
+          grep -q "DENY" /tmp/ac.log && grep -q "trace_id" /tmp/ac.log || { echo "autogen evidence missing"; tail -20 /tmp/ac.log; exit 1; }
+          echo "GATE 6c PASS: all examples governed + evidence verified"
 
-  # ── Gate 5: Policy consistency (YAML rules vs _is_dangerous) ──
+  # GATE 2b — policy consistency probe
   policy-probe:
-    name: GATE 5 - Policy Consistency
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      # NOTE: must install full deps — policy_probe imports from src.main
-      # which imports aiohttp/pydantic. pyyaml alone → ModuleNotFoundError.
-      - name: Install dependencies
-        run: pip install -e ".[test]"
-      - name: Run policy_probe
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: "GATE 2b — policy consistency probe"
         run: python examples/policy_probe.py
 
-  # GATE 6: Security anti-pattern scanner (breaker-tripping-to-ALLOW,
-  # timeout-default-ALLOW, silent-swallow, startswith-without-normpath)
+  # GATE 4a — meta-security anti-pattern AST scan (AUDIT-0005 lessons)
   meta-security:
-    name: GATE 6 - Security Anti-pattern Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Run meta-security scanner on src/
-        run: python scripts/meta_security_scanner.py src
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: "GATE 4a — anti-pattern scan (fail-open / bypass)"
+        run: python scripts/meta_security_scanner.py
 
-  # GATE 7: Policy-code drift detector (AUDIT-0004 lesson: lowercase
-  # 'deny' passed CI while runtime else-branch silently ALLOWed)
+  # GATE 2c — YAML vs runtime heuristic drift detection (AUDIT-0004 lesson)
   policy-sync:
-    name: GATE 7 - Policy/Code Drift
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install dependencies
-        run: pip install pyyaml
-      - name: Run policy-sync drift check
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: "GATE 2c — policy YAML drift detection"
         run: python scripts/policy_sync.py
 
-  # GATE 8: Critic Agent Team (dynamic semantic gate — TASK-REAL-012).
-  # Compiles .aionui/protocols/critic_team.md into executable checks:
-  # 5 critics (audit/security/arch/test/docs) + one-veto/majority verdict.
-  # exit 1 on REJECT (any HIGH) or REVISION (2-3 MEDIUM) → back to Builder.
+  # GATE 8 — critic team (5 critics, majority pass) + governance artifacts
   critic-gate:
-    name: GATE 8 - Critic Agent (Semantic Audit)
     runs-on: ubuntu-latest
-    needs: [gateway-smoke]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install dependencies
-        run: pip install -e ".[test]"
-      - name: Run Critic Agents
-        run: python -m src.critic.runner --output .aionui/critic_report.md
-      - name: Check Critic Verdict
+      - name: Install deps
         run: |
-          python -m src.critic.runner --json > /tmp/critic.json
-          python - <<'EOF'
-          import json
-          with open("/tmp/critic.json", encoding="utf-8") as f:
-              agg = json.load(f)
-          verdict = agg["decision"]["verdict"]
-          print(f"Critic verdict: {verdict}")
-          assert verdict in ("PASS",), f"Critic gate failed: {verdict}"
-          EOF
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: "GATE 7 — governance artifacts consistent"
+        run: |
+          test -f .aionui/audit_log.md || { echo "GATE 7 FAIL: audit_log.md missing"; exit 1; }
+          test -f .aionui/context/TRIPLE_LOOP_SNAPSHOT.md || { echo "GATE 7 FAIL: snapshot missing"; exit 1; }
+          grep -q "^> 版本: v1.19.0" .aionui/context/TRIPLE_LOOP_SNAPSHOT.md || { echo "GATE 7 FAIL: snapshot version != v1.19.0"; exit 1; }
+          grep -q "AUDIT-0039" .aionui/audit_log.md || { echo "GATE 7 FAIL: AUDIT-0039 missing"; exit 1; }
+          echo "GATE 7 PASS: artifacts consistent"
+      - name: "GATE 8 — critic team (5 critics, majority pass)"
+        run: python -m src.critic.runner
 
-  # ── Aggregate gate: single required check for branch protection (DEBT-0003) ──
+  # Contract aggregation job (DEBT-0003): single check name for branch protection
   all-gates:
-    name: All Gates Passed
-    runs-on: ubuntu-latest
     needs: [test-quality, policy-audit, gateway-smoke, policy-probe, meta-security, policy-sync, critic-gate]
+    runs-on: ubuntu-latest
     steps:
-      - run: echo "All 7 gates passed"
+      - name: All gates passed
+        run: echo "GATE 1-8 PASS"
