@@ -24,12 +24,12 @@
 | ROADMAP.md | ✅ | 本文档 |
 | 拦截率数据落盘 | ✅ | `docs/interception_benchmark.json` + 复现脚本 |
 
-## 阶段 B — 可视化与示例 🎯
+## 阶段 B — 可视化与示例 ✅
 
 | 项目 | 状态 | 说明 |
 |------|:----:|------|
-| `examples/demo_self_heal.py` | 🎯 | 自愈链路演示(降级→重试→熔断) |
-| `examples/browser_guard_demo.py` | 🎯 | 浏览器防护演示(URL 分类→拦截) |
+| `examples/demo_self_heal.py` | ✅ | 自愈链路演示:真实 Sense→Diagnose→Remediate 闭环(5 批判者 verdict / trace 链 / 沙箱冲突检测 / fail-closed 熔断) |
+| `examples/browser_guard_demo.py` | ✅ | 浏览器防护演示:真实 ASTGuard+PolicyEngine,6 拦截 3 放行 |
 | 徽章系统 | 🎯 | CI 状态 / 拦截率 / 版本徽章 |
 
 ## 阶段 C — 交付形态
@@ -74,4 +74,4 @@
 
 | 日期 | 变更 |
 |------|------|
-| 2026-08-03 | 基线:阶段 0 完成;阶段 A 完成(README/ROADMAP/数据/迁移);阶段 B/C1/C2/D 规划中 |
+| 2026-08-03 | 基线:阶段 0 完成;阶段 A 完成(README/ROADMAP/数据/迁移);阶段 B 完成(自愈 + 浏览器防护双 demo);阶段 C1/C2/D 规划中 |
