@@ -51,6 +51,7 @@
 | `.aionui/protocols/teams_collaboration.md` | 两阶段 Spawn 协议 |
 | `.aionui/protocols/pr_review_loop.md` | PR 审查闭环 |
 | `.aionui/protocols/critic_team.md` | 批判者代理团队协议（GATE 8 元提示词） |
+| `.aionui/protocols/self_evolution_protocol.md` | 自进化治理引擎执行协议（Phase 1-5 路线图 + 防伪造铁律） |
 | `.aionui/protocols/reviewer_prompt_template.md` | 审查提示词模板 |
 
 ## 协议文件（团队协作契约）
