@@ -3,7 +3,30 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0049 — 阶段 0 SQL 硬验证 + 阶段 A 定位 + 真实拦截率基准(两缺口修复)
+
+- **类型**: 事实核查 + 项目定位 + 真实数据基准(meta-harness 内环闭环)
+- **裁决依据**: 用户"先 读完 再规划"+"确认后立即启动阶段 0"+"裁决 A→B→C1 顺序执行"
+- **阶段 0 — SQL grammar 四探针**(tree-sitter 0.21.3 + tree-sitter-languages 1.5.0 硬锁):
+  - **PART A**: `update_statement`/`where_clause` 节点存在,5 查询全编译,where_clause 子节点检测 `has_where=True/False` 精确 → 蓝图 Rule 1 可行
+  - **PART B(CRITICAL)**: `#match?` 谓词在**顶层裸 `(identifier) @x`** 捕获上**静默失效**(编译接受、运行时忽略)——`x=exec(user_input)` 捕获全部 identifier;用户蓝图 `(identifier) @sensitive_schema (#match? ...)` 将导致灾难性误报(user_information 被阻断)。谓词在结构化父节点下生效:call function / attribute object / dotted_name / from_clause 子节点
+  - **PART C**: S1 方案验证 `(from_clause (dotted_name (identifier) @sensitive_schema (#match? ...)))` → information_schema/pg_catalog FLAG,user_information 天然排除
+  - **PART D**: S2 方案验证 `(from_clause (identifier) @sensitive_schema (#match? ...))` → sqlite_master FLAG;`table`/`field`/`relation` 节点**不存在**(Invalid node type),蓝图虚构节点清剿
+- **真实拦截率基准**(`scripts/benchmark_interception.py`,真实生产路径 PolicyEngine+ASTGuard,15 恶意+13 良性):
+  - **首测 13/15 (86.7%)** — 暴露 2 真实缺口: ①`mkfs.ext4` 后缀变体逃逸值表精确锚定 `^mkfs$`;②`> /etc/passwd` 重定向从未被扫描
+  - **修复**: bash.scm 新增 `@mkfs_variant`(前缀正则 `^mkfs(\.[a-z0-9]+)?$`)+ `@redirect_target`(`redirected_statement → file_redirect → word` 匹配 `/etc/passwd|shadow|sudoers`、`/dev/sd*`、`/boot/`、`/root/`、`/proc/sysrq-trigger`),两捕获名注册 EXPECTED_CAPTURES(P1)
+  - **复测 15/15 (100%) 检测 / 0/13 (0%) 误报 / 100% 精确率**,数据落盘 `docs/interception_benchmark.json`
+- **阶段 A — 项目定位**:
+  - `git mv README.md docs/architecture_narrative.md`(历史保留;`docs/ARCHITECTURE.md` 因 Windows 大小写不敏感与既有 `docs/architecture.md` 冲突不可用)
+  - 新 `README.md` 重写为真实项目首页(特性/真实拦截率/快速开始/文档索引,引用全部核实无悬空链接——MAINTENANCE.md 不存在已修正)
+  - 新 `ROADMAP.md` 诚实状态标注(阶段 0/A 完成,B/C1/C2/D 规划中)
+- **全量回归**: 573 passed + 3 环境性失败(mock :8000 连接超时,git stash 对照证明改动前后一致,非回归)
+- **Commit**: `a4df240`(阶段 0 报告)+ bash 缺口修复提交 + 阶段 A 提交
+- **meta-harness 工作文件**: harness_candidates.json(3 候选,原蓝图被支配)→ pareto_frontier.md(S1S2 前沿)→ failure_analysis.md(F-001 谓词失效/F-002 虚构节点/F-003 bytes(str)陷阱)
+- **下一轮**: 阶段 B(examples 可视化)→ C1(Docker,/metrics 前置)→ Phase 1 SQL 规则(S1/S2 修正设计)
+
 ## AUDIT-0047 — CI 全绿修复：GATE 2a/3/6/6a 五处根因
+
 
 - **类型**: CI 修复 + 扫描器精度强化（社区标准协议回归通道）
 - **裁决依据**: 用户"自己解决一下"（AC3-4 之后组 3-4 全部自主完成）+ gates-1-8 失败诊断（69a2cf3/c6eb95a/6529e6a 三连红）
