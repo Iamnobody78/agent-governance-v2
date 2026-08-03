@@ -3,6 +3,24 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0043 — P13: 认证授权层（AuthN/AuthZ）验收
+
+- PR: N/A（P13 裁决——安全缺口：网关此前无身份认证，P8 ED25519 防篡改≠身份认证；复用 P6 骨架补全）
+- 裁决: **立即启动**——复用 `src/auth.py` 骨架 + `.keys/` 密钥体系 + `policy.py` 租户列，不重构现有模块
+- **关键发现**: 认证层在 P6 已完整实现（29 tests 全过）——`src/auth.py::TenantAuth`（API Key→tenant_id 映射，`secrets.compare_digest` 常量时间比较；`Authorization: Bearer` / `X-API-Key` 双头解析；fail-closed：短 key/重复 key/空租户/重复租户 ID 全部拒绝）+ `config/tenants.yaml` + `main.py` `_auth_gate` 已注入 4 个入口（130/359/375/587）+ `auth_override` 测试注入点
+- P13 独立验收（AC1-AC7 全过，实测证据）:
+  - AC1 无 key → **401** ✅（TestClient 实测）
+  - AC2 无效 key → **401** ✅（test_invalid_key_returns_401）
+  - AC3 有效 key → 200/403 ✅（test_valid_key_without_declared_tenant_passes）
+  - AC4 租户隔离 → 跨租户 403 + 私有规则隔离 ✅（test_tenant_mismatch_returns_403 / test_cross_tenant_cannot_see_other_private_rule）
+  - AC5 全量 **542 passed**（29 auth + 513 其余）✅
+  - AC6 快照 v1.23.0 ✅
+  - AC7 Bearer + X-API-Key 双格式 ✅（test_x_api_key_header_alternative + 手动探测 200）
+- 新增: `docs/AUTH.md`（认证架构/配置/验证命令/验收矩阵/P8 边界——唯一真实缺口）
+- 全量回归: 542 passed 零失败；GATE 8: PASS 5/5
+- 版本: 快照 v1.23.0；架构文档同步
+- 注: 与 P8 边界——P8 防篡改（ED25519），P13 认证（API Key）+ 授权（tenant 字段），互补非重叠
+
 ## AUDIT-0042 — Meta-Harness 融合（MH-1/2/3: trace → proposer → Pareto）
 
 - PR: N/A（MH 元提示词——斯坦福 Meta-Harness "冻结模型、进化 harness" 整合到 L5）

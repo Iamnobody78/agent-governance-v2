@@ -2,14 +2,15 @@
 
 ![Tests](https://img.shields.io/badge/tests-542%20passed-green)
 ![GATE 8](https://img.shields.io/badge/GATE%208-5%2F5%20PASS-green)
-![Snapshot](https://img.shields.io/badge/snapshot-v1.22.0-blue)
+![Snapshot](https://img.shields.io/badge/snapshot-v1.23.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![CI](https://img.shields.io/badge/CI-GATE%201--8-blueviolet)
 ![Meta](https://img.shields.io/badge/meta-5%2F7%20%CE%94%20%28%E2%9C%94+%E2%9A%A0%EF%B8%8F%29-orange)
 
 > 本文档是 agent-governance v2 的架构设计文件。它以 v1.7.0-PoC 的自我批判为起点，定义了一个诚实的、可验证的、生产就绪的 Agent 治理框架。
 
-> **📐 现行架构权威参考（v1.22.0, 2026-08-03）**：[docs/architecture.md](docs/architecture.md)
+> **📐 现行架构权威参考（v1.23.0, 2026-08-03）**：[docs/architecture.md](docs/architecture.md)
+> **🔐 认证授权层（P13）**：[docs/AUTH.md](docs/AUTH.md) — API Key→租户映射 + Bearer/X-API-Key 双格式 + 租户隔离（AC1-AC7 全过）
 > **🧬 Meta-Harness 融合（L5 进化为完整 Harness 工程自动化）**：[src/trace/](src/trace/)（完整执行轨迹）→ [src/proposer/](src/proposer/)（提议器=变异算子）→ [src/pareto/](src/pareto/)（质量vs成本 Pareto 前沿+≥3 轮迭代）；融合报告见 [docs/META_HARNESS_FUSION_REPORT.md](docs/META_HARNESS_FUSION_REPORT.md)
 > **🔄 自举运行时（P12 确定性调度器）**：[src/bootstrap/](src/bootstrap/) — 感知→诊断→修复→验证→部署主循环 + `bootstrap_state.db`（SQLite）状态持久化；codegen 漂移自动修复+白名单提交，失败回滚，人类在环（`auto_push` 默认 False）；`python -c "from src.bootstrap import run_cycle; run_cycle()"` 单轮演练
 > **🧬 元能力自检清单（P11 诚实声明）**：[docs/META_CAPABILITIES.md](docs/META_CAPABILITIES.md) — 自审计/自修复/自追踪/自认证/自生成 ✅ 5/7，自修改/自部署 ⚠️（人类在环，诚实边界）
