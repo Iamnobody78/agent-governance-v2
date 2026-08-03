@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.23.0
-> 快照时间: 2026-08-03（P13 认证授权层验收——P6 骨架完整化：独立验收 AC1-AC7 全过 + docs/AUTH.md；Meta-Binding 代理自绑定）
-> 最近审计: AUDIT-0043（P13 认证授权层）+ AUDIT-0042（MH 融合三阶段）+ AUDIT-0041（P12 自举运行时）
+> 版本: v1.24.0
+> 快照时间: 2026-08-03（社区标准合规补全——CODE_OF_CONDUCT + SECURITY + Issue/PR 模板 + Dependabot，成为"模范开源项目"）
+> 最近审计: AUDIT-0045（社区标准合规补全）+ AUDIT-0044（Meta-Binding）+ AUDIT-0043（P13 认证授权层）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -16,10 +16,10 @@
 | **覆盖率** | 87%（`--source=src` 实测 2026-08-03；门槛 ≥ 60%；较 90.12% 旧口径降低系 scope 含 meta_harness 68-70%，非回归） |
 | **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞）；DEBT-0027（P6 认证缺失）已清偿 |
 | **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受） |
-| **最近事件** | **P13 认证授权层验收完成** ✅（关键发现：认证层在 P6 已完整实现——`src/auth.py` TenantAuth（API Key→tenant_id 常量时间比较、Bearer/X-API-Key 双头、fail-closed 校验）+ `config/tenants.yaml` + main.py `_auth_gate` 已注入 4 个入口 + 29 测试；P13 独立验收 AC1-AC7 全过：无 key→401/无效→401/有效→200/Bearer+X-API-Key 双格式/租户冒称→403/租户私有规则隔离；唯一缺口为文档 → 新增 `docs/AUTH.md`；542 tests；Meta-Binding 代理自绑定（AGENT-001 身份）；MH 融合此前完成）；GATE 8 5/5 PASS |
+| **最近事件** | **社区标准合规补全完成** ✅（对照开源社区最佳实践 13 项核查：提交描述✅/编码频率✅(GitHub Insights)/依赖图⚠️→补 Dependabot(pip+github-actions weekly)/README✅/网络行为守则🔴→补 CODE_OF_CONDUCT.md(Contributor Covenant 2.1)/Fork✅/贡献操作✅(P10 CONTRIBUTING.md)/使用指标⚠️(未发布 PyPI 暂不要求)/执照✅/CI 徽章✅/安全策略🔴→补 SECURITY.md(24h 响应/7d 初评/30d 补丁, 含 P10 私钥事件披露)/问题模板🔴→补 bug_report+feature_request(needs-triage 标签)/PR 模板🔴→补 PULL_REQUEST_TEMPLATE(检查清单+ED25519 签名项)；README 增 3 社区徽章(行为守则/安全策略/PRs Welcome)；542 tests；P13 认证授权层+META-BINDING 此前完成）；GATE 8 5/5 PASS |
 | **CI 状态** | ✅ GATE 1-8 全绿（GATE 8 = Critic Agent 五批判者，全量回归 exit 0） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …MH-3: `src/pareto` 提交 `48d9626`（v1.22.0）→ P13: `docs/AUTH.md + 快照` 提交 `（v1.23.0）` → META-BINDING 提交 `（v1.23.0）` |
+| **提交链** | …P13: `docs/AUTH.md + 快照` 提交 `c5687db`（v1.23.0）→ META-BINDING 提交 `0e157d4`/`5520b7d` → 社区标准: `CODE_OF_CONDUCT+SECURITY+模板+Dependabot` 提交 `（v1.24.0）` |
 
 ---
 

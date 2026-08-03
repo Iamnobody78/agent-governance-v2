@@ -3,6 +3,21 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0045 — 社区标准合规补全（模范开源项目）
+
+- 提交: `（v1.24.0）`（author=`agent-governance`，已 push origin/main）
+- 核查: 对照开源社区最佳实践 13 项维度——6 项已有✅（提交描述/CONTRIBUTING/README/执照/CI 徽章/Fork），3 项豁免⚠️（编码频率=GitHub Insights 原生/使用指标=未发布 PyPI/依赖图半完成），4 项缺口🔴→全部补全
+- 新增:
+  - `CODE_OF_CONDUCT.md` — Contributor Covenant 2.1（承诺/标准/责任/适用范围/执行——举报邮箱 agent@agent-governance.ai）
+  - `SECURITY.md` — 支持版本表（v1.x ✅）/报告漏洞（GitHub 安全咨询+邮件，24h 响应/7d 初评）/披露政策（30d 补丁）/安全更新（vX.Y.Z+security）；**披露 P10 私钥误提交事件**（历史重写清除 + .gitignore 防复发）
+  - `.github/ISSUE_TEMPLATE/bug_report.md` + `feature_request.md` — YAML frontmatter（labels: bug/enhancement + needs-triage）+ 结构化复现模板
+  - `.github/PULL_REQUEST_TEMPLATE.md` — 变更类型/测试验证（≥488 passed + critic runner）/破坏性变更/检查清单（含 ED25519 签名项）
+  - `.github/dependabot.yml` — pip（weekly, limit 10, reviewer Iamnobody78, deps 标签）+ github-actions（weekly）
+  - `README.md` — 3 社区徽章（行为守则 Contributor Covenant 2.1 / 安全策略 / PRs Welcome）
+- 验收: AC1 CODE_OF_CONDUCT ✅ / AC2 SECURITY ✅ / AC3 2 个 Issue 模板 ✅ / AC4 PR 模板 ✅ / AC5 Dependabot ✅ / AC6 README 徽章含"行为守则" ✅ / AC7 全量 542 passed ✅ / AC8 快照 v1.24.0 ✅
+- 全量回归: 542 passed 零失败；GATE 8: PASS 5/5
+- 版本: 快照 v1.24.0；架构文档同步（README + docs/architecture.md 版本行 + TRIPLE_LOOP_SNAPSHOT）
+
 ## AUDIT-0044 — Meta-Binding: agent-governance 代理自绑定（AGENT-001）
 
 - 提交: `0e157d4`（author=`agent-governance <agent@agent-governance.ai>`，已 push origin/main）

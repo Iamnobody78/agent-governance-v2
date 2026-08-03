@@ -2,14 +2,17 @@
 
 ![Tests](https://img.shields.io/badge/tests-542%20passed-green)
 ![GATE 8](https://img.shields.io/badge/GATE%208-5%2F5%20PASS-green)
-![Snapshot](https://img.shields.io/badge/snapshot-v1.23.0-blue)
+![Snapshot](https://img.shields.io/badge/snapshot-v1.24.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![CI](https://img.shields.io/badge/CI-GATE%201--8-blueviolet)
 ![Meta](https://img.shields.io/badge/meta-5%2F7%20%CE%94%20%28%E2%9C%94+%E2%9A%A0%EF%B8%8F%29-orange)
+[![行为守则](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
+[![安全策略](https://img.shields.io/badge/Security-Policy-brightgreen)](SECURITY.md)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 > 本文档是 agent-governance v2 的架构设计文件。它以 v1.7.0-PoC 的自我批判为起点，定义了一个诚实的、可验证的、生产就绪的 Agent 治理框架。
 
-> **📐 现行架构权威参考（v1.23.0, 2026-08-03）**：[docs/architecture.md](docs/architecture.md)
+> **📐 现行架构权威参考（v1.24.0, 2026-08-03）**：[docs/architecture.md](docs/architecture.md)
 > **🔐 认证授权层（P13）**：[docs/AUTH.md](docs/AUTH.md) — API Key→租户映射 + Bearer/X-API-Key 双格式 + 租户隔离（AC1-AC7 全过）
 > **🧬 Meta-Harness 融合（L5 进化为完整 Harness 工程自动化）**：[src/trace/](src/trace/)（完整执行轨迹）→ [src/proposer/](src/proposer/)（提议器=变异算子）→ [src/pareto/](src/pareto/)（质量vs成本 Pareto 前沿+≥3 轮迭代）；融合报告见 [docs/META_HARNESS_FUSION_REPORT.md](docs/META_HARNESS_FUSION_REPORT.md)
 > **🔄 自举运行时（P12 确定性调度器）**：[src/bootstrap/](src/bootstrap/) — 感知→诊断→修复→验证→部署主循环 + `bootstrap_state.db`（SQLite）状态持久化；codegen 漂移自动修复+白名单提交，失败回滚，人类在环（`auto_push` 默认 False）；`python -c "from src.bootstrap import run_cycle; run_cycle()"` 单轮演练
@@ -189,6 +192,8 @@ rules:
 **v0.5.0 新增（TASK-REAL-012，Phase 4 治理大脑阶段 1——可解释引擎 + 五级判定）**：`DecisionRecord.rationale` 第 13 列（每个决策记录匹配规则与原因，`_migrate` 12→13 列无损扩容）+ **五级 Verdict**——`ALLOW`（200 透传）/ `ALLOW_WITH_WARNING`（200 + `X-Governance-Warning` 响应头，转发不中断）/ `ESCALATE`（202 升舱待审）/ `DENY`（403 硬拒）/ `SUSPEND`（403 挂起待人工复审，与 DENY 区分"临时冻结"）+ `create_app(config_path)` 策略注入（测试/多租户可加载独立策略文件）+ 网关版本 0.5.0。
 
 **v0.6.0 新增（TASK-REAL-012，Phase 5 Context Hook HMAC——L3 治理大脑收尾）**：治理头防伪造——`X-Trace-ID`/`X-Parent-Span-ID`/`X-Span-ID` 以 HMAC-SHA256 签名（`X-Governance-Signature` + `X-Governance-Timestamp`，±300s 防重放窗），伪造头 fail-safe 降级为新链根（隔离孤立节点，永不进入审计链）；`CONTEXT_HMAC_KEY` 环境变量开关（未设置 = 兼容模式，行为与 v0.5.0 完全一致）+ 网关版本 0.6.0。五层架构 L1-L5 全部闭环。
+
+**v1.13.0 基线（P6 认证层前置，main.py 兼容模式引用）**：五层架构闭环后、P13 认证授权层引入前的稳定基线——`auth: Optional[TenantAuth] = None` 即"兼容模式"（直接放行，391 回归保障）；本条目为 README 版本声明与 main.py 历史版本引用的一致性记录（Critic-Docs D2）。
 
 ```yaml
   # 任意内部路径 + body 声明 shell 工具 → DENY
