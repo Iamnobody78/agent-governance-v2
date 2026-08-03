@@ -1,13 +1,17 @@
 """YAML policy loader + matching engine — declarative, not hardcoded."""
 
 import json
+import logging
 import os
 import posixpath
 import re
+import traceback
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 VALID_ACTIONS: tuple = ("ALLOW", "ALLOW_WITH_WARNING", "DENY", "ESCALATE", "SUSPEND")
 
@@ -259,11 +263,18 @@ class PolicyEngine:
             pass
 
     def reload(self) -> bool:
-        """Re-read YAML from self._config_path. On failure keep old rules."""
+        """Re-read YAML from self._config_path. On failure keep old rules.
+
+        P0 (暗雷区): 之前 `except Exception: return False` 完全静默 —— reload 失败
+        时运维无任何线索。改为 error 级完整堆栈（保留旧规则的行为不变，fail-safe）。
+        """
         try:
             self._load(self._config_path)
             return True
-        except Exception:
+        except Exception as e:  # noqa: BLE001 — keep old rules on any load error
+            logger.exception("policy reload FAILED (keeping %d old rules): %s",
+                             len(self.rules), e)
+            logger.debug("policy reload traceback:\n%s", traceback.format_exc())
             return False
 
     def maybe_reload(self) -> bool:

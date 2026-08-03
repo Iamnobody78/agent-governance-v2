@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import time
+import traceback
 import uuid
 from typing import Optional
 
@@ -115,7 +116,9 @@ async def intercept_handler(request: web.Request) -> web.Response:
 
     try:
         req = InterceptRequest(**data)
-    except Exception:
+    except Exception as e:  # noqa: BLE001 — Pydantic validation error (client-side)
+        logger.warning("invalid intercept body (422): %s", e)
+        logger.debug("invalid intercept body traceback:\n%s", traceback.format_exc())
         return web.json_response(
             {"error": "invalid request body"}, status=422
         )
@@ -304,6 +307,7 @@ async def _proxy_forward(req: InterceptRequest) -> Optional[dict]:
                     return {"status": resp.status, "body": text[:1000]}
     except Exception as e:
         logger.warning("proxy forward failed: %s", e)
+        logger.debug("proxy forward traceback:\n%s", traceback.format_exc())
         return None
 
 
@@ -715,6 +719,7 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
                 return sse
     except Exception as e:
         logger.warning("chat forward failed: %s", e)
+        logger.debug("chat forward traceback:\n%s", traceback.format_exc())
         if sse is None:
             return web.json_response(
                 {"error": {"message": "upstream LLM unreachable", "type": "upstream_error"}},
@@ -757,6 +762,7 @@ async def _flush_pending_on_shutdown(app: web.Application) -> None:
         )
     except Exception as e:  # noqa: BLE001 — shutdown path must never crash the app
         logger.warning("shutdown flush_pending failed: %s", e)
+        logger.debug("shutdown flush_pending traceback:\n%s", traceback.format_exc())
 
 
 def create_app(config_path: Optional[str] = None) -> web.Application:
