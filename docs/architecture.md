@@ -1,6 +1,6 @@
 # agent-governance v2 — 架构设计（权威参考）
 
-> **版本对应**: 快照 v1.14.0 · 提交 `9e91c03` · 2026-08-03
+> **版本对应**: 快照 v1.15.0 · 提交 P7（agent_tools） · 2026-08-03
 > **维护铁律**: 本文档与代码同仓库、同提交链。任何架构级变更（新增模块/层、修改请求生命周期、加固点增减）必须在同一提交中同步更新本文档——「文档与代码同提交」。
 > **关联**: README.md（v1→v2 演进叙事 + ADR 附录，历史叙述）；`.aionui/context/TRIPLE_LOOP_SNAPSHOT.md`（治理快照，状态维度）。
 
@@ -104,7 +104,7 @@
 | **内环**（调度器自动发现） | GATE 8 批判者发现 FAIL/REVISION | runner → critic_report → 因果修复（例：A3 多阶段语义修复使基线 328→331，GATE 8 自我修复 `ae311aa`） |
 | **外环**（Agent 治理） | 多 Agent 协作任务 | `tools/agent_registry.yaml` 注册表 + `protocols/`（pr_review_loop/teams_collaboration/self_evolution_protocol 等 5 协议）+ `scheduler/work/` 任务档案 + `handoffs/` 移交 |
 
-治理工作文件：`audit_log.md`（AUDIT-0001~0033 永久审计链）、`TRIPLE_LOOP_SNAPSHOT.md`（v1.13.0）、`debt_registry.md`（22 清偿/3 活跃）、`critic_report.md`、`audit/health_score.md`。
+治理工作文件：`audit_log.md`（AUDIT-0001~0035 永久审计链）、`TRIPLE_LOOP_SNAPSHOT.md`（v1.15.0）、`debt_registry.md`（22 清偿/3 活跃）、`critic_report.md`、`audit/health_score.md`。
 
 ## 4. 暗雷区加固（P0-P3，架构韧性）
 
@@ -115,10 +115,24 @@
 | P2 | SQLite 写锁瓶颈 | WAL + 批量提交 + 降级缓冲（读-己-写一致） | `c40dc41` | +10 测试 |
 | P3 | json_path 线性匹配 | 前缀索引树（剪枝等价性证明：首段键∉顶层→提取必空；descend/wild 不可剪） | `ebe9002` | +21 测试 |
 
+## 4b. P7 代理自举工具集（agent_tools 层）
+
+**定位**: 治理 Agent 自举的"可调用化"——把 self_evolution_protocol 的
+Sense→Diagnose→Remediate 循环从声明层落地为工具，复用 L4/L5 既有能力（不重实现）。
+
+| 工具 | 复用对象 | 返回 | 契约边界 |
+|------|----------|------|----------|
+| `run_self_critic` | `critic.runner.run_all_critics` | verdict/reason/per_critic/high_count/reports | 5 批判者全量或子集 |
+| `get_self_trace` | `Storage.get_trace` | 因果链 nodes/depth/node_count | 递归 CTE 防环 + 双上限 |
+| `heal_candidate` | `validate_candidate` + 沙箱 | deployable/reasons/conflicts/hit_rate/fixes | **只建议不落盘**（裁决权在治理层） |
+
+**fixes 四类别**: syntax（YAML 结构）/ conflict（action 冲突）/ replay（命中率不足）/
+regression（pytest 失败）——每项含 category + hint + evidence。
+
 ## 5. 当前状态
 
-- **测试**: 420 passed 零失败；**GATE 8**: 5/5 PASS；**覆盖率**: 87%（`--source=src` 含 meta_harness 68-70%；90.12% 为 REAL-008 期旧口径，非回归）
-- **架构**: L1-L5 全闭环 + **P6 身份认证/多租户**（外部评审缺口 #1 闭合）；暗雷区 4/4 收官；活跃债务 3（DEBT-0018/0020/0021，无阻塞）
+- **测试**: 431 passed 零失败；**GATE 8**: 5/5 PASS；**覆盖率**: 87%（`--source=src` 含 meta_harness 68-70%；90.12% 为 REAL-008 期旧口径，非回归）
+- **架构**: L1-L5 全闭环 + **P6 身份认证/多租户**（外部评审缺口 #1 闭合）+ **P7 代理自举工具集**（agent_tools 三工具）；暗雷区 4/4 收官；活跃债务 3（DEBT-0018/0020/0021，无阻塞）
 - **兼容模式**: auth 未启用 = v1.13.0 行为完全一致（零回归保障，`AUTH_ENABLED=1` 或 `auth_override` 注入时启用）
 - **已知上游怪癖**: Python 3.13 + aiohttp `AioHTTPTestCase` 的 tearDown "never awaited" RuntimeWarning（P1 前即存在，非本仓库引入，状态隔离实测有效）
-- **下一候选**: P7 代理自举（`src/agent_tools/`：`self_critic/self_trace/self_heal` 复用 L4/L5 现有能力暴露为代理可调用工具）——已批准方向，防御顺序上排在 P6 之后
+- **下一候选**: HA（高可用/降级纵深）→ MCP（模型上下文协议接入）→ 策略 API（远程策略管理）→ Dashboard（可观测）——已按依赖顺序排定，待治理层裁决

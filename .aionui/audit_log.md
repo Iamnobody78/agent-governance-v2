@@ -3,6 +3,17 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0035 — P7: 代理自举工具集（agent_tools）
+
+- PR: N/A（P7——自举循环 Sense→Diagnose→Remediate 工具化落地）
+- 标题: `src/agent_tools/` 三工具——`run_self_critic`（调 run_all_critics 返回结构化报告）/ `get_self_trace`（调 Storage.get_trace 返因果链）/ `heal_candidate`（调 validate_candidate + 沙箱，产出四类修正建议）
+- 变更文件: `src/agent_tools/__init__.py`（新增）、`src/agent_tools/self_critic.py`（新增）、`src/agent_tools/self_trace.py`（新增）、`src/agent_tools/self_heal.py`（新增）、`tests/test_agent_tools.py`（新增 11）、`.aionui/protocols/self_evolution_protocol.md`（P7 思考链集成）
+- 测试: AC1 结构化报告 / AC2 因果链 / AC3 修正建议 / AC4 可部署路径 / AC5 L4L5 复用（与直接调用结果对等）/ 缺失 trace 空链 / 懒加载
+- 全量回归: **431 passed**（420 + 11），零失败
+- GATE 8: PASS 5/5（`python -m src.critic.runner` exit 0）
+- 复用原则: 不重实现——三工具全部委托既有 L4/L5 能力；heal 只建议不落盘（裁决权在治理层）
+- 版本: 快照 v1.15.0；架构文档同步（docs/architecture.md 加 agent_tools 层）
+
 ## AUDIT-0034 — P6: 服务身份认证 + 多租户隔离（外部评审缺口 #1）
 
 - PR: N/A（P6——外部评审结构性缺口 #1：身份认证缺失，L2-L5 暴露于未认证访问风险；DEBT-0027 登记清偿）

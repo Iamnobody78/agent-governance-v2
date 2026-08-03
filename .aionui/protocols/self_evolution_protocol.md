@@ -64,3 +64,35 @@ git log -1 --oneline
 
 本协议受 Critic Agent（GATE 8）约束：Phase 完成后 Critic-Audit 验证协议是否
 被执行完毕；Critic-Docs 验证协议宣称在提交历史中有对应证据。
+
+---
+
+## 🛠️ P7 代理自举工具集（v1.15.0，2026-08-03）
+
+> 协议从"声明层"落地为**可调用工具**：`src/agent_tools/` 把 Sense→Diagnose→
+> Remediate 循环代码化，供治理 Agent 在思考链中直接调用。
+
+### 思考链（Thinking Chain）——每次自举迭代强制
+
+```text
+[Sense]      run_self_critic()     → 结构化自审报告（verdict/per_critic/high_count）
+[Diagnose]   get_self_trace()      → 提取目标 trace 的完整因果链（depth/node_count）
+[Remediate]  heal_candidate()      → 沙箱评估候选，产出 fixes 修正建议（类别+证据）
+[Validate]   pytest tests/ 全量回归 ≥ 基线（当前 420 + P7 新增）
+[Deploy]     git commit + 快照 v1.15.0 更新
+```
+
+### 三工具与既有层级的复用映射（不重实现原则）
+
+| 工具 | 复用对象 | 契约 |
+|------|----------|------|
+| `run_self_critic` | `critic.runner.run_all_critics` | 返回 `decision` 五键 + reports 证据链 |
+| `get_self_trace` | `Storage.get_trace` | 递归 CTE（防环 + max_depth/max_nodes 双保险） |
+| `heal_candidate` | `meta_harness.adapter.validate_candidate` + `sandbox.evaluate_candidate_in_sandbox` | 不可部署时生成 fixes（syntax/conflict/replay/regression 四类） |
+
+### 裁决边界（P7 铁律）
+
+- `heal_candidate` **只建议、不落盘**——修改 `config/policies.yaml` 的裁决权
+  始终在治理层（GATE 8 通过 + 人工复核后）。
+- 每次自举迭代必须在 `.aionui/audit_log.md` 追加 AUDIT 条目（当前至 AUDIT-0035）。
+- 测试验收：AC1-AC6（结构化报告/因果链/修正建议/可部署路径/L4L5 复用/全量回归）。
