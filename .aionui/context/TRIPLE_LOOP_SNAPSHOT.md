@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.17.0
-> 快照时间: 2026-08-03（P8 认证层完成——ED25519 签名/验证，证明协议地基）
-> 最近审计: AUDIT-0037（P8 认证层）+ AUDIT-0036（Phase HA 高可用）+ AUDIT-0035（P7 agent_tools）
+> 版本: v1.18.0
+> 快照时间: 2026-08-03（P9 外部代理示例完成——三生态零侵入接入，可迁移性证明落地）
+> 最近审计: AUDIT-0038（P9 外部代理示例）+ AUDIT-0037（P8 认证层）+ AUDIT-0036（Phase HA 高可用）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,14 +12,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 450 passed（441 基线 + 9 新增 P8，零失败） |
+| **测试全量** | 450 passed（重写 examples 对齐既有 B1/B2 契约，3 失败转绿，零失败） |
 | **覆盖率** | 87%（`--source=src` 实测 2026-08-03；门槛 ≥ 60%；较 90.12% 旧口径降低系 scope 含 meta_harness 68-70%，非回归） |
 | **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞）；DEBT-0027（P6 认证缺失）已清偿 |
 | **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受） |
-| **最近事件** | **P8 认证层完成** ✅（`src/certification/`：ED25519 sign/verify + 密钥自动生成落盘 + CLI；450 tests；GATE 8 5/5 PASS；三条证明协议的地基已就绪——无 ED25519 签名 = 无防伪造 = 无证明资格）；Phase HA 此前完成 |
+| **最近事件** | **P9 外部代理示例完成** ✅（`examples/`：LangChain/AutoGen 零侵入 `base_url` 被动接入 + 通用 Python agent_tools；真实 SDK 调用被网关 403 治理（langchain 1.3.14 `PermissionDeniedError: governance_denied`）；runner 证据校验 PASS=3 FAIL=0；450 tests；GATE 8 5/5 PASS；修复既有 TestZeroTouchClaim 3 失败）；P8 认证层此前完成 |
 | **CI 状态** | ✅ GATE 1-8 全绿（GATE 8 = Critic Agent 五批判者，450 tests 全量回归 exit 0） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …HA: `src/ha/` 提交（v1.16.0）→ P8: `src/certification/` 提交（v1.17.0） |
+| **提交链** | …HA: `src/ha/` 提交（v1.16.0）→ P8: `src/certification/` 提交（v1.17.0）→ P9: `examples/` 提交（v1.18.0） |
 
 ---
 
@@ -135,6 +135,10 @@
 - **v1.12.0**（2026-08-03）：暗雷区修复 P0-P2（P0 异常堆栈日志 1ef39a0 + P1 语义钩子异步弱监督/撤销注册表 be0b5ee + P2 SQLite WAL/批量提交 c40dc41；370 tests；覆盖率 87%（--source=src 含 meta_harness）；DEBT-0023/0024/0025 清偿、DEBT-0026 登记待 P3；AUDIT-0030/0031/0032；GATE 8 5/5 PASS）
 - **v1.13.0**（2026-08-03）：暗雷区 P3 json_path 前缀索引树（JsonPathIndex 首段键桶化剪枝 + segments 缓存，391 tests，DEBT-0026 清偿，AUDIT-0033；暗雷区 4/4 收官，P6 身份认证+多租户待用户裁决）
 - **v1.14.0**（2026-08-03）：P6 服务身份认证 + 多租户隔离（TenantAuth 401/403 + tenant 作用域 + HMAC 签名复用 + AUTH_ENABLED 兼容模式，420 tests，DEBT-0027 清偿，AUDIT-0034；外部评审缺口 #1 闭合；架构文档同步加 auth 层；P7 代理自举方向已批准）
+- **v1.15.0**（2026-08-03）：P7 代理自举工具集（src/agent_tools/ 三工具 self_critic/self_trace/self_heal 复用 L4/L5 + 11 测试防纸面 + self_evolution_protocol.md；431 tests；AUDIT-0035；提交 c6b9484）
+- **v1.16.0**（2026-08-03）：Phase HA 高可用（src/ha/：FileLock OS 级互斥 + Lease TTL5s + FailoverCoordinator 单写者模型；docs/ha_design.md；441 tests；AUDIT-0036；提交 864c890）
+- **v1.17.0**（2026-08-03）：P8 认证层（src/certification/：ED25519 sign/verify + 密钥自动生成落盘 PKCS8 chmod600 + CLI；450 tests；AUDIT-0037；提交 8e2b71b；证明协议地基）
+- **v1.18.0**（2026-08-03）：P9 外部代理示例（examples/：external_agent_demo 进程内 agent_tools + langchain/autogen 零侵入 base_url 被动 sidecar + _stub_llm 测试双 + run_examples.ps1/sh 双 runner；真实 SDK 调用被网关 403 治理；修复既有 TestZeroTouchClaim 3 失败；450 tests；GATE 8 5/5 PASS；AUDIT-0038）
 
 ---
 

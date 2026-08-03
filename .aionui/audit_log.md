@@ -3,6 +3,18 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0038 — P9: 外部代理示例（examples/ 三生态零侵入接入）
+
+- PR: N/A（P9——可迁移性证明的"执行"落地：任意外部 Agent 接入治理网关）
+- 标题: `examples/` 三示例 + 测试双 + 双 runner——`external_agent_demo.py`（通用 Python Agent 进程内 agent_tools，CRITIC+TRACE+HEAL 真实输出）/ `langchain_agent.py`（**重写**：LangChain 零侵入被动 sidecar，唯一网关引用 `ChatOpenAI(base_url=网关/v1)`，无内部模块 import）/ `autogen_agent.py`（**重写**：AutoGen 零侵入 `base_url` 被动接入）/ `_stub_llm.py`（测试双：模拟上游 LLM :8000，ALLOW 路径端到端演示）/ `run_examples.ps1` + `run_examples.sh`（一键验收：stub+网关+3 示例+证据校验）
+- 关键修复: 全量回归暴露 **TestZeroTouchClaim 3 失败**——P9 第一批实现用主动 `POST /v1/intercept` + urllib 降级，违反既有 B1 契约（AST 要求真实 langchain import + `create_agent`/`ChatOpenAI` 文本 + `base_url=` 唯一网关引用 + **禁止** `/v1/intercept` 主动调用）→ 重写为被动 sidecar（base_url → `/v1/chat/completions`），SDK 用 try/except 可选导入（AST 测试只解析源码不导入模块，未装 SDK 时降级标准库 HTTP，证据不缺失）
+- 真实 SDK 验证: `.venv-b1` langchain 1.3.14——`create_agent(ChatOpenAI(base_url=...))` 构建 `CompiledStateGraph`，真实调用被网关 **403 PermissionDeniedError: governance_denied ['delete_file']** 拦截（最强零侵入证据）；`.venv-b2` autogen-agentchat 0.7.5——`AssistantAgent` 可导入 + 模型客户端 base_url 接线证明；两示例 ALLOW(200)/ESCALATE(202, 规则 escalate-file-write-tool)/DENY(403) 全裁决 + trace_id 可追踪
+- 环境修复: ①PowerShell 5.1 `Invoke-WebRequest` 对 aiohttp chunked 响应抛 NullReferenceException → 健康探针改 `curl.exe -s -o NUL -w "%{http_code}"`；②`.ps1` 必须 ASCII（无 BOM 时 5.1 按 ANSI 读中文破坏引号平衡）；③`examples/run_examples.sh` 在 WSL bash（`C:\WINDOWS\system32\bash.exe`）下路径无效 → 新增原生 PowerShell runner
+- 全量回归: **450 passed**，零失败（与 P8 同数——重写使既有 3 失败转绿，未新增测试文件；AC5 ≥450 达成）
+- GATE 8: PASS 5/5（`python -m src.critic.runner` exit 0）
+- AC 验收: AC1 self_critic 调用 ✅ / AC2-AC3 LangChain+AutoGen 零侵入（AST 契约 + 真实运行双证）✅ / AC4 每示例触发 DENY+ESCALATE（runner 证据校验 PASS=3 FAIL=0）✅ / AC5 450 ✅ / AC6 快照 v1.18.0 ✅
+- 版本: 快照 v1.18.0；架构文档同步（examples 层 + README 指针块 + 治理工作文件行）
+
 ## AUDIT-0037 — P8: 认证层 ED25519 签名/验证（src/certification/）
 
 - PR: N/A（P8——三条证明协议的地基：无 ED25519 签名 = 无防伪造 = 无证明资格）
