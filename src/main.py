@@ -30,6 +30,9 @@ SHUTDOWN_FLUSH_TIMEOUT = 8  # DEBT-0015: independent cap for shutdown flush; mus
 # Shared heuristic constants — single source of truth moved to src/danger.py (DEBT-0002)
 from .danger import DANGEROUS_PREFIXES, DANGEROUS_METHODS, is_dangerous as _is_dangerous
 
+# TASK-REAL-009 (A-phase): semantic bypass hook — external LLM-Judge, opt-in.
+from .semantic_hook import extract_prompt, is_enabled as semantic_hook_enabled, semantic_hook
+
 # Only these headers are forwarded to the upstream backend (never Authorization)
 FORWARD_HEADER_WHITELIST = ("content-type", "accept", "user-agent", "x-agent-id")
 
@@ -137,6 +140,19 @@ async def intercept_handler(request: web.Request) -> web.Response:
                     last_escalate_time,
                     breaker_tripped_until,
                 )
+
+    # 2.5 semantic bypass hook (TASK-REAL-009 / A-phase): the static verdict may
+    # be upgraded to ESCALATE by the external LLM-Judge — NEVER downgraded
+    # (DENY stays final). Fail-soft: judge down/timeout -> verdict unchanged.
+    if verdict != Verdict.DENY and semantic_hook_enabled():
+        _prompt = extract_prompt(req.body)
+        _semantic = await semantic_hook(_prompt)
+        if _semantic and _semantic.get("override") == "ESCALATE":
+            verdict = Verdict.ESCALATE
+            reason = (
+                f"{reason} | Semantic Judge: score={_semantic.get('score')} "
+                f"flags={_semantic.get('flags')}"
+            )
 
     # 3. persist decision (strong-typed model, serialized at DB edge)
     decision = DecisionRecord(
