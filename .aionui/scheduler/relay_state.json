@@ -54,7 +54,7 @@
       "event": "COMPLETED",
       "ts": "2026-08-03T15:30:00Z",
       "summary": "S1 Builder main (R3 Coordinator fallback: sub-agent BLOCKED 0 edits, design verified; + policy_sync AST migration + on_cleanup async fix), S2 Builder storage (done), S3 Tester (12+2 tests, probe migrated), S4 Reviewer APPROVE. Full regression 173 passed. GATE 7 green.",
-      "commit": "PIN_AFTER_COMMIT"
+      "commit": "368907c"
     }
   ]
 }

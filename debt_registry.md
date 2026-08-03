@@ -20,8 +20,8 @@
 | DEBT-0008 | SQLite 写入失败无降级路径（直接抛异常，无内存缓存重试） | `0e18760` (TASK-REAL-002) | 2026-08-03 |
 | DEBT-0005 | YAML 策略无热更新（修改 policies.yaml 需重启网关生效） | `661b77f` (TASK-REAL-001) | 2026-08-03 |
 | DEBT-0006 | check_policy.py AST 规则误报含 allow/deny 子串的 dict key（如 `allow_retry`） | `661b77f` (TASK-REAL-001) | 2026-08-03 |
-| DEBT-0002 | 私有 API `_is_dangerous` 耦合（policy_probe 依赖 src.main 私有符号） | `PIN_AFTER_COMMIT` (TASK-REAL-003) | 2026-08-03 |
-| DEBT-0007 | `web.run_app` 未显式 shutdown_timeout（依赖 aiohttp 默认 60s） | `PIN_AFTER_COMMIT` (TASK-REAL-003) | 2026-08-03 |
-| DEBT-0009 | `_pending` 内存缓存无上限（长时降级时内存占用风险） | `PIN_AFTER_COMMIT` (TASK-REAL-003) | 2026-08-03 |
-| DEBT-0010 | `flush_pending()` 重试时机未明确（建议 main.py 启动/关闭时触发） | `PIN_AFTER_COMMIT` (TASK-REAL-003) | 2026-08-03 |
+| DEBT-0002 | 私有 API `_is_dangerous` 耦合（policy_probe 依赖 src.main 私有符号） | `368907c` (TASK-REAL-003) | 2026-08-03 |
+| DEBT-0007 | `web.run_app` 未显式 shutdown_timeout（依赖 aiohttp 默认 60s） | `368907c` (TASK-REAL-003) | 2026-08-03 |
+| DEBT-0009 | `_pending` 内存缓存无上限（长时降级时内存占用风险） | `368907c` (TASK-REAL-003) | 2026-08-03 |
+| DEBT-0010 | `flush_pending()` 重试时机未明确（建议 main.py 启动/关闭时触发） | `368907c` (TASK-REAL-003) | 2026-08-03 |
 

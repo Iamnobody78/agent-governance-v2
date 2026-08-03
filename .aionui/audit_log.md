@@ -13,7 +13,7 @@
 - 结论: **PASS**（173/173 测试 + GATE 7 绿 + 无私有导入泄漏）
 - 问题数: 执行期自发现 2（sync on_cleanup 崩溃 → async；policy_sync AST 耦合 → 迁移）→ 修复后 0
 - Reviewer: **Spawn `S4-Reviewer-REAL003`**（独立视角）
-- Commit: 待提交
+- Commit: `368907c`
 - 备注:
   - **R3 兜底执行**: S1 Builder 子代理误读"不要调用工具"返回 BLOCKED(0 编辑)，但已验证全部锚点唯一性；Coordinator 按已验证设计兜底落盘（第 2 次子代理失败 → 学习循环提取新约束）
   - **Coordinator 新发现 1**: `scripts/policy_sync.py::load_dangerous_prefixes()` AST 扫描 main.py 常量 → 迁移后读空列表 → GATE 7 假漂移。修复: 优先扫描 `src/danger.py`，回退 main.py（DEBT-0002 完整语义：私有符号所有消费者必须迁移）
