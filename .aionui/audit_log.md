@@ -3,6 +3,17 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0037 — P8: 认证层 ED25519 签名/验证（src/certification/）
+
+- PR: N/A（P8——三条证明协议的地基：无 ED25519 签名 = 无防伪造 = 无证明资格）
+- 标题: `src/certification/` 四文件——sign.py（ED25519 私钥→base64 签名 + 密钥自动生成落盘 PKCS8 PEM chmod 600）/ verify.py（公钥+文件+签名→True/False，fail-closed）/ __init__.py（导出 + CLI 入口）
+- 变更文件: `src/certification/__init__.py`（新增）、`src/certification/sign.py`（新增）、`src/certification/verify.py`（新增）、`tests/test_certification.py`（新增 9）
+- 依赖: 新增 `cryptography==50.0.0`（ED25519 实现；标准库无 ED25519）
+- 测试: AC1 签名返回 base64（解码 64 字节）/ AC2 验证通过 / AC3 篡改检测 False + 错钥/坏 base64/空串 fail-closed / 密钥自动创建+重载一致 / 多文件往返 / CLI 两路径
+- 全量回归: **450 passed**（441 + 9），零失败
+- GATE 8: PASS 5/5（docs WARN 修复：README 顶部版本声明同步 v1.17.0——原 WARN 系 main.py 注释中"v1.13.0 行为"为兼容模式描述非版本声明，README 指针块已同步）
+- 版本: 快照 v1.17.0；架构文档同步（认证层 + README CLI 指引）
+
 ## AUDIT-0036 — Phase HA: 高可用多实例协调（src/ha/）
 
 - PR: N/A（Phase HA——三循环引擎单点运行治理，用户裁决 A 后首个执行项）

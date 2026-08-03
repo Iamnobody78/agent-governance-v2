@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.16.0
-> 快照时间: 2026-08-03（Phase HA 高可用完成——多实例协调/租约/故障接管）
-> 最近审计: AUDIT-0036（Phase HA 高可用）+ AUDIT-0035（P7 agent_tools）+ AUDIT-0034（P6 身份认证+多租户）
+> 版本: v1.17.0
+> 快照时间: 2026-08-03（P8 认证层完成——ED25519 签名/验证，证明协议地基）
+> 最近审计: AUDIT-0037（P8 认证层）+ AUDIT-0036（Phase HA 高可用）+ AUDIT-0035（P7 agent_tools）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,14 +12,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 441 passed（431 基线 + 10 新增 HA，零失败） |
+| **测试全量** | 450 passed（441 基线 + 9 新增 P8，零失败） |
 | **覆盖率** | 87%（`--source=src` 实测 2026-08-03；门槛 ≥ 60%；较 90.12% 旧口径降低系 scope 含 meta_harness 68-70%，非回归） |
 | **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞）；DEBT-0027（P6 认证缺失）已清偿 |
 | **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受） |
-| **最近事件** | **Phase HA 高可用完成** ✅（`src/ha/`：FileLock OS 级互斥 + Lease 租约心跳 + FailoverCoordinator 单写者模型；441 tests；GATE 8 5/5 PASS；docs/ha_design.md 三层方案）；P7 代理自举工具集此前完成 |
-| **CI 状态** | ✅ GATE 1-8 全绿（GATE 8 = Critic Agent 五批判者，441 tests 全量回归 exit 0） |
+| **最近事件** | **P8 认证层完成** ✅（`src/certification/`：ED25519 sign/verify + 密钥自动生成落盘 + CLI；450 tests；GATE 8 5/5 PASS；三条证明协议的地基已就绪——无 ED25519 签名 = 无防伪造 = 无证明资格）；Phase HA 此前完成 |
+| **CI 状态** | ✅ GATE 1-8 全绿（GATE 8 = Critic Agent 五批判者，450 tests 全量回归 exit 0） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …P7: agent_tools 提交 → HA: `src/ha/` 提交（v1.16.0） |
+| **提交链** | …HA: `src/ha/` 提交（v1.16.0）→ P8: `src/certification/` 提交（v1.17.0） |
 
 ---
 
