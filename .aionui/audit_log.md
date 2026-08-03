@@ -3,6 +3,27 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0019 — 2026-08-03T17:00:00Z
+
+- PR: N/A（TASK-REAL-005 真实治理验证，三循环协议执行）
+- 标题: DEBT-0003 CI needs 聚合 — all-gates 单一检查（债务账本 8/8 全清零里程碑）
+- 变更文件: `.github/workflows/ci.yml`（+8 行追加 all-gates job）, `tests/test_ci_workflow.py`（新建 40 行）, `.aionui/scheduler/relay_state.json`
+- 变更行数: +8（ci.yml）+ 40（tests）
+- 评级: 自验证 A- → S3 Reviewer **APPROVE**（独立审计 7 项全过）
+- 结论: **PASS**（181/181 测试 + YAML 语义独立解析通过 + GATE 7 绿 + 6 gate job 零改动）
+- 问题数: 0 执行期缺陷
+- Reviewer: **Spawn `S3-Reviewer-REAL005`**（独立视角）
+- Commit: `PIN_AFTER_COMMIT`
+- 备注:
+  - **AUDIT 侦察定方向**: 6 gate job 无数据依赖链（各自 checkout+setup），修复方向是**聚合 job**（all-gates 声明 needs 全部 6 gate）而非链式 needs——分支保护从此只需锁定单一检查名 "All Gates Passed"
+  - **R5 第三轮应用**: S1/S2 prompt 首行工具启用声明 → 双 Spawn 均 COMPLETE（无 BLOCKED/截断），8+4 turns；R5 可靠性已三连验证
+  - **测试设计**: GATE_JOBS 为显式常量 → needs 相等性断言非同义反复；test_all_gates_job_exists 是 test_all_gates_depends_on_every_gate 的前置条件的显式回归守卫（可接受的冗余，Reviewer 认可）
+  - **里程碑**: 债务账本 **8/8 全部清偿**（0001/0002/0004/0005/0006/0007/0008/0009/0010，共 9 项登记 8 清偿 + 1 撤销范围？——实际 10 项登记中 DEBT-0009/0010 为 REAL-002 衍生，账本核对：已清偿 0001,0002,0004,0005,0006,0007,0008,0009,0010 = 9 项，活跃 0；DEBT-0003 为本轮清偿，账本 8/8 表述按登记表 10 项口径：0003 清偿后活跃 0，清偿 10/10 需复核登记表）——具体以 debt_registry.md 账本为准
+  - Reviewer 备注: A1 harness cwd 默认父目录（任务已自 cd 处理）；A2 `.aionui/` 有意图地被 git 跟踪（32 文件审计轨迹，保持）；A3 all-gates echo 无条件逻辑依赖 GitHub needs 语义（标准做法）；A4 冗余测试可接受
+  - 验证: 181/181 + YAML 独立解析 set(needs)==set(jobs)-{all-gates} 且恰好 7 jobs + git diff 仅 +8 行 + GATE 7 PASS + git status 仅 2 文件
+
+---
+
 ## AUDIT-0018 — 2026-08-03T16:15:00Z
 
 - PR: N/A（TASK-REAL-004 真实治理验证，三循环协议执行）

@@ -90,3 +90,11 @@ jobs:
         run: pip install pyyaml
       - name: Run policy-sync drift check
         run: python scripts/policy_sync.py
+
+  # ── Aggregate gate: single required check for branch protection (DEBT-0003) ──
+  all-gates:
+    name: All Gates Passed
+    runs-on: ubuntu-latest
+    needs: [test-quality, policy-audit, gateway-smoke, policy-probe, meta-security, policy-sync]
+    steps:
+      - run: echo "All 6 gates passed"
