@@ -1,13 +1,13 @@
 {
   "schema_version": "1.0",
-  "task_id": "TASK-REAL-009",
-  "title": "A-phase: semantic bypass LLM-Judge (Strangler Fig layer 1) — user-adjudicated priority A",
-  "created_at": "2026-08-03T20:30:00Z",
+  "task_id": "TASK-REAL-010",
+  "title": "B-phase: json_path tool governance + Interpretable-Control Step 1 (audit schema) — user-adjudicated priority B",
+  "created_at": "2026-08-03T21:30:00Z",
   "status": "COMPLETED",
   "current_phase": "CLOSED",
   "round": 1,
   "max_rounds": 3,
-  "work_dir": ".aionui/scheduler/work/REAL-009",
+  "work_dir": ".aionui/scheduler/work/REAL-010",
   "mcp_channel": {
     "client": "scripts/mcp_client.py",
     "server": "filesystem_mcp_server.py",
@@ -16,22 +16,22 @@
   },
   "validation_scope": {
     "propositions": [
-      "Bypass architecture: v2 hook <-> judge service <-> Ollama <-> local model full chain verified",
-      "Fail-soft: timeout / connection refused / non-200 / malformed schema -> None, static verdict stands (4 degradation paths tested)",
-      "Upgrade-only: static DENY final; hook skipped for DENY (zero calls); ALLOW may upgrade to ESCALATE, upgrade fully audited",
-      "Opt-in: SEMANTIC_HOOK_ENABLED=0 -> zero judge traffic, zero behavioral change",
-      "Zero regression: 215/215 tests (201 baseline + 14 new), GATE 1 (445 asserts 0 dataclass) / GATE 2 (202 tests) green",
-      "Honest model boundary: qwen2.5:0.5b MVP validates architecture only (1/3 parseable + false positive); production needs 7B-instruct or Bastion cascade"
+      "json_path conditional rules: path ^ method ^ request-body triple condition; zero-dependency JSONPath subset ($ .key .. [N] [*]) implemented in src/policy.py (~120 lines)",
+      "Safe fallback: non-JSON / unextractable body -> condition unsatisfied -> rule does not match (structured bodies carry tool calls; fail-closed layer handles unparseable bodies)",
+      "Load-time fail-closed: bad json_path syntax / json_pattern without json_path / invalid regex -> ValueError -> policy load rejected",
+      "Lethality weights (Ls): read 0.1-0.3 / write 0.5-0.7 / exec 0.85-0.95 / delete+priv 0.9-0.95 / unknown 0.6; norm.py single-source normalization (confusable delete_fιle -> 0.95 anchored)",
+      "Audit schema: DecisionRecord.tool_name/tool_lethality + decisions table 10 cols + _migrate() ALTER for legacy 8-col DBs (lossless)",
+      "Zero regression: 250/250 tests (215 baseline + 35 new), coverage 90.07% (>=60), GATE 1-7 green; e2e: execute_command -> 403 DENY, write_file -> 202 ESCALATE, get_weather -> 200 ALLOW"
     ],
-    "evidence": "Real-chain smoke: judge<->Ollama<->qwen2.5:0.5b round-trip OK; 3 canonical samples -> 1 parseable (misclassified), 2 unparseable; latency 2.9-16.5s CPU >> 150ms budget (timeout-degrade is the safety net, not the default path)"
+    "evidence": "Full local run: pytest 250 passed; --cov 90.07%; check_test_quality (511 asserts 0 dataclass), check_policy, policy_probe (json_path exemptions + 4 new validations), meta_security_scanner, policy_sync all exit 0"
   },
   "history": [
     {
       "round": 1,
       "event": "COMPLETED",
-      "ts": "2026-08-03T21:15:00Z",
-      "summary": "A-phase semantic bypass delivered zero-rebuild. judge/llm_judge.py (~170 lines): fixed meta-prompt, Ollama backend, tolerant JSON extraction, JUDGE_MODEL hot-swap. src/semantic_hook.py (~100 lines): head+tail truncation (DEBT-0018 input side), asyncio.wait_for timeout, upgrade-only, opt-in. main.py +16 lines hook at verdict-final/persist-before (upgrades fully audited). 14 tests: 9 unit + 4 e2e (real fake-judge HTTP) + 1 disabled. Real-chain smoke passed architecture; 0.5b model effect FAIL (expected MVP boundary) — production: qwen2.5:7b-instruct-q4_K_M (JUDGE_MODEL swap, zero code) or Bastion 70M cascade. Self-found issues fixed: FakeSession bypasses ClientTimeout -> real slow server; static DENY on normal path comes from YAML rule not danger-prefix; intercept status mapping ALLOW=200/DENY=403/ESCALATE=202 -> assert verdict field. New debts registered: DEBT-0018 (body size cap), DEBT-0019 (trace-id), DEBT-0020 (output-side semantics). Report: docs/semantic_bypass_report.md.",
-      "commit": "TASK-REAL-009 (see git log)"
+      "ts": "2026-08-03T22:40:00Z",
+      "summary": "B-phase json_path tool governance + Step 1 audit schema delivered. src/policy.py: Rule gains json_path/json_pattern with load-time fail-closed validation; matches()/evaluate() thread body; hand-rolled JSONPath subset (_parse_json_path/_json_extract/_extract_at, zero deps). src/norm.py (extracted from main) + src/lethality.py (Ls table, audit-only, 0.6 unknown default). models.py DecisionRecord + tool_name/tool_lethality; storage.py 10-col table + _migrate() legacy ALTER (lossless); main.py evaluate(body) + _audit_tool_fields (max-lethality tool) + _deny_decision tool fields + v0.3.0. policies.yaml v0.2.0 + block-shell-tool (DENY) + escalate-file-write-tool (ESCALATE). GATE 5/7 updated: json_path rules exempt from path-coverage (body-conditioned; timeout-branch path heuristic cannot see bodies -> DEBT-0021 documented), GATE 5 adds 4 conditional-rule constraints. 35 new tests incl. migration + e2e. New debt: DEBT-0021 (LOW, accepted). Report: docs/json_path_governance_report.md.",
+      "commit": "TASK-REAL-010 (see git log)"
     }
   ]
 }

@@ -26,7 +26,7 @@ class TestInterceptHTTP(AioHTTPTestCase):
         assert resp.status == 200
         data = await resp.json()
         assert data["status"] == "ok"
-        assert data["version"] == "0.2.0"
+        assert data["version"] == "0.3.0"
         assert "uptime_seconds" in data
 
     @unittest_run_loop

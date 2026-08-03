@@ -16,6 +16,9 @@ What it actually checks (real semantics, no fake asserts):
      DENY rule in the YAML (orphan-prefix reverse check).
   3. Action values must be in the whitelist {ALLOW, DENY, ESCALATE} —
      an unknown/lowercase value would make the runtime else-branch ALLOW.
+  4. (TASK-REAL-010) json_path 条件规则豁免 path 覆盖检查 — 它们由请求体
+     JSON 触发, timeout 分支的 path 启发式看不到 body (DEBT-0021), 但
+     action 白名单检查照常生效。
 
 Exit codes: 0 = consistent, 1 = drift found.
 """
@@ -72,7 +75,10 @@ def load_policy_non_allow_paths() -> Tuple[List[str], List[str]]:
         # runtime else-branch would silently ALLOW it. Exact match required.
         if action_raw not in ALLOWED_ACTIONS:
             invalid_actions.append(action_raw)
-        if action_raw in ("DENY", "ESCALATE"):
+        # TASK-REAL-010 (B): json_path 规则是"体内治理" — 触发条件由请求体 JSON
+        # 决定而非路径; 不进入 path 覆盖检查 (timeout 分支的 path 启发式看不到
+        # body, 该缺口已登记 DEBT-0021)。action 白名单检查对它们仍然生效。
+        if action_raw in ("DENY", "ESCALATE") and rule.get("json_path") is None:
             non_allow_paths.append(rule.get("path_pattern", ""))
     return non_allow_paths, invalid_actions
 

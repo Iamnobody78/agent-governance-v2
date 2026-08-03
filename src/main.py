@@ -15,7 +15,8 @@ from typing import Optional
 from aiohttp import web, ClientSession, ClientTimeout
 
 from .models import InterceptRequest, InterceptResponse, DecisionRecord, Verdict
-from .policy import PolicyEngine, Rule
+from .lethality import lethality_for_tool
+from .policy import PolicyEngine, Rule, _json_extract
 from .storage import Storage
 
 logger = logging.getLogger(__name__)
@@ -72,9 +73,10 @@ async def intercept_handler(request: web.Request) -> web.Response:
     # 0. hot-reload policies if YAML changed (DEBT-0005)
     await asyncio.to_thread(policy_engine.maybe_reload)
     # 1. evaluate policy with timeout guard
+    #    TASK-REAL-010 (B): req.body 传入 — json_path 条件规则检查请求体 JSON
     try:
         rule = await asyncio.wait_for(
-            asyncio.to_thread(policy_engine.evaluate, req.path, req.method),
+            asyncio.to_thread(policy_engine.evaluate, req.path, req.method, req.body),
             timeout=INTERCEPT_TIMEOUT,
         )
     except asyncio.TimeoutError:
@@ -155,6 +157,7 @@ async def intercept_handler(request: web.Request) -> web.Response:
             )
 
     # 3. persist decision (strong-typed model, serialized at DB edge)
+    _tname, _tleth = _audit_tool_fields(req)
     decision = DecisionRecord(
         id=str(uuid.uuid4()),
         verdict=verdict,
@@ -163,6 +166,8 @@ async def intercept_handler(request: web.Request) -> web.Response:
         path=req.path,
         method=req.method,
         agent_id=req.agent_id,
+        tool_name=_tname,
+        tool_lethality=_tleth,
     )
     # v0.2.2 (external critique #3.1): sqlite3 writes are synchronous — run in
     # the thread pool so the event loop is not blocked (Storage has an internal
@@ -227,7 +232,7 @@ async def _proxy_forward(req: InterceptRequest) -> Optional[dict]:
 async def health_handler(request: web.Request) -> web.Response:
     return web.json_response({
         "status": "ok",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "uptime_seconds": round(_uptime(), 2),
         "decisions_total": storage.count(),
     })
@@ -249,40 +254,9 @@ async def decisions_handler(request: web.Request) -> web.Response:
 # and fullwidth variants cannot bypass the exact-match blacklist.
 DANGEROUS_TOOL_NAMES = ("delete_file", "delete_user", "sudo_exec", "rm_file")
 
-import unicodedata as _unicodedata
-
-# Homoglyph confusables: characters that LOOK like ASCII but are NOT
-# folded by NFKC/casefold (Greek iota vs Latin i, Cyrillic lookalikes,
-# Roman numerals). Reviewer finding R2: 'delete_fιle' (U+03B9) passes an
-# exact-match blacklist and is NOT caught by NFKC alone — casefold keeps
-# it as U+03B9. This map is the deliberate, documented defense-in-depth.
-_CONFUSABLE_MAP = str.maketrans({
-    # Greek iota lookalikes -> i
-    "\u03b9": "i", "\u0399": "i", "\u03ca": "i", "\u03aa": "i",
-    # Cyrillic lookalikes (a, e, o, p, c, i, b)
-    "\u0430": "a", "\u0435": "e", "\u043e": "o", "\u0440": "p",
-    "\u0441": "c", "\u0456": "i", "\u0406": "i",
-    # Roman numerals I/i
-    "\u2160": "i", "\u2170": "i",
-})
-
-
-def _norm_tool_name(name) -> str:
-    """Normalize a tool name for comparison.
-
-    Pipeline: NFKC (compat decomposition, folds fullwidth forms) ->
-    confusable map (homoglyph lookalikes) -> casefold (case variants).
-    Agent frameworks normalize before tool lookup, so the gateway must
-    match — otherwise 'Delete_File', 'delete＿file' (fullwidth U+FF3F) or
-    'delete_fιle' (U+03B9) slip past the blacklist and execute upstream.
-    """
-    if not isinstance(name, str):
-        return ""
-    return (
-        _unicodedata.normalize("NFKC", name)
-        .translate(_CONFUSABLE_MAP)
-        .casefold()
-    )
+# TASK-REAL-010: 归一化管线移入 src/norm.py (单一事实源) — lethality 表与
+# 本模块共享同一 NFKC -> confusable map -> casefold 流程。
+from .norm import norm_tool_name as _norm_tool_name
 
 
 def _extract_tool_names(req: InterceptRequest) -> list:
@@ -328,6 +302,31 @@ def _extract_tool_names(req: InterceptRequest) -> list:
                         if isinstance(name, str) and name:
                             names.append(name)
     return names
+
+
+def _audit_tool_fields(req, tool_names=None) -> tuple:
+    """TASK-REAL-010 (Step 1): (tool_name, tool_lethality) 审计字段。
+
+    取请求中"杀伤半径最高"的工具名与 Ls (src/lethality.py) — 审计字段反映
+    最大风险工具而非第一个遇到的名字, 供事后归因。先走精确的 OpenAI 格式
+    提取; 无结果时退化为 json_path 通配提取 ($..name), 覆盖非 OpenAI
+    结构化体 (如 /v1/intercept 的任意 agent 请求)。无工具声明 → (None, None)。
+    """
+    if tool_names is None:
+        tool_names = _extract_tool_names(req)
+    if not tool_names:
+        body = req.body
+        if isinstance(body, str) and body.strip():
+            try:
+                body = json.loads(body)
+            except json.JSONDecodeError:
+                body = None
+        if isinstance(body, dict):
+            tool_names = [v for v in _json_extract(body, "$..name") if v.strip()]
+    if not tool_names:
+        return None, None
+    worst = max(tool_names, key=lambda n: lethality_for_tool(n))
+    return worst, lethality_for_tool(worst)
 
 
 def _malformed_tool_declaration(req) -> str | None:
@@ -390,11 +389,12 @@ def _malformed_tool_declaration(req) -> str | None:
     return None
 
 
-async def _deny_decision(req, reason, status, matched_rule) -> web.Response:
+async def _deny_decision(req, reason, status, matched_rule, tool_name=None, tool_lethality=None) -> web.Response:
     """Record a DENY decision and return the gateway rejection response.
 
     Shared by the malformed-declaration path and the dangerous-tool path
-    so persistence + error shape stay identical.
+    so persistence + error shape stay identical. tool_name / tool_lethality
+    (TASK-REAL-010 Step 1) audit the highest-lethality tool in the request.
     """
     decision = DecisionRecord(
         id=str(uuid.uuid4()),
@@ -404,6 +404,8 @@ async def _deny_decision(req, reason, status, matched_rule) -> web.Response:
         path=req.path,
         method=req.method,
         agent_id=req.agent_id,
+        tool_name=tool_name,
+        tool_lethality=tool_lethality,
     )
     # v0.2.2 (external critique #3.1): sqlite3 writes are synchronous — run in
     # the thread pool so the event loop is not blocked (Storage has an internal
@@ -452,11 +454,14 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
     # reject the request outright (never silently forward upstream).
     malformed = _malformed_tool_declaration(req)
     if malformed:
+        _tname, _tleth = _audit_tool_fields(req, tool_names)
         return await _deny_decision(
             req,
             reason=f"工具声明畸形，无法验证 — fail-closed 拒绝: {malformed}",
             status=400,
             matched_rule="malformed-tool-declaration",
+            tool_name=_tname,
+            tool_lethality=_tleth,
         )
 
     # Reviewer REJECT fix: compare NORMALIZED names (NFKC + casefold) on
@@ -469,17 +474,20 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
     ]
 
     if dangerous_tools:
+        _tname, _tleth = _audit_tool_fields(req, tool_names)
         return await _deny_decision(
             req,
             reason=f"LLM 请求声明危险工具调用 {dangerous_tools} — 拒绝转发",
             status=403,
             matched_rule="block-dangerous-tools",
+            tool_name=_tname,
+            tool_lethality=_tleth,
         )
     else:
         # ordinary chat → consult policy engine (allow-chat rule)
         await asyncio.to_thread(policy_engine.maybe_reload)
         rule = await asyncio.to_thread(
-            policy_engine.evaluate, req.path, req.method
+            policy_engine.evaluate, req.path, req.method, body
         )
         if rule is None:
             # same default semantics as /v1/intercept: no match → ALLOW
@@ -498,6 +506,7 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
             status = 202
             matched_rule = rule.name
 
+    _tname, _tleth = _audit_tool_fields(req, tool_names)
     decision = DecisionRecord(
         id=str(uuid.uuid4()),
         verdict=verdict,
@@ -506,6 +515,8 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
         path=req.path,
         method=req.method,
         agent_id=req.agent_id,
+        tool_name=_tname,
+        tool_lethality=_tleth,
     )
     # v0.2.2 (external critique #3.1): sqlite3 writes are synchronous — run in
     # the thread pool so the event loop is not blocked (Storage has an internal
@@ -628,7 +639,7 @@ def create_app() -> web.Application:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     app = create_app()
-    logger.info("governance-gateway v0.2.0 starting on :9000")
+    logger.info("governance-gateway v0.3.0 starting on :9000")
     # DEBT-0007: explicit shutdown_timeout (default 60s) — fast graceful
     # shutdown lets on_cleanup flush pending decisions (DEBT-0010) quickly.
     web.run_app(app, port=9000, shutdown_timeout=10)

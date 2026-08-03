@@ -3,6 +3,27 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0025 — 2026-08-03T22:40:00Z
+
+- PR: N/A（TASK-REAL-010 B 阶段——json_path 工具治理 + 可解释主控 Step 1 审计 Schema 扩充，用户裁决 B 优先）
+- 标题: B 阶段 json_path 条件规则 + 工具杀伤半径权重表 + DecisionRecord/storage 审计列——"体内治理"第一层
+- 变更文件: `src/policy.py`（Rule 新增 json_path/json_pattern + 加载期 fail-closed 校验 + 零依赖 JSONPath 子集解析器 _parse_json_path/_json_extract/_extract_at + matches/evaluate 扩展 body）、`src/norm.py`（新建，归一化管线单一事实源，自 main 抽取）、`src/lethality.py`（新建，Ls 权重表 + lethality_for_tool）、`src/models.py`（DecisionRecord + tool_name/tool_lethality）、`src/storage.py`（表 10 列 + _migrate 旧库 ALTER 无损迁移）、`src/main.py`（evaluate 传 body + _audit_tool_fields 最高杀伤审计 + _deny_decision 工具字段 + v0.3.0）、`config/policies.yaml`（v0.2.0 + block-shell-tool DENY + escalate-file-write-tool ESCALATE）、`examples/policy_probe.py`（GATE 5 json_path 豁免 + 4 项新校验）、`scripts/policy_sync.py`（GATE 7 json_path 豁免 path 覆盖）、`tests/test_json_path_policy.py`（新建 35 测试）、`docs/json_path_governance_report.md`（新建报告）、`debt_registry.md`（登记 DEBT-0021 + 清理活跃区残留 DEBT-0016 行）
+- 变更行数: 核心 +240 左右，测试 +500 左右，文档 +150 左右
+- 评级: 自验证 A → **250/250 测试**（215 基线 + 35 新增）+ 覆盖率 **90.07%**（门槛 60%）+ GATE 1 (511 asserts 0 dataclass) / GATE 2 / GATE 3 / GATE 5 / GATE 6 / GATE 7 全绿
+- 结论: **PASS**（json_path 工具治理落地 + Step 1 审计 Schema 完成；DEBT-0021 已文档化接受）
+- 问题数: 执行期自发现 2（Rule.__post_init__ 缺 json_pattern-requires-json_path 校验 → 测试捕获后补上；测试文件残留死代码行 → 清理），修复后 0
+- Reviewer: N/A（门控即审查者）
+- Commit: TASK-REAL-010 提交（见 closeout）
+- 备注:
+  - **B 阶段核心语义**: json_path 规则 = 路径 ∧ 方法 ∧ 请求体三重条件；非 JSON 体/无法提取 → 条件不满足 → 规则不匹配（结构化体才承载工具调用，兜底由 fail-closed 层负责）——与"无法验证即拒绝"教义不冲突，因空体 ≠ 未验证的工具调用而是不存在工具调用
+  - **Step 1 审计 Schema**: DecisionRecord.tool_name/tool_lethality + decisions 表 10 列 + _migrate() 对旧 8 列库 ALTER ADD COLUMN（无损）；_audit_tool_fields 取"杀伤半径最高"工具（max Ls）而非第一个名字
+  - **Ls 权重表**: 只读 0.1-0.3 / 写入 0.5-0.7 / 系统执行 0.85-0.95 / 删除提权 0.9-0.95 / 未知 0.6；复用 norm.py 归一化（同形异义字 delete_fιle→0.95 有测试锚点）；只做审计记账不参与决策（避免第二策略事实源），Step 2+ 迁移 YAML
+  - **GATE 5/7 联动**: json_path 规则豁免路径覆盖检查（timeout 分支 path 启发式看不到 body），但新增 4 项条件规则约束（ALLOW+json_path 拒绝 / 阻断必须带 json_pattern / json_path 语法校验 / json_pattern 正则校验）+ action 白名单对 json_path 规则照常生效
+  - **零依赖哲学**: JSONPath 子集手写实现（~120 行），不引入 jsonpath-ng
+  - 新登记债务: DEBT-0021（timeout 分支 path 启发式不覆盖 json_path 规则，LOW，已文档化接受）；活跃 4（0018/0019/0020/0021 均无阻塞）
+
+---
+
 ## AUDIT-0024 — 2026-08-03T21:15:00Z
 
 - PR: N/A（TASK-REAL-009 A 阶段——语义旁路 LLM-Judge，用户裁决 A 优先）

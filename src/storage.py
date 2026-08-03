@@ -48,7 +48,9 @@ class Storage:
                 timestamp TEXT NOT NULL,
                 path TEXT NOT NULL,
                 method TEXT NOT NULL,
-                agent_id TEXT
+                agent_id TEXT,
+                tool_name TEXT,
+                tool_lethality REAL
             )
         """)
         self.conn.execute("""
@@ -62,14 +64,29 @@ class Storage:
                 value TEXT NOT NULL
             )
         """)
+        self._migrate()
         self.conn.commit()
+
+    def _migrate(self) -> None:
+        """TASK-REAL-010 (Step 1): additive schema migration for audit columns.
+
+        Pre-existing 8-column databases gain tool_name / tool_lethality via
+        SQLite ALTER TABLE ADD COLUMN (non-destructive, defaults NULL);
+        fresh databases already carry them in CREATE TABLE. Old rows read
+        back with NULL audit fields — no data loss, no backfill.
+        """
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(decisions)")}
+        if "tool_name" not in cols:
+            self.conn.execute("ALTER TABLE decisions ADD COLUMN tool_name TEXT")
+        if "tool_lethality" not in cols:
+            self.conn.execute("ALTER TABLE decisions ADD COLUMN tool_lethality REAL")
 
     def save(self, decision: Dict) -> str:
         try:
             with self._lock:
                 self.conn.execute(
-                    """INSERT INTO decisions (id, verdict, reason, matched_rule, timestamp, path, method, agent_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    """INSERT INTO decisions (id, verdict, reason, matched_rule, timestamp, path, method, agent_id, tool_name, tool_lethality)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         decision["id"],
                         decision["verdict"],
@@ -79,6 +96,8 @@ class Storage:
                         decision["path"],
                         decision["method"],
                         decision.get("agent_id"),
+                        decision.get("tool_name"),
+                        decision.get("tool_lethality"),
                     ),
                 )
                 self.conn.commit()
@@ -122,8 +141,8 @@ class Storage:
             for entry in self._pending:
                 try:
                     self.conn.execute(
-                        """INSERT INTO decisions (id, verdict, reason, matched_rule, timestamp, path, method, agent_id)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        """INSERT INTO decisions (id, verdict, reason, matched_rule, timestamp, path, method, agent_id, tool_name, tool_lethality)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             entry["id"],
                             entry["verdict"],
@@ -133,6 +152,8 @@ class Storage:
                             entry["path"],
                             entry["method"],
                             entry.get("agent_id"),
+                            entry.get("tool_name"),
+                            entry.get("tool_lethality"),
                         ),
                     )
                     self.conn.commit()
@@ -234,6 +255,8 @@ class Storage:
             "path": row[5],
             "method": row[6],
             "agent_id": row[7],
+            "tool_name": row[8],
+            "tool_lethality": row[9],
         }
 
     def close(self) -> None:

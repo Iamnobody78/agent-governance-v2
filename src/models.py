@@ -57,6 +57,11 @@ class DecisionRecord(BaseModel):
     path: str
     method: str
     agent_id: Optional[str] = None
+    # TASK-REAL-010 (Step 1 可解释审计): 工具杀伤半径审计字段
+    #   tool_name      — 请求中杀伤半径最高的工具名 (归一化前原样, 供归因)
+    #   tool_lethality — 对应 Ls (0.0-1.0, 见 src/lethality.py); None = 无工具声明
+    tool_name: Optional[str] = None
+    tool_lethality: Optional[float] = None
 
     @field_serializer("verdict")
     def serialize_verdict(self, value: Verdict) -> str:

@@ -164,6 +164,22 @@ rules:
 
 **v1 教训**：v1 的"策略"是硬编码在 Python 字典里的字符串（`"halve_learning_rate"`），不是可配置的规则。v2 的策略必须是**数据（YAML/JSON），不是代码**。
 
+**v0.3.0 新增（TASK-REAL-010，B 阶段 json_path 工具治理）**：规则可携带 `json_path`（零依赖 JSONPath 子集：`$` `.key` `..`（递归下降） `[N]` `[*]`）+ `json_pattern`（正则），命中路径/方法后再检查**请求体 JSON**：
+
+```yaml
+  # 任意内部路径 + body 声明 shell 工具 → DENY
+  - name: block-shell-tool
+    path_pattern: "*"
+    method: POST
+    action: DENY
+    priority: 10
+    json_path: "$..name"
+    json_pattern: "^(execute_command|system_run|shell_exec|bash|python_exec)$"
+    reason: "LLM 请求声明系统级工具 — 拒绝 (json_path 治理)"
+```
+
+安全语义：非 JSON 体/无法提取 → 条件不满足 → 规则不匹配（结构化体才承载工具调用；无法解析体的兜底由 fail-closed 层负责）。完整设计见 `docs/json_path_governance_report.md`。
+
 #### L4: 组织层
 
 | 组件 | 说明 |

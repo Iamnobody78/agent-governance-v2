@@ -6,6 +6,7 @@ Exit code 0 = consistent, 1 = at least one DENY/ESCALATE rule uncovered
 or one ALLOW rule wrongly flagged as dangerous.
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -17,6 +18,7 @@ if str(REPO_ROOT) not in sys.path:
 
 # Single source of truth: import from src.danger, don't duplicate constants.
 from src.danger import is_dangerous, DANGEROUS_PREFIXES
+from src.policy import _parse_json_path
 
 BLOCKING_ACTIONS = ("DENY", "ESCALATE")
 ALLOWED_ACTIONS = BLOCKING_ACTIONS + ("ALLOW",)
@@ -56,6 +58,33 @@ def main() -> int:
         method = r.get("method")
         if action not in ALLOWED_ACTIONS:
             continue  # already reported above
+
+        # TASK-REAL-010 (B): json_path 条件规则是"体内治理" — 触发条件由请求体
+        # JSON 决定, 路径覆盖不变量不适用 (timeout 分支的 path 启发式看不到
+        # body, 该缺口已登记 DEBT-0021)。但条件规则自身有严格约束:
+        if r.get("json_path") is not None:
+            jp, jpt = r.get("json_path"), r.get("json_pattern")
+            if action == "ALLOW":
+                warnings.append(
+                    f"{name}: ALLOW + json_path 条件规则是白名单走火器 — "
+                    f"body 内容满足条件即放行, 拒绝该组合"
+                )
+            if action in BLOCKING_ACTIONS and not jpt:
+                warnings.append(
+                    f"{name}: DENY/ESCALATE + json_path 必须携带 json_pattern — "
+                    f"仅凭路径存在即拦截过于宽泛 (误伤普通 'name' 字段)"
+                )
+            try:
+                _parse_json_path(jp)
+            except ValueError as e:
+                warnings.append(f"{name}: json_path {jp!r} 语法错误 — {e} (fail-closed 要求加载期校验)")
+            if jpt:
+                try:
+                    re.compile(jpt)
+                except re.error as e:
+                    warnings.append(f"{name}: json_pattern {jpt!r} 非法正则 — {e}")
+            continue  # 条件规则不参与 is_dangerous 路径覆盖检查
+
         # Missing method = wildcard (matches all) per policy.py Rule.matches
         if method is None:
             # treat as wildcard: check path against is_dangerous for any method
