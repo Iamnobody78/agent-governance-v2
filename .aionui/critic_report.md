@@ -1,6 +1,6 @@
 ## 🧬 批判报告 — GATE 8（动态语义门控）
 
-- 运行时间: 2026-08-03T10:07:08Z | 仓库: C:\Users\ivy\AppData\Roaming\AionUi\aionui\conversations\2026\07\27\aionrs-temp-48324704\agent-governance-v2 | 批判者版本: 1.0.0
+- 运行时间: 2026-08-03T10:24:23Z | 仓库: C:\Users\ivy\AppData\Roaming\AionUi\aionui\conversations\2026\07\27\aionrs-temp-48324704\agent-governance-v2 | 批判者版本: 1.0.0
 
 ### 批判者团队状态
 | 角色 | 状态 | 最高严重度 | 发现数 |

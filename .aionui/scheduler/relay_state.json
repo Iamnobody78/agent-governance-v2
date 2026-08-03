@@ -1,38 +1,69 @@
 {
   "schema_version": "1.0",
-  "task_id": "TASK-REAL-011",
-  "title": "C-phase: Trace causality tracking — trace_id/parent_span_id + recursive-CTE call-tree endpoint + header protocol (user-adjudicated B->C->D order)",
-  "created_at": "2026-08-03T22:45:00Z",
-  "status": "COMPLETED",
-  "current_phase": "CLOSED",
+  "task_id": "TASK-REAL-012",
+  "title": "Self-Evolution Engine (Meta-Programming Class III): Phase 1-5 — Critic Agent code + Meta-Harness adapter/sandbox + Governance Brain (rationale + five-level) + Context Hook HMAC",
+  "created_at": "2026-08-03T16:00:00Z",
+  "status": "IN_PROGRESS",
+  "current_phase": "PHASE_4_CLOSED",
   "round": 1,
   "max_rounds": 3,
-  "work_dir": ".aionui/scheduler/work/REAL-011",
+  "work_dir": ".aionui/scheduler/work/REAL-012",
   "mcp_channel": {
     "client": "scripts/mcp_client.py",
     "server": "filesystem_mcp_server.py",
     "sandbox": "BOTTLESUMO_ROOT=repo root",
     "tools": ["write_file", "read_file", "list_directory", "file_info"]
   },
+  "phases": {
+    "1": {"name": "Critic Agent code (GATE 8)", "status": "COMPLETED", "commit": "0e389ea", "tests": "295 passed (274 + 21)"},
+    "2": {"name": "Meta-Harness light adapter (DENY scan -> pending_rules)", "status": "COMPLETED", "commit": "c6a3a95", "tests": "307 passed (295 + 12)"},
+    "3": {"name": "Meta-Harness full sandbox (conflict + pytest regression + reversible deploy)", "status": "COMPLETED", "commit": "45e4561", "tests": "319 passed (307 + 12)"},
+    "4": {"name": "Governance Brain Phase 1 (rationale + five-level verdict)", "status": "COMPLETED", "commit": "42d938d", "tests": "329 passed (319 + 10)"},
+    "5": {"name": "Context Hook HMAC (header forgery protection)", "status": "PENDING"}
+  },
   "validation_scope": {
     "propositions": [
-      "Span model: span_id == decision.id; single-parent chain; missing X-Parent-Span-ID -> NULL (root anchor for recursive CTE, NOT random UUID — random placeholder cannot be anchored; design ruling recorded in docs/trace_report.md §3.1)",
-      "Recursive CTE (storage.get_trace): root anchor parent_span_id IS NULL + UNION dedupe + max_depth=50 + max_nodes=500 guards; single-parent reachable cycles mathematically impossible (rewiring parent detaches from tree); guards target self-loops/deep chains (anchored: self-loop returns {R,A}, 60-deep truncated to 51 nodes)",
-      "Migration: _migrate() lossless 4-col expansion (tool_name/tool_lethality/trace_id/parent_span_id -> 12-col table); idx_trace index created AFTER _migrate() (legacy DBs have no trace_id column pre-ALTER; ordering fixed at runtime)",
-      "Header protocol: X-Trace-ID (root; UUID4 generated when missing) / X-Parent-Span-ID (parent decision id; NULL when missing) / X-Span-ID (response header = decision.id) injected at intercept entry; both DecisionRecord construction sites (malformed-tool DENY + main path)",
-      "Endpoint: GET /v1/trace/{trace_id} returns full call tree (depth-ordered) via asyncio.to_thread; 404 when trace unknown",
-      "B-phase linkage: tool_lethality as trace edge weight — per-node lethality visible for audit (test_lethality_as_edge_weight anchored)",
-      "Zero regression: 270/270 tests (250 baseline + 20 new), coverage 90.12% (>=60), GATE 1-7 exit 0; version v0.4.0"
+      "Five-level verdict: ALLOW (200 passthrough) / ALLOW_WITH_WARNING (200 + X-Governance-Warning header, forwarding uninterrupted) / ESCALATE (202 pending review) / DENY (403) / SUSPEND (403 frozen pending manual review — distinct from DENY semantics)",
+      "Explainability: DecisionRecord.rationale (13th column) derived from matched rule (rule={name}) or default description; lossless 12->13 migration via _migrate() ALTER",
+      "Injectable policy: create_app(config_path) enables test/multi-tenant isolated policy files; None keeps config/policies.yaml default",
+      "Chat full-chain: ALLOW_WITH_WARNING forwards to upstream with warning header intact (verified with live temp upstream LLM server — body transparently passed)",
+      "GATE 8 (critic runner): 5 critics parallel via asyncio + to_thread; verdict = HIGH veto REJECT / 2-3 MEDIUM REVISION / >=4/5 PASS",
+      "Zero regression: 329/329 tests (319 baseline + 10 new); GATE 8 real run 5/5 PASS"
     ],
-    "evidence": "Full local run: pytest 270 passed; --cov 90.12%; check_test_quality, check_policy, policy_probe, meta_security_scanner, policy_sync, GATE 1-7 all exit 0 (full verification, no truncated output); e2e: two-request chain via X-Trace-ID roundtrip returns 2-node ordered call tree"
+    "evidence": "Full local run: pytest 329 passed (zero regression); GATE 8 runner 5/5 PASS; e2e intercept SUSPEND -> 403 + verdict SUSPEND; chat ALLOW_WITH_WARNING -> 200 + X-Governance-Warning + upstream body passthrough; _migrate 12->13 roundtrip anchored"
   },
   "history": [
     {
       "round": 1,
+      "phase": 4,
       "event": "COMPLETED",
-      "ts": "2026-08-03T23:30:00Z",
-      "summary": "C-phase trace causality tracking delivered. src/models.py: DecisionRecord + trace_id/parent_span_id, InterceptResponse + trace_id. src/storage.py: 12-col CREATE TABLE + _migrate() lossless 4-col expansion + idx_trace after _migrate + get_trace() recursive CTE (depth col, max_depth=50, max_nodes=500, sqlite3 error -> log warning + []). src/main.py: _trace_context(headers) helper (missing trace -> uuid4, missing parent -> None), injected at both DecisionRecord construction sites, X-Trace-ID/X-Span-ID response headers, trace_handler GET /v1/trace/{trace_id} (404 on unknown), v0.4.0. 20 new tests (TestTraceContext/TestTraceModels/TestTraceStorageSchema/TestGetTrace/TestTraceEndpoint). DEBT-0019 cleared (d95f83c); DEBT-0022 registered (chat/completions path not trace-injected — LOW). Report: docs/trace_report.md.",
-      "commit": "d95f83c (TASK-REAL-011 code) + closeout commit (debt/AUDIT-0026/relay/snapshot v1.9.0)"
+      "ts": "2026-08-03T18:24:48Z",
+      "summary": "Governance Brain Phase 1 delivered. src/models.py: Verdict five-level enum + DecisionRecord.rationale. src/policy.py: VALID_ACTIONS + Rule action Literal five-level. src/storage.py: 13-col CREATE TABLE + _migrate() 12->13 lossless ALTER + both INSERTs 13-col + _row_to_dict row[12]. src/main.py: intercept five-level action mapping (SUSPEND->403, ESCALATE->202, ALLOW_WITH_WARNING->200+X-Governance-Warning), chat same-batch edits, _deny_decision rationale param, create_app(config_path) injectable policy. tests/test_governance_brain.py: 10 tests (five-level enum, policy load warn/suspend, rationale roundtrip, 12->13 migration, real-engine HTTP five-level responses + chat upstream forwarding). Execution findings: aiohttp TestCase get_application must be async (patch decorator too late — app built in setUp) -> replaced fake engine with real engine + temp policy YAML injection (matches test_intercept convention, more real); create_app hardcoded policy path -> config_path param. GATE 8: 5/5 PASS. Next: Phase 5 Context Hook HMAC (~100 LOC).",
+      "commit": "42d938d (Phase 4 code) + closeout commit (debt/AUDIT-0027+0028/relay/snapshot v1.10.0)"
+    },
+    {
+      "round": 1,
+      "phase": 3,
+      "event": "COMPLETED",
+      "ts": "2026-08-03T17:20:00Z",
+      "summary": "Meta-Harness full sandbox delivered (src/meta_harness/sandbox.py ~340 LOC): check_conflicts (path+method overlap but different action -> HIGH), run_pytest_regression (real subprocess — anti-forgery), evaluate_candidate_in_sandbox, deploy_candidate (backup .bak-<ts> + name-dedup merge), generate_eval_report, CLI evaluate/deploy. 12 new tests. e2e scan->evaluate->report deployable=True.",
+      "commit": "45e4561"
+    },
+    {
+      "round": 1,
+      "phase": 2,
+      "event": "COMPLETED",
+      "ts": "2026-08-03T16:50:00Z",
+      "summary": "Meta-Harness light adapter delivered (src/meta_harness/adapter.py ~250 LOC): generate_policy_suggestions aggregates DENY counts by (path, method, tool_name) in window, skips covered paths, outputs pending_rules/ candidate YAML with evidence (decision_ids/trace_ids); validate_candidate + CLI scan/validate. e2e scan->validate hit_rate=1.0.",
+      "commit": "c6a3a95"
+    },
+    {
+      "round": 1,
+      "phase": 1,
+      "event": "COMPLETED",
+      "ts": "2026-08-03T16:20:00Z",
+      "summary": "Critic Agent team codeified as GATE 8 (src/critic/ 8 modules): audit_critic (A1-A5), security_critic (S1-S6), arch_critic (R1-R3), test_critic (T1-T4), docs_critic (D1-D3), verdict (HIGH veto REJECT / 2-3 MEDIUM REVISION / LOW non-blocking), runner (asyncio parallel + Windows UTF-8 stdout), __init__. 21 tests; ci.yml critic-gate job added. Execution findings fixed: S2 scoped to INTERCEPT_TIMEOUT, A1 table-row only + DEBT-\\d+, D1 excludes critic_report.md + xxx placeholder, D2 VERSION_RE accepts bare version, A2 empty-block filter, T4 content-based module match.",
+      "commit": "0e389ea"
     }
   ]
 }

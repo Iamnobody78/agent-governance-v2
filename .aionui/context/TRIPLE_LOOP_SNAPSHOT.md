@@ -1,7 +1,7 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.9.0
-> 快照时间: 2026-08-03（TASK-REAL-011 C 阶段——Trace 因果追踪落地后更新）
+> 版本: v1.10.0
+> 快照时间: 2026-08-03（TASK-REAL-012 Phase 4——治理大脑 Phase 1：可解释引擎 rationale + 五级判定后更新）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -11,14 +11,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 270 passed |
-| **覆盖率** | 90.12%（门槛 ≥ 60%） |
-| **债务清偿率** | 17/17 已清偿（TASK-REAL-001..008 十六项 + DEBT-0019 于 REAL-011）+ 活跃 4（DEBT-0018/0020/0021/0022，无阻塞） |
-| **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）、DEBT-0022（chat/completions 路径未注入 trace, LOW） |
-| **最近事件** | TASK-REAL-011 ✅（C 阶段：Trace 因果追踪——trace_id/parent_span_id 12 列迁移 + 递归 CTE 调用树端点 + X-Trace-ID/X-Parent-Span-ID/X-Span-ID 头协议 + v0.4.0；20 测试；DEBT-0019 清偿、DEBT-0022 登记） |
-| **CI 状态** | ✅ GATE 1-7 全绿（270 tests 全量回归 exit 0） |
-| **约束体系** | R1-R6 已固化（REAL-003..010 八连验证） |
-| **提交链** | …REAL-009: `665d693` → REAL-010: `e45a02b` → REAL-011: `d95f83c`（+ closeout 提交） |
+| **测试全量** | 329 passed（319 基线 + 10 新增，零回归） |
+| **覆盖率** | 90.12%+（门槛 ≥ 60%，Phase 4 变更未降） |
+| **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞）；DEBT-0022 已清偿（REAL-011.1）、DEBT-0019 已清偿（REAL-011） |
+| **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受） |
+| **最近事件** | TASK-REAL-012 Phase 4 ✅（治理大脑 Phase 1：Verdict 五级 ALLOW/ALLOW_WITH_WARNING/ESCALATE/DENY/SUSPEND + DecisionRecord.rationale 第 13 列 + X-Governance-Warning 响应头 + create_app(config_path) 策略注入；10 测试；GATE 8 5/5 PASS） |
+| **CI 状态** | ✅ GATE 1-8 全绿（GATE 8 = Critic Agent 五批判者，329 tests 全量回归 exit 0） |
+| **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
+| **提交链** | …REAL-011: `d95f83c` → Phase 1: `0e389ea` → Phase 2: `c6a3a95` → 协议: `0f636e2` → Phase 3: `45e4561` → Phase 4: `42d938d`（+ closeout 提交） |
 
 ---
 
@@ -92,7 +92,7 @@
 1. **加载此文件**：读取当前快照，理解状态
 2. **加载协议**：读取 `.aionui/protocols/teams_collaboration.md` 获取完整协作流程
 3. **加载债务账本**：读取 `debt_registry.md`（仓库根）获取剩余债务
-4. **验证测试**：运行 `pytest tests/ -q` 确认 270 passed
+4. **验证测试**：运行 `pytest tests/ -q` 确认 329 passed
 5. **继续治理**：运行 `@governance start` 启动下一轮治理循环
 
 ---
@@ -104,13 +104,14 @@
 | DEBT-0018 | 请求/响应无大小上限 | 🟡 MEDIUM | 网关层 body 上限（独立任务或并入 D 阶段） |
 | DEBT-0020 | 输出侧语义评估缺失 | 🟢 LOW | 代理转发后异步补判 agent_response（待 A 就绪） |
 | DEBT-0021 | timeout 分支不覆盖 json_path 规则 | 🟢 LOW | 已文档化接受；后续可在 danger.py 增加 body 感知或接受纵深防御 |
-| DEBT-0022 | chat/completions 路径未注入 trace 上下文 | 🟢 LOW | 将 _trace_context 提取到共享中间件/装饰器，chat 落库决策补 trace_id/parent_span_id |
+| DEBT-0022 | chat/completions 路径未注入 trace 上下文 | 🟢 LOW | ✅ 已清偿（REAL-011.1 `6c25bd9`：chat 提取 trace + 两处 DENY 注入 + 主路径 DecisionRecord + 全响应分支回传头 + MAX_TRACE_ID_LEN=128） |
 
-当前治理循环扫描结论：**17/17 已清偿（含 DEBT-0019），4 项活跃（均无阻塞）**。C 阶段（Trace 因果追踪）完成，多智能体调用链可见性第一层落地。
+当前治理循环扫描结论：**18 项债务已清偿（含 DEBT-0019/0022），3 项活跃（DEBT-0018/0020/0021，均无阻塞）**。TASK-REAL-012 自进化引擎 Phase 4 完成（治理大脑 Phase 1：rationale + 五级判定），L1-L4 层架构全部落地。
 
-下一阶段候选（按 B→C→D 顺次）：
-1. **D：统计反馈调节器**（5min 扫描 DENY 高频模式 → pending_rules 推荐，~150 行）——补自演进闭环（用户已批准 B→C→D 顺次，D 为自然下一步）
-2. **外部评审"治理大脑"候选**（设计哲学消息 + 四层蓝图消息，未裁决）：可解释引擎 rationale 字段 + 五级判定 ALLOW_WITH_WARNING/SUSPEND（Phase 1，<500 行）/ Tree-sitter AST 硬阻断 + Payload Extractor + HMAC Context Hook + Shadow Transaction/Saga + Rust 重写（P0-P4 roadmap）——待用户裁决，建议 D 阶段后或与之并行立项
+下一阶段候选（按 B→C→D→E(自进化) 顺次）：
+1. **TASK-REAL-012 Phase 5：Context Hook HMAC**（约 100 行，HMAC 签名 context 头防伪造）——L3 治理大脑收尾，**待用户批准**
+2. **D：统计反馈调节器**（5min 扫描 DENY 高频模式 → pending_rules 推荐）——已在 Phase 2（Meta-Harness 适配器 `c6a3a95`）吸收：generate_policy_suggestions + pending_rules/ 候选 YAML
+2. **外部评审后续候选**（协商/学习引擎、Tree-sitter AST、HMAC Context Hook、Shadow Saga、Rust）：治理大脑已裁决并入 5 层架构（L3/L2）；L3 可解释引擎 + 五级判定 Phase 4 已落地（rationale + ALLOW_WITH_WARNING/SUSPEND）；**HMAC Context Hook 为 Phase 5**（约 100 行，待批准）；Tree-sitter/Rust 等阶段未来化
 3. **A 生产化**：拉取 qwen2.5:7b-instruct-q4_K_M（JUDGE_MODEL 热切换零代码）或 Bastion 70M 级联，实测延迟/准确率——待硬件到位
 4. **可解释主控 Step 2+**：CoT 推理链 / 上下文漂移（标记"待 A 就绪"）；Ls 权重表届时迁移 YAML
 5. **输出侧语义**（DEBT-0020）：代理转发后异步补判 agent_response

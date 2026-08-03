@@ -3,6 +3,45 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0028 — 2026-08-03T18:30:00Z
+
+- PR: N/A（TASK-REAL-012 Phase 4——治理大脑阶段 1：可解释引擎 rationale + 五级判定）
+- 标题: 治理大脑 Phase 1——DecisionRecord.rationale 第 13 列 + Verdict 五级（ALLOW/ALLOW_WITH_WARNING/ESCALATE/DENY/SUSPEND）+ X-Governance-Warning 响应头 + create_app 策略注入
+- 变更文件: `src/models.py`（Verdict 五级 + DecisionRecord.rationale）、`src/policy.py`（VALID_ACTIONS + Rule action Literal 五级）、`src/storage.py`（decisions 表 13 列 + _migrate 12→13 无损 ALTER）、`src/main.py`（intercept 五级 action 映射：SUSPEND→403/ESCALATE→202/ALLOW_WITH_WARNING→200+X-Governance-Warning 头；chat 同批编辑；_deny_decision rationale 参数；create_app(config_path) 可注入）、`tests/test_governance_brain.py`（新建 10 测试）
+- 变更行数: 核心约 150 行（符合确认表预估）+ 测试 197 行（提交 42d938d 统计）
+- 评级: 自验证 A → **329/329 测试**（319 基线 + 10 新增，零回归）+ GATE 8 **5/5 PASS**（真实 runner 运行）
+- 结论: **PASS**（可解释引擎落地：每个决策带 rationale 可审计；SUSPEND/ESCALATE 新判定全链路验证——临时 YAML→真实引擎→HTTP 响应）
+- 问题数: 执行期自发现 2（① aiohttp TestCase 的 get_application 必须 async——setUp 阶段创建 app 早于 patch 装饰器激活 → 弃用 fake engine，改为真实引擎+临时策略 YAML 注入，与 test_intercept 惯例一致且全链路更真实；② create_app 硬编码策略路径 → 加 config_path 参数），修复后 0
+- Reviewer: N/A（门控即审查者——GATE 8 批判者 5/5）
+- Commit: `42d938d`（Phase 4 代码）+ closeout 提交（debt/AUDIT-0027+0028/relay/snapshot v1.10.0）
+- 备注:
+  - **五级语义**: ALLOW（200 透传）/ ALLOW_WITH_WARNING（200 + X-Governance-Warning 头，转发不中断）/ ESCALATE（202 升舱待审）/ DENY（403）/ SUSPEND（403 挂起人工复审——与 DENY 区分"临时冻结"）
+  - **chat 全链路验证**: TestChatWarningWithUpstream 启动临时上游 LLM（aiohttp TCPSite）→ 断言 200 + 警告头 + 上游 body 真实透传（转发语义未破坏）
+  - **可审计性**: rationale 由 matched_rule 派生（rule={name}）或默认描述；storage 13 列 INSERT 两处 + _row_to_dict row[12]；旧 12 列库经 _migrate 无损升级
+  - **Phase 5 衔接**: Context Hook HMAC 签名头（防头伪造）作为下一阶段，本阶段已为 intercept/chat 统一注入 trace+五级响应头
+  - 活跃债务: 0020/0021（无阻塞）；0022 已清偿（REAL-011.1）
+
+---
+
+## AUDIT-0027 — 2026-08-03T18:00:00Z
+
+- PR: N/A（TASK-REAL-012 Phase 1-3 补记——Critic Agent 代码化 + Meta-Harness 适配器/沙箱）
+- 标题: 自进化引擎 Phase 1-3 汇总审计——批判者代理团队（GATE 8）+ 策略建议适配器 + 完整评估沙箱
+- 变更文件: `src/critic/`（8 模块：audit/security/arch/test/docs critic + verdict + runner）、`src/meta_harness/adapter.py`（DENY 扫描→pending_rules）、`src/meta_harness/sandbox.py`（conflict check + pytest regression + 可逆 deploy）、`tests/test_critic.py`（21）+ `tests/test_meta_harness.py`（12）+ `tests/test_sandbox.py`（12）+ `.github/workflows/ci.yml`（critic-gate job）
+- 变更行数: Phase 1 约 800 行 + Phase 2 约 250 行 + Phase 3 约 340 行（提交 0e389ea / c6a3a95 / 45e4561）
+- 评级: 自验证 A → **319/319 测试**（Phase 3 closeout 基线）+ GATE 8 真实仓库运行 PASS
+- 结论: **PASS**（五批判者元提示词代码化 + 裁决门禁；Meta-Harness 双环落地：scan→evaluate→deployable 端到端验证）
+- 问题数: 执行期自发现 8（critic 误报×5：S2 wait_for 超时误报→限定 INTERCEPT_TIMEOUT、A1 节标题计为已清除→限定表格行+DEBT-\d+、D1 自引用→排除报告模板、D2 裸版本漏检→VERSION_RE 接受 v?、A2 空块计数→split 首元素过滤；meta_harness 3：id 碰撞→idx 参数、Windows stdout cp950 emoji 崩溃→reconfigure utf-8、e2e 临时路径不一致→统一），修复后 0
+- Reviewer: N/A（门控即审查者）
+- Commit: `0e389ea`（Phase 1）+ `c6a3a95`（Phase 2）+ `45e4561`（Phase 3）
+- 备注:
+  - **GATE 8 裁决**: HIGH 一票否决→REJECT / 2-3 MEDIUM→REVISION / ≥4/5 通过→PASS；asyncio + to_thread 并行 5 批判者
+  - **Phase 2**: 按 (path, method, tool_name) 聚合 DENY 次数≥min_count → pending_rules/ 候选 YAML（含 evidence: decision_ids/trace_ids）
+  - **Phase 3**: check_conflicts 路径+方法重叠但 action 不同→HIGH；run_pytest_regression 真实 subprocess（防伪造）；deploy_candidate 备份 .bak-<ts> + 按 name 去重
+  - **防伪造三原则落地**: pytest/git 输出必须真实执行显示；一次一个 Phase；每阶段独立提交可复核
+
+---
+
 ## AUDIT-0026 — 2026-08-03T23:30:00Z
 
 - PR: N/A（TASK-REAL-011 C 阶段——Trace 因果追踪，用户裁决 B→C→D 顺次批准 C）

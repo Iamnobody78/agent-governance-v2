@@ -168,6 +168,8 @@ rules:
 
 **v0.4.0 新增（TASK-REAL-011，C 阶段 Trace 因果追踪 + TASK-REAL-011.1 批判修复）**：决策全链路可追踪——`trace_id`/`parent_span_id` 12 列持久化（`_migrate` 无损扩容）+ `GET /v1/trace/{trace_id}` 递归 CTE 调用树端点 + `X-Trace-ID`/`X-Parent-Span-ID`/`X-Span-ID` 头协议（intercept 与 chat/completions 两个入口全覆盖，含 DENY/流式/非流式全分支）+ 超长头值 fail-safe 降级（>128 视为缺失）+ 网关版本 0.4.0。
 
+**v0.5.0 新增（TASK-REAL-012，Phase 4 治理大脑阶段 1——可解释引擎 + 五级判定）**：`DecisionRecord.rationale` 第 13 列（每个决策记录匹配规则与原因，`_migrate` 12→13 列无损扩容）+ **五级 Verdict**——`ALLOW`（200 透传）/ `ALLOW_WITH_WARNING`（200 + `X-Governance-Warning` 响应头，转发不中断）/ `ESCALATE`（202 升舱待审）/ `DENY`（403 硬拒）/ `SUSPEND`（403 挂起待人工复审，与 DENY 区分"临时冻结"）+ `create_app(config_path)` 策略注入（测试/多租户可加载独立策略文件）+ 网关版本 0.5.0。
+
 ```yaml
   # 任意内部路径 + body 声明 shell 工具 → DENY
   - name: block-shell-tool
@@ -282,8 +284,10 @@ GET /v1/trace/{trace_id}   （v0.4.0，TASK-REAL-011 C 阶段）
 ### 4.4 第一个 PR 的验收标准
 
 - [ ] `POST /v1/intercept` 返回 `ALLOW` 当无匹配策略时
+- [ ] `POST /v1/intercept` 返回 `ALLOW_WITH_WARNING`（200 + `X-Governance-Warning` 头）当匹配警告策略时
 - [ ] `POST /v1/intercept` 返回 `DENY` 当匹配禁止策略时
 - [ ] `POST /v1/intercept` 返回 `ESCALATE` 当匹配升级策略时
+- [ ] `POST /v1/intercept` 返回 `SUSPEND`（403）当匹配挂起策略时
 - [ ] 超时 500ms 后自动 DENY/ESCALATE（fail-closed，不阻塞 Agent 但绝不放行攻击面）
 - [ ] 所有决策写入 SQLite（可查询、不可篡改）
 - [ ] `GET /v1/health` 返回运行状态

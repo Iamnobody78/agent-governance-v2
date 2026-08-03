@@ -13,9 +13,8 @@
 | DEBT-0018 | 请求/响应无大小上限（10MB body 拖慢反序列化与 hook 截断前的内存占用；hook 输入已截断 2000 字符，但网关层无显式 body 上限） | MEDIUM | 2026-08-03 | 否 | 外部代码审查（"storage 存全文拖慢 SQLite"指控不成立——v2 不存 body 全文，但大小上限缺口真实存在） |
 | DEBT-0020 | 语义输出侧评估缺失（A 阶段仅评估 user_prompt 输入侧；agent_response 在代理转发后产生，可异步补判） | LOW | 2026-08-03 | 否 | TASK-REAL-009 已知边界 |
 | DEBT-0021 | timeout fail-closed 分支的 path 启发式（danger.py）看不到请求体——json_path 规则在超时降级路径不生效（已文档化接受：timeout 3s+熔断兜底；json_path 规则是纵深防御附加层） | LOW | 2026-08-03 | 否 | TASK-REAL-010 已知边界 |
-| DEBT-0022 | chat/completions 路径未注入 trace 上下文（仅 intercept 层串联调用链；chat 端点落库决策无 trace_id/parent_span_id，多 Agent 链跨端点时断链） | LOW | 2026-08-03 | 否 | TASK-REAL-011 已知边界（trace_report.md §6） |
 
-> **当前活跃债务：4 项（MEDIUM×1 / LOW×3，无阻塞）** —— TASK-REAL-011（C 阶段 Trace 因果追踪）closeout 时登记。DEBT-0019 已清偿（`d95f83c`）；DEBT-0022 为本阶段新发现（chat 路径断链）。上一批 16/16 已清偿于 TASK-REAL-001..008。
+> **当前活跃债务：3 项（MEDIUM×1 / LOW×2，无阻塞）** —— TASK-REAL-012（自进化引擎 Phase 4 治理大脑）closeout 时清点。DEBT-0022 已清偿（`6c25bd9`，REAL-011.1：chat 提取 trace + 两处 DENY 注入 + 主路径 DecisionRecord + 全响应分支回传头 + MAX_TRACE_ID_LEN=128）；DEBT-0019 已清偿（`d95f83c`）。上一批 16/16 已清偿于 TASK-REAL-001..008。
 
 ## 已清偿
 
@@ -39,4 +38,5 @@
 | DEBT-0017 | GATE 1 扫描器误判状态验证断言（21 违规中 16 个为历史测试的真实 IO/状态断言；门控豁免逻辑已修复） | `dfaef6b` (TASK-REAL-006) | 2026-08-03 |
 | DEBT-0016 | 文档诚实性：CRITIQUE_V2.md 过时（标注"500ms 超时 ALLOW"但已修复 fail-closed）；EXPERIMENT_REPORT.md 未反映 v2 当前已知缺陷 | `e3f575d` (TASK-REAL-008) | 2026-08-03 |
 | DEBT-0019 | 无 Trace-ID 因果关联（多智能体协作时无法串联"Agent A 诱导 Agent B 违规"的调用链） | `d95f83c` (TASK-REAL-011) | 2026-08-03 |
+| DEBT-0022 | chat/completions 路径未注入 trace 上下文（chat 端点决策无 trace_id/parent_span_id，跨端点断链） | `6c25bd9` (TASK-REAL-011.1) | 2026-08-03 |
 

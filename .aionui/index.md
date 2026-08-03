@@ -9,11 +9,13 @@
 |------|------|------|
 | `src/main.py` | Sidecar 网关：/v1/intercept + OpenAI 兼容端点 + 熔断器 + /v1/trace 递归 CTE | tests/test_intercept.py、tests/test_trace.py |
 | `src/policy.py` | YAML 策略引擎（normpath + json_path 条件规则） | tests/test_json_path_policy.py |
-| `src/storage.py` | SQLite 持久化（decisions 表 12 列 + _migrate 无损迁移 + get_trace） | tests/test_trace.py |
-| `src/models.py` | Pydantic 模型（强类型，field_serializer 边界转换） | tests/test_models_types.py |
+| `src/storage.py` | SQLite 持久化（decisions 表 13 列 + _migrate 无损迁移 + get_trace） | tests/test_trace.py、tests/test_governance_brain.py |
+| `src/models.py` | Pydantic 模型（强类型，Verdict 五级 ALLOW/ALLOW_WITH_WARNING/ESCALATE/DENY/SUSPEND + DecisionRecord.rationale） | tests/test_models_types.py、tests/test_governance_brain.py |
 | `src/norm.py` | 规范化单一来源（NFKC→confusable→casefold） | tests/test_json_path_policy.py |
 | `src/lethality.py` | Ls 工具致死性表（审计用） | tests/test_json_path_policy.py |
 | `src/critic/` | 批判者代理团队（GATE 8：audit/security/arch/test/docs + verdict + runner） | tests/test_critic.py |
+| `src/meta_harness/adapter.py` | Meta-Harness 轻量适配器（DENY 扫描→pending_rules 候选 YAML） | tests/test_meta_harness.py |
+| `src/meta_harness/sandbox.py` | Meta-Harness 沙箱（conflict 检查 + pytest 回归 + 可逆部署） | tests/test_sandbox.py |
 
 ## CI 门控（8 个）
 
@@ -46,7 +48,7 @@
 | `EXPERIMENT_REPORT.md` | v1→v2 对照实验 |
 | `docs/json_path_governance_report.md` | B 阶段 json_path 工具治理报告 |
 | `docs/trace_report.md` | C 阶段 Trace 因果追踪报告 |
-| `.aionui/audit_log.md` | 审计日志（AUDIT-0001~0027） |
+| `.aionui/audit_log.md` | 审计日志（AUDIT-0001~0028） |
 | `.aionui/critic_report.md` | GATE 8 批判报告（每次运行覆盖） |
 | `.aionui/protocols/teams_collaboration.md` | 两阶段 Spawn 协议 |
 | `.aionui/protocols/pr_review_loop.md` | PR 审查闭环 |
