@@ -13,18 +13,13 @@
 | 5 | 提交 + 快照 v1.25.0 + tag | ✅ v1.24.0/v1.25.0 已推送 |
 | 6 | Wiki 10 页资产（docs/wiki/） | ✅ 已提交 92b40b9 |
 | 7 | GitHub 远程同步 | ✅ 0 ahead/behind |
+| 8 | **Wiki 10 页推送到 wiki 仓库（AC3-4）** | ✅ wiki master 5179d53（用户初始化后自动推送） |
+| 9 | **3 个 Good First Issues（AC5）** | ✅ #6 Docker / #7 性能基准 / #8 OpenAPI（含标签） |
+| 10 | **Welcome Discussion（AC6）** | ✅ Discussions #9（已启用 has_discussions=true） |
+| 11 | **破坏性 dependabot PR 关闭（#1/#2）** | ✅ tree-sitter 0.26.0/1.10.2 升级被锁定，ignore 规则已加 |
+| 12 | **CI 全绿（gates-1-8）** | ✅ AUDIT-0047/0048: GATE 1/2a/3/6/6a/6b 修复 + 扫描器精度 |
 
-## 🔲 人工操作（需浏览器，共 4 组）
-
-### 步骤 0：初始化 Wiki（必须先做，之后我可自动推送 10 页）
-
-1. 打开 https://github.com/Iamnobody78/agent-governance-v2/wiki
-2. 点击 **Create the first page**
-3. 标题填 `Home`，内容随意填一个字（如 `.`），点 **Save Page**
-4. 告诉我"Wiki 已初始化"，我立即 `git push` 全部 10 页到 wiki 仓库
-
-> 备选：如果不想用 git 推送，也可手动粘贴 `docs/wiki/*.md` 内容（10 页）：
-> Home / Getting-Started / Architecture / API-Reference / Deployment / Roadmap / Governance / Contributing / FAQ / Releases
+## 🔲 人工操作（需浏览器，仅剩安全面板 3 项）
 
 ### 步骤 1：启用私有漏洞报告（P0）
 
@@ -44,9 +39,9 @@
 3. 选 **Default** 配置 → **Enable**
 4. （.github/workflows/codeql.yml 已推送，Enable 后每周一 03:00 UTC 自动扫描）
 
-### 步骤 4：创建 3 个 Good First Issues（P0）
+### 步骤 4：创建 3 个 Good First Issues（P0）✅ 已完成 → #6/#7/#8（2026-08-03 自动执行）
 
-路径：Issues → **New issue** → 逐个粘贴以下内容，标签选 `good first issue` + `help wanted`（无标签则先建标签）
+> 以下内容仅供核对。若需手动重发，路径：Issues → **New issue** → 逐个粘贴以下内容，标签选 `good first issue` + `help wanted`（无标签则先建标签）
 
 ---
 
@@ -138,9 +133,9 @@
 
 ---
 
-### 步骤 5：创建 Welcome Discussion（P0）
+### 步骤 5：创建 Welcome Discussion（P0）✅ 已完成 → Discussions #9（2026-08-03 自动执行）
 
-路径：仓库页面 → **Discussions** → **New discussion** → 类别选 **General**，标题：
+> 以下内容仅供核对。若需手动重发，路径：仓库页面 → **Discussions** → **New discussion** → 类别选 **General**，标题：
 
 `👋 欢迎来到 agent-governance-v2！`
 
@@ -186,10 +181,11 @@
 |----|--------|----------|
 | AC1 | Dependabot 配置 | ✅ 已推送 |
 | AC2 | CodeQL 工作流 | ✅ 已推送（Settings Enable 后生效） |
-| AC3-4 | Wiki 首页 + ≥4 页 | 🔲 步骤 0 后我自动推送 |
-| AC5 | 3 个 Good First Issues | 🔲 步骤 4 |
-| AC6 | Welcome Discussion | 🔲 步骤 5 |
+| AC3-4 | Wiki 首页 + ≥4 页 | ✅ 10 页已推送（wiki master 5179d53） |
+| AC5 | 3 个 Good First Issues | ✅ #6/#7/#8（good first issue + help wanted 标签） |
+| AC6 | Welcome Discussion | ✅ Discussions #9（General 类别） |
 | AC7 | README Wiki 链接 | ✅ 已推送 |
 | AC8 | 全量测试 ≥488 | ✅ 574 passed |
 | AC9 | 快照 v1.25.0 tag | ✅ 已推送 |
 | AC10 | GitHub 远程同步 | ✅ 0 ahead/behind |
+| — | CI gates-1-8 全绿 | ✅ AUDIT-0047/0048 |
