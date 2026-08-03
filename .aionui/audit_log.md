@@ -169,3 +169,19 @@
   - 🟡 夸大: 无优雅停机(1.5, aiohttp 默认 shutdown_timeout=60s)、请求体全量内存(1.6, 拦截 JSON 决策量级小)
   - 验证: 94/94 测试（87 + 7 新增异常路径）+ `b2_e2e.py` 真实 AutoGen E2E PASS + 三文件 py_compile OK
   - 防口头通过: 本审计所有"已修复"声明均有当前源码行号证据（见会话核验表）
+
+## AUDIT-0010 — 2026-08-03T10:30:00Z
+
+- PR: N/A（调度层第一阶段: 自动接力循环）
+- 标题: 调度层第一阶段落地 — Builder→Reviewer 自动接力 + 先落盘协议 + 外环注册表
+- 变更文件: `src/time_utils.py` (+新, 实验产物), `tests/test_time_utils.py` (+新, 9 函数 15 用例), `.aionui/scheduler/relay_state.json` (+新, 接力状态机), `.aionui/tools/agent_registry.yaml` (+新, 外环注册表), `.aionui/protocols/teams_collaboration.md` (+§2.5 自动接力循环), `.aionui/scheduler/work/TASK-SCHED-001/{builder_output,reviewer_verdict}.md` (+新, 接力证据)
+- 变更行数: +170/-0
+- 结论: **TASK-SCHED-001 PASS**（1 轮完成）— 调度层第一阶段验证成功
+- 问题数: 1（Reviewer v1 截断 → 先落盘协议修复）
+- Reviewer: 独立 Reviewer 子代理（SCHED001_Reviewer_v2, PASS, 证据见 reviewer_verdict.md）
+- Commit: 待提交
+- 备注:
+  - 🔴 实测发现（调度层关键约束）: Spawn 子代理无法互相对话/嵌套（schema 明示禁止 shared state/sequential coordination）→ "自动接力"= Coordinator 驱动多轮 Spawn，共享上下文=工作区文件系统; 禁止在单次 Spawn 内构建跨代理依赖链
+  - 🔴 实测发现: Spawn 子代理可能未完成即被截断返回（Reviewer v1 仅 2 turns）→ 关键产物必须"先落盘、后完善"（verdict 写文件优先于深度审查），接力判断只认落盘文件不认 stdout
+  - 🟢 验证: TASK-SCHED-001 Builder 15 passed / Reviewer 独立重跑 15 passed + AST 精确 3 函数 + EPOCH import OK → PASS; 全量回归 94+15=109? （time_utils 新增 15 用例, 全量 109 passed 见回归输出）
+  - 防口头通过: Builder 报告与 Reviewer 独立观察逐项核对一致（测试数/AST/import），偏差为 0

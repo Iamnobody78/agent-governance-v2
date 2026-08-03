@@ -1,0 +1,41 @@
+# Agent 注册表 — agent-governance 团队制（外环协议）
+
+> 维护者: Coordinator（Meta Harness Proposer / 治理智能体）
+> 更新: 2026-08-03（调度层第一阶段）
+> 用途: 记录每个 Agent 实例的能力边界、状态、当前会话；路由仲裁依据。
+
+## 本地 Spawn 角色（哑执行者，单次任务生命周期）
+
+| 角色 | 能力边界 | 允许写入 | 只读 | 状态 |
+|------|----------|----------|------|------|
+| **Builder** 🛠️ | 生成/修改源代码 ≤2 文件/任务 | `src/`, `config/`, `tests/` | — | 可用（TASK-SCHED-001 验证） |
+| **Tester** 🧪 | 编写并运行测试 | `tests/` | `src/` | 可用（同 Builder 通道） |
+| **Reviewer** 🔍 | 审查产物、运行验证、输出 PASS/REJECT | 仅 `work/<TASK>/reviewer_verdict.md` | `src/`, `tests/`, `work/` | 可用（v2 先落盘协议验证） |
+| **Archivist** 📁 | 更新文档/审计日志 | `*.md`, `.aionui/` | — | 备用（2 代理模式由 Reviewer 兼任） |
+
+## 常驻 Agent（AionUi 团队制）
+
+| Agent | 角色 | 模型 | assistant_id | 状态 |
+|-------|------|------|--------------|------|
+| **Hermes** (Meta Harness Proposer) | 团队 Lead / Coordinator | deepseek-v4-flash | custom-1784642855167-46fd | ✅ 在线（config 已切 flash；health-check 200） |
+| **AionUi Butler** | 团队 teammate | aionrs | 内置 | ⚠️ 已知 bug: runtime "Provider 'aionrs' not found"（teammate 启动失败，lead 可正常对话） |
+
+## 路由仲裁规则（外环）
+
+1. 任务 ≤2 文件、≤5 维度 → 单 Builder + Reviewer 接力（调度层第一阶段）
+2. 任务 >2 文件 → 拆分多任务，每任务独立接力（防撞车：文件分配表）
+3. 安全敏感变更 → Reviewer 必须运行真实验证（pytest/AST），禁止口头 PASS
+4. 子代理不可互相通信 → 接力永远由 Coordinator 驱动，共享上下文=工作区文件系统
+5. 关键产物"先落盘"：verdict 类文件必须在子代理最早可行阶段写入（TASK-SCHED-001 教训）
+
+## 沙箱隔离（声明式）
+
+```yaml
+# 提议中的沙箱规则（YAML 声明式，待批准）
+Builder:
+  write: ["src/", "config/", "tests/"]
+  deny: [".aionui/decisions/", ".aionui/scheduler/"]
+Reviewer:
+  write: ["*.verdict.md", ".aionui/scheduler/work/**"]
+  deny: ["src/", "tests/", "config/"]
+```

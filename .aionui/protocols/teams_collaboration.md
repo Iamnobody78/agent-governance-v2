@@ -1,4 +1,4 @@
-# 🧬 Teams 代理团队协作协议 v2.0
+﻿# 🧬 Teams 代理团队协作协议 v2.0
 
 > **定位**：让 2-5 个 AionUI 子代理组成自治团队，并行处理 agent-governance 项目的开发、测试、审查、归档任务。
 >
@@ -124,6 +124,38 @@ PASS / FAIL / REJECT
 
 ---
 
+### 2.5 调度层第一阶段：自动接力循环（v0.2.2+，AUDIT-0010）
+
+> **目标**：Builder → Reviewer 接力由 Coordinator **自动驱动**，用户零介入。
+> 验证实验：TASK-SCHED-001（Builder 写 src/time_utils.py + tests → Reviewer 独立审查 → PASS，1 轮完成）。
+
+**架构约束（实测确认，勿违反）**：
+1. Spawn schema 明确禁止 "shared state or sequential coordination" → **子代理之间无法互相对话/嵌套 Spawn**
+2. 协调永远是 Coordinator（主代理）职责 → "自动接力" = Coordinator 在单次会话内连续执行 Builder→Reviewer→(修复→复审) 循环，直到 PASS 或达 MAX_ROUNDS
+3. 共享上下文 = **工作区文件系统**（work/<TASK_ID>/ 是接力总线）
+
+**状态机**（.aionui/scheduler/relay_state.json）：
+- Coordinator 创建任务时初始化；每轮 Builder/Reviewer 完成后追加 history；终态 DONE_PASS / DONE_REJECT
+- 字段: task_id / status / round / max_rounds / builder_output / reviewer_verdict / history[]
+
+**接力循环**：
+`
+BUILD(n) → 验证产物落盘 → REVIEW(n) → 读 verdict
+  ├─ PASS  → 终态 DONE_PASS（可提交）
+  ├─ REJECT → BUILD(n+1)（把 verdict 的 Required fixes 原样传入 Builder）→ REVIEW(n+1)
+  └─ n >= MAX_ROUNDS → DONE_REJECT（升级人工）
+`
+
+**关键教训（TASK-SCHED-001 实测）**：
+1. **先落盘原则**：Reviewer v1 被 Spawn 截断（2 turns）导致 verdict 未写入 → 接力中断。
+   修正：Reviewer prompt 强制 "STEP 3 = 立即写 verdict 文件，即使有未决疑点"，深查在落盘之后。
+   所有**关键产物**（verdict、报告）必须"先落盘、后完善"，不得依赖子代理完整跑完。
+2. **Builder 必须自证**：测试命令 + 真实输出写在 builder_output.md，Reviewer 独立重跑验证（防口头通过）。
+3. **断言 vs 产物**：接力判断只认落盘文件（verdict 存在且首行含 PASS/REJECT），不认子代理的 stdout 摘要。
+
+**文件分配**（防撞车，沿用 §2.2）：
+- Builder 写 src/、	ests/（≤2 文件）+ work/<TASK>/builder_output.md
+- Reviewer 只写 work/<TASK>/reviewer_verdict.md（其余全只读）
 ## 三、协作协议
 
 ### 3.1 Coordinator 验证铁律
@@ -233,3 +265,4 @@ Teams 协作协议 ← 本协议
 
 *本协议由 agent-governance v2 实验生成。v1.0 于 2026-08-03 首版，v2.0 修正"子代理无法互相通信"架构缺陷后升级。*
 *每次 Spawn 实验后更新粒度限制参数。*
+

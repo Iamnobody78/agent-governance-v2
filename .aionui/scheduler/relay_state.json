@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-SCHED-001",
+  "created_at": "2026-08-03T10:00:00Z",
+  "completed_at": "2026-08-03T10:20:00Z",
+  "status": "DONE_PASS",
+  "current_phase": "COMPLETE",
+  "round": 1,
+  "max_rounds": 3,
+  "work_dir": ".aionui/scheduler/work/TASK-SCHED-001",
+  "builder_output": ".aionui/scheduler/work/TASK-SCHED-001/builder_output.md",
+  "reviewer_verdict": ".aionui/scheduler/work/TASK-SCHED-001/reviewer_verdict.md",
+  "history": [
+    {
+      "round": 1,
+      "phase": "BUILD_1",
+      "agent": "SCHED001_Builder",
+      "result": "OK",
+      "evidence": "15 passed in 0.07s (verified independently)",
+      "outcome": "2 files written + builder_output.md"
+    },
+    {
+      "round": 1,
+      "phase": "REVIEW_1",
+      "agent": "SCHED001_Reviewer_v1",
+      "result": "TRUNCATED",
+      "evidence": "returned after 2 turns before writing verdict",
+      "outcome": "LEARNED: verdict must land before deep review (write-early protocol)"
+    },
+    {
+      "round": 1,
+      "phase": "REVIEW_1b",
+      "agent": "SCHED001_Reviewer_v2",
+      "result": "PASS",
+      "evidence": "15 passed / AST ['format_ts','parse_ts','is_weekend'] / EPOCH import OK",
+      "outcome": "reviewer_verdict.md landed; 0 fixes required"
+    }
+  ]
+}
