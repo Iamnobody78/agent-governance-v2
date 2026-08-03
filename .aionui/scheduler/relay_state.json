@@ -1,38 +1,47 @@
 {
   "schema_version": "1.0",
-  "task_id": "TASK-SCHED-001",
-  "created_at": "2026-08-03T10:00:00Z",
-  "completed_at": "2026-08-03T10:20:00Z",
+  "task_id": "TASK-SCHED-002",
+  "created_at": "2026-08-03T11:00:00Z",
+  "completed_at": "2026-08-03T11:30:00Z",
   "status": "DONE_PASS",
   "current_phase": "COMPLETE",
   "round": 1,
   "max_rounds": 3,
-  "work_dir": ".aionui/scheduler/work/TASK-SCHED-001",
-  "builder_output": ".aionui/scheduler/work/TASK-SCHED-001/builder_output.md",
-  "reviewer_verdict": ".aionui/scheduler/work/TASK-SCHED-001/reviewer_verdict.md",
+  "work_dir": ".aionui/scheduler/work/TASK-SCHED-002",
+  "builder_output": ".aionui/scheduler/work/TASK-SCHED-002/builder_output.md",
+  "tester_output": ".aionui/scheduler/work/TASK-SCHED-002/tester_output.md",
+  "reviewer_verdict": ".aionui/scheduler/work/TASK-SCHED-002/reviewer_verdict.md",
+  "contract": {
+    "file": "src/task_scheduler.py",
+    "class": "TaskScheduler",
+    "priority_semantics": "smaller number = higher priority",
+    "fifo_rule": "same priority → FIFO (insertion order)",
+    "empty_behavior": "pop()/peek() return None on empty queue",
+    "methods": ["push(task_id, priority, payload=None)", "pop()", "peek()", "size()", "is_empty()", "clear()"]
+  },
   "history": [
     {
       "round": 1,
-      "phase": "BUILD_1",
-      "agent": "SCHED001_Builder",
+      "phase": "PARALLEL_BUILD_TEST_1",
+      "agent": "SCHED002_Builder + SCHED002_Tester",
+      "result": "PARTIAL",
+      "evidence": "Builder OK (SELF-CHECK OK, 90 lines); Tester CUT OFF before writing test file (5 turns)",
+      "outcome": "parallel spawn works for independent artifacts; truncated sub-agent lost its file"
+    },
+    {
+      "round": 1,
+      "phase": "TEST_2",
+      "agent": "SCHED002_Tester_v2",
       "result": "OK",
-      "evidence": "15 passed in 0.07s (verified independently)",
-      "outcome": "2 files written + builder_output.md"
+      "evidence": "21 passed in 0.10s; tests landed FIRST; 0 test bugs; no implementation defect found",
+      "outcome": "tests/test_task_scheduler.py (177 lines) + tester_output.md landed"
     },
     {
       "round": 1,
       "phase": "REVIEW_1",
-      "agent": "SCHED001_Reviewer_v1",
-      "result": "TRUNCATED",
-      "evidence": "returned after 2 turns before writing verdict",
-      "outcome": "LEARNED: verdict must land before deep review (write-early protocol)"
-    },
-    {
-      "round": 1,
-      "phase": "REVIEW_1b",
-      "agent": "SCHED001_Reviewer_v2",
+      "agent": "SCHED002_Reviewer",
       "result": "PASS",
-      "evidence": "15 passed / AST ['format_ts','parse_ts','is_weekend'] / EPOCH import OK",
+      "evidence": "21 passed (independently); AST ['TaskScheduler'] clean; methods exact 6 no extras; contract probes all pass; Builder/Tester reports cross-consistent",
       "outcome": "reviewer_verdict.md landed; 0 fixes required"
     }
   ]

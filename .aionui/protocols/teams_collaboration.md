@@ -124,6 +124,27 @@ PASS / FAIL / REJECT
 
 ---
 
+### 2.6 调度层第二阶段：并行接力 + 合并审查（v0.2.3+，AUDIT-0011）
+
+> **目标**：Builder + Tester 并行执行（互不阻塞）→ Reviewer 合并审查双方产物。
+> 验证实验：TASK-SCHED-002（Builder 写 src/task_scheduler.py + Tester 并行写 tests → Reviewer 合并审查 → PASS，1 轮完成）。
+
+**并行语义（实测确认）**：
+1. **同一 Spawn 调用内发多个任务 = 真并行**（各自独立上下文，互不等待）
+2. **接口契约必须双方预共享**：Builder 和 Tester 并行时无实现可见性 → 两个 prompt 必须携带**完全相同的接口契约**（类名/方法签名/语义/边界行为），否则并行产物必然不匹配
+3. **独立产物落盘**：Builder 写 uilder_output.md，Tester 写 	ester_output.md（各自工作区路径），Reviewer 读取两者
+
+**截断容错（TASK-SCHED-002 实测教训）**：
+- Tester v1 被截断（5 turns）→ **测试文件未落盘** → 接力无法继续
+- 修复：TEST(2) 轮重新 Spawn，强制 "STEP 1 = 先写文件，再运行"，成功
+- **规则**：并行任务的每个角色，产物必须"先落盘"；Coordinator 在每轮结束后**验证产物文件存在 + 内容完整**（行数/字节数），缺失即自动进入修复轮，不依赖子代理自述
+
+**合并审查（Reviewer）**：
+- Reviewer 读取 Builder + Tester 两份报告 + 两份产物，独立重跑全部验证
+- 交叉核对：Builder 声称 vs Tester 声称 vs 实测（行数/测试数/通过数），不一致即 REJECT
+- verdict 先落盘（provisional）→ 深查后更新（final）——先落盘原则延续
+
+**本轮实测数据**：Builder 90 行自检 OK；Tester 177 行 21 用例全过；Reviewer 独立重跑 21 passed + AST 精确 + 契约探测全过；双报告交叉一致（0 偏差）；全量回归 **130 passed**。
 ### 2.5 调度层第一阶段：自动接力循环（v0.2.2+，AUDIT-0010）
 
 > **目标**：Builder → Reviewer 接力由 Coordinator **自动驱动**，用户零介入。
@@ -265,4 +286,5 @@ Teams 协作协议 ← 本协议
 
 *本协议由 agent-governance v2 实验生成。v1.0 于 2026-08-03 首版，v2.0 修正"子代理无法互相通信"架构缺陷后升级。*
 *每次 Spawn 实验后更新粒度限制参数。*
+
 

@@ -185,3 +185,19 @@
   - 🔴 实测发现: Spawn 子代理可能未完成即被截断返回（Reviewer v1 仅 2 turns）→ 关键产物必须"先落盘、后完善"（verdict 写文件优先于深度审查），接力判断只认落盘文件不认 stdout
   - 🟢 验证: TASK-SCHED-001 Builder 15 passed / Reviewer 独立重跑 15 passed + AST 精确 3 函数 + EPOCH import OK → PASS; 全量回归 94+15=109? （time_utils 新增 15 用例, 全量 109 passed 见回归输出）
   - 防口头通过: Builder 报告与 Reviewer 独立观察逐项核对一致（测试数/AST/import），偏差为 0
+
+## AUDIT-0011 — 2026-08-03T11:35:00Z
+
+- PR: N/A（调度层第二阶段: 并行接力 + 合并审查）
+- 标题: 三角色并行接力验证完成 — Builder+Tester 并行 → Reviewer 合并审查（TASK-SCHED-002）
+- 变更文件: `src/task_scheduler.py` (+新, 90 行, 优先级队列), `tests/test_task_scheduler.py` (+新, 177 行 21 用例), `.aionui/scheduler/relay_state.json` (TASK-SCHED-002 三角色历史), `.aionui/protocols/teams_collaboration.md` (+§2.6 并行接力), `.aionui/tools/agent_registry.yaml` (Tester 角色验证 + 并行规则)
+- 变更行数: +290/-10
+- 结论: **TASK-SCHED-002 PASS**（1 轮完成，含 1 次 Tester 截断修复轮）— 调度层第二阶段验证成功
+- 问题数: 1（Tester v1 截断未落盘 → TEST(2) 修复轮成功）
+- Reviewer: 独立 Reviewer 子代理（SCHED002_Reviewer, PASS, 21 passed 独立重跑 + AST + 契约探测 + 双报告交叉一致 0 偏差）
+- Commit: 待提交
+- 备注:
+  - 🔴 并行语义实测: 同一 Spawn 多任务 = 真并行（Tester 在 Builder 产物缺失时仍正常执行契约测试编写）; 但并行角色间无实现可见性 → **接口契约必须预共享**（双方 prompt 携带相同契约，否则产物必然不匹配）
+  - 🔴 截断容错实测: Tester v1 5 turns 被截断 → 测试文件未落盘 → 接力中断; 修复 = TEST(2) 轮强制"先写文件再运行" + Coordinator 每轮验证产物存在/完整（行数/字节数），缺失即自动修复轮
+  - 🟢 验证: Builder SELF-CHECK OK + Tester 21 passed + Reviewer 独立重跑 21 passed（0.08s）+ AST ['TaskScheduler'] 精确 + 方法无多余 + 契约探测（空 pop None / peek 非破坏 / ValueError）全过; 双报告交叉一致; 全量回归 **130 passed**（109+21）
+  - 防口头通过: Reviewer 未信任 Builder/Tester 报告，全部独立重跑; 发现的唯一偏差为运行时长噪声（0.10s vs 0.08s）非矛盾
