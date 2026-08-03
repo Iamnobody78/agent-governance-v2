@@ -1,13 +1,13 @@
 {
   "schema_version": "1.0",
-  "task_id": "TASK-REAL-001",
-  "title": "真实项目治理验证 — 清偿真实债务批次 DEBT-0005 + DEBT-0006",
-  "created_at": "2026-08-03T12:30:00Z",
+  "task_id": "TASK-REAL-002",
+  "title": "熔断器时间衰减(冷却窗口) + SQLite 降级缓存 — DEBT-0001 + DEBT-0008",
+  "created_at": "2026-08-03T13:30:00Z",
   "status": "COMPLETED",
   "current_phase": "DONE",
   "round": 2,
   "max_rounds": 3,
-  "work_dir": ".aionui/scheduler/work/TASK-REAL-001",
+  "work_dir": ".aionui/scheduler/work/TASK-REAL-002",
   "mcp_channel": {
     "client": "scripts/mcp_client.py",
     "server": "filesystem_mcp_server.py",
@@ -15,23 +15,24 @@
     "tools": ["write_file", "read_file", "list_directory", "file_info"]
   },
   "real_world_source": {
-    "DEBT-0005": "外部批判 2.3: YAML 策略无热更新（修改 policies.yaml 需重启网关生效）",
-    "DEBT-0006": "外部批判 6.1: check_policy.py AST 规则误报含 allow/deny 子串的普通 dict key（如 allow_retry）"
+    "DEBT-0001": "外部盘点最终判定: 熔断器语义缺陷需部署前修复；攻击者分散触发(间隔>300s)可绕过累计",
+    "DEBT-0008": "外部盘点 3.1: SQLite 写入失败无降级路径(无 try/except, 直接抛异常)"
   },
   "contract": {
+    "semantics_decision": "现有 test_circuit_breaker.py 的 '间隔>300s 不累计' 断言与 DEBT-0001 '分散触发不可绕过' 冲突 → 测试以新契约为准(重写该文件)；escalate_count_since_resolve 变量名保留",
     "targets": {
-      "src/policy.py": "PolicyEngine reload()/maybe_reload() + mtime 跟踪 + 原子 swap",
-      "src/main.py": "两处 handler 在 evaluate 前调用 maybe_reload",
-      "scripts/check_policy.py": "visit_Dict 精确 token 匹配",
-      "tests/test_policy_hot_reload.py": "热更新契约测试",
-      "tests/test_check_policy_ast.py": "AST 精确匹配测试"
+      "src/main.py": "CIRCUIT_COOLDOWN_SECONDS=30.0; breaker_tripped_until 全局+2 handler global+ALLOW 重置+init 重置; ESCALATE 分支冷却逻辑; 分散触发计数不再时间重置",
+      "src/storage.py": "_pending 缓存+_cached_at; save() try/except 降级; flush_pending(); pending_count()",
+      "tests/test_circuit_breaker.py": "重写 6 测试(冷却窗口/时间衰减恢复/分散触发累计)",
+      "tests/test_storage_degraded.py": "新建 5 测试(FakeConn 降级模拟)"
     },
     "acceptance": [
-      "pytest 全量 ≥142 + 新增",
-      "改 policies.yaml 后 evaluate 反映新规则，无需重启",
-      "check_policy.py 对 allow_retry 类 key 不再误报",
-      "子代理 artifact 经 MCP 落盘；Reviewer 只读 MCP",
-      "DEBT-0005/0006 移入已清偿区并标注 commit"
+      "pytest tests/ 全量通过(152 + 净增)",
+      "熔断: trip 后 COOLDOWN 内 ESCALATE → DENY; 冷却到期自动恢复",
+      "分散触发: 间隔>300s 的 10 次 ESCALATE 仍累计 → 第 10 次 trip",
+      "storage: sqlite 写入失败不抛异常, 缓存 pending, flush 后持久化",
+      "R1/R2/R3 约束实战验证",
+      "DEBT-0001/0008 移入已清偿区并标注 commit"
     ]
   },
   "history": [
@@ -39,38 +40,37 @@
       "round": 1,
       "phase": "PARALLEL_BUILD_TEST",
       "actions": {
-        "builder": "READ-phase truncated, 0 writes (write-early protocol triggered recovery)",
-        "tester": "MCP write_file -> tests/test_policy_hot_reload.py (4550B) + tests/test_check_policy_ast.py (2670B); tester_report.md (3587B)",
+        "builder": "R1 补丁语义锚点侦察 9 处全 count==1 确认, 然后 token 截断 0 writes",
+        "tester": "token 截断 0 writes",
         "reviewer": "not started"
       },
-      "outcome": "TESTER_LANDED_BUILDER_TRUNCATED",
+      "outcome": "BOTH_TRUNCATED",
       "notes": [
-        "3 passed / 7 failed initially — all 7 failures were race-pending Builder implementation (expected)",
-        "Builder v1 truncated in READ phase despite 12 turns — lesson: real-world task prompts too large for single sub-agent; recovery via v2"
+        "真实任务第 3 次容量暴露: 任务规模(9 锚点+2 测试文件)超单子代理单轮 token 预算",
+        "R1 验证: 补丁语义指令有效(Builder 无探索式读取), 但执行容量是新的边界",
+        "按 R3 协调者兜底: Coordinator 应用 Builder 设计的 diff + 按 Tester 契约落盘测试"
       ]
     },
     {
       "round": 2,
-      "phase": "BUILDER_V2_RECOVERY + REVIEW",
+      "phase": "COORDINATOR_FALLBACK + REVIEW",
       "actions": {
-        "builder": "MCP write_file -> src/policy.py (4154B) + src/main.py (23449B) + scripts/check_policy.py (3686B); builder_report.md (2607B)",
-        "reviewer": "MCP read-only -> 10/10 tests + probes a-d PASS; verdict PASS-WITH-NOTES",
-        "coordinator": "probe e (maybe_reload x2 at L94/L471) PASS; final regression 152 passed; verdict re-applied after reviewer truncation"
+        "coordinator": "应用 7 处 main.py + 3 处 storage.py 锚点补丁; 经 MCP 提交 2 测试文件(6458B/4749B); 修正 test_security_hardening 旧语义; 落盘 builder/tester 报告(标注 R3 兜底)",
+        "reviewer": "MCP 只读独立验证: 11p 定向 + 159p 全量 + 契约探测全绿"
       },
-      "outcome": "PASS-WITH-NOTES",
+      "outcome": "PASS (Reviewer 本轮首个全 PASS)",
       "notes": [
-        "Incident 1: mcp_client.py \\n mangling corrupted check_policy f-string -> re-committed via direct JSON-RPC to same MCP server",
-        "Incident 2: Tester contract required str() coercion + None default -> Builder 2-line minimal fix (tests authoritative)",
-        "Reviewer truncated before verdict write -> Coordinator re-applied verdict to disk per write-early protocol",
-        "Full regression: 152 passed (142 + 10 new debt tests)"
+        "Reviewer 证据: breaker_tripped_until ×8(≥6), main.py '>300' 计数=0, 全测试扫描 'fresh burst'=0, 分散触发测试断言 403",
+        "测试优先裁决: test_security_hardening.test_after_trip_counter_resets 更新为冷却期 DENY → 过期恢复",
+        "发现: sqlite3.Connection.execute 只读不可 patch.object → FakeConn 替换",
+        "Full regression: 159 passed (152 + 11 - 4 旧语义)"
       ],
       "mcp_self_proof": {
-        "src/policy.py": "4154B via file_info",
-        "src/main.py": "23449B via file_info",
-        "scripts/check_policy.py": "3686B via file_info",
-        "builder_report.md": "2607B",
-        "tester_report.md": "3587B",
-        "reviewer_verdict.md": "2080B"
+        "test_circuit_breaker.py": "6458B via MCP write_file + file_info",
+        "test_storage_degraded.py": "4749B via MCP write_file + file_info",
+        "builder_report.md": "1752B",
+        "tester_report.md": "2398B",
+        "reviewer_verdict.md": "2234B via file_info"
       }
     }
   ]

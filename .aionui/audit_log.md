@@ -255,3 +255,21 @@
   - 主: **R3 协调者兜底落盘** —— Reviewer verdict 写盘前截断时，Coordinator 按 stdout 补全落盘并标注（写后审优先于渠道纯净）。锚点: verdict skeleton 592B → 补全 2080B
   - 次: §2.7 含恢复流程（截断 → file_info 检查 → 补丁语义重建 / 按 stdout 补全）；债务修复前固化，避免真实任务迭代重复触发同类截断/转义/丢失
   - 防口頭验证: 三处合并后脚本级断言（2.7 present / lesson4 present / 补丁语义 present / rule9 present）全 True
+
+
+## AUDIT-0015 · 2026-08-03T13:45:00Z
+
+- PR: N/A · 调度层真实治理批次 2（TASK-REAL-002）
+- 主题: 熔断器时间衰减(冷却窗口) + SQLite 降级缓存 — DEBT-0001 + DEBT-0008
+- 变更文件: `src/main.py` (CIRCUIT_COOLDOWN_SECONDS + breaker_tripped_until + ESCALATE 冷却逻辑 + 分散触发修复), `src/storage.py` (_pending 降级缓存 + save try/except + flush_pending + pending_count), `tests/test_circuit_breaker.py` (重写 6 测试), `tests/test_storage_degraded.py` (+5 测试), `tests/test_security_hardening.py` (旧语义更新), relay_state/AUDIT/debt_registry
+- 结果: **TASK-REAL-002 PASS** —— Reviewer 本轮首个全 PASS；159 passed（152+11-4）
+- 问题: 3（均为过程性，已解决）
+- Reviewer: REAL002_Reviewer（MCP 只读独立验证），OVERALL **PASS**
+- Commit: 本次提交
+- 结论:
+  - 主: **DEBT-0001 修复** —— trip 后 30s 冷却窗口内一律 DENY（fail-closed），冷却到期自动恢复（时间衰减）；分散触发修复：计数不再因时间流逝重置（仅 ALLOW/trip 重置），间隔>300s 的慢速触发仍累计到第 10 次 trip。外部盘点"部署前需修复"项关闭
+  - 主: **DEBT-0008 修复** —— save() 写失败不再抛异常，降级到内存缓存（_cached_at 时间戳），flush_pending() 重试持久化
+  - 主: **R1/R2/R3 实战验证** —— Builder/Tester 双双 token 截断（真实任务第 3 次容量暴露）→ R3 协调者兜底执行 Builder 设计的 diff + 按 Tester 契约落盘测试；R1 补丁语义有效（无探索式读取）；R2 未触发（无 \n 字面量内容）
+  - 次: 测试优先裁决 —— test_security_hardening.test_after_trip_counter_resets 旧语义（trip 后立即 202）与新契约冲突 → 更新为冷却期 DENY → 过期恢复
+  - 次: 测试设计修正 —— sqlite3.Connection.execute 只读属性不可 patch.object → FakeConn 替换连接
+  - 防口頭验证: Reviewer 独立重跑 11p 定向 + 159p 全量 + 契约探测（breaker ×8, '>300'=0, 'fresh burst'=0）

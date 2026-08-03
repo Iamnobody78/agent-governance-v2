@@ -81,18 +81,32 @@ class TestBreakerTripsToDeny(AioHTTPTestCase):
 
     @unittest_run_loop
     async def test_after_trip_counter_resets(self):
-        """after a trip, next ESCALATE starts fresh (counter=0)"""
+        """after a trip, cooldown window denies (DEBT-0001), then recovers"""
         for _ in range(10):
             resp = await self.client.post(
                 "/v1/intercept",
                 json={"path": "/api/config/model", "method": "POST"},
             )
         assert resp.status == 403
+
+        # DEBT-0001: trip starts cooldown → immediate next ESCALATE is DENY
+        # (old behavior allowed instant re-accumulation — the fixed flaw)
         resp = await self.client.post(
             "/v1/intercept",
             json={"path": "/api/config/model", "method": "POST"},
         )
-        assert resp.status == 202  # counter reset, back to ESCALATE
+        assert resp.status == 403
+
+        # cooldown expiry → time-decay recovery back to ESCALATE
+        import time
+        import src.main as main_module
+
+        main_module.breaker_tripped_until = time.time() - 1.0
+        resp = await self.client.post(
+            "/v1/intercept",
+            json={"path": "/api/config/model", "method": "POST"},
+        )
+        assert resp.status == 202  # recovered after cooldown
 
 
 # ── Finding 3: lock-protected global counter ─────────────────────────

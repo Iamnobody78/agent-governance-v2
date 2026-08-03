@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 # ── configurable constants ──────────────────────────────────────────
 INTERCEPT_TIMEOUT = 0.5       # seconds — if policy eval exceeds this, fail-closed
 CIRCUIT_BREAKER_LIMIT = 10    # consecutive ESCALATE without resolution → DENY (fail-closed)
+CIRCUIT_COOLDOWN_SECONDS = 30.0  # breaker trip cooldown window (DEBT-0001)
 AGENT_BACKEND_URL = "http://localhost:8000"   # upstream Agent (for proxy mode)
 
 # Shared heuristic constants — exported for policy_probe.py (single source of truth)
@@ -37,6 +38,7 @@ FORWARD_HEADER_WHITELIST = ("content-type", "accept", "user-agent", "x-agent-id"
 start_time = time.time()
 escalate_count_since_resolve = 0
 last_escalate_time = 0.0
+breaker_tripped_until = 0.0  # DEBT-0001: deny-all until this timestamp after trip
 _escalate_lock: asyncio.Lock = None  # guards escalate_count_since_resolve / last_escalate_time
 policy_engine: Optional[PolicyEngine] = None
 storage: Optional[Storage] = None
@@ -74,7 +76,7 @@ def _is_dangerous(path: str, method: str) -> bool:
 # ── handlers ────────────────────────────────────────────────────────
 
 async def intercept_handler(request: web.Request) -> web.Response:
-    global escalate_count_since_resolve, last_escalate_time
+    global escalate_count_since_resolve, last_escalate_time, breaker_tripped_until
 
     try:
         data = await request.json()
@@ -123,20 +125,24 @@ async def intercept_handler(request: web.Request) -> web.Response:
             elif rule.action == "ESCALATE":
                 now = time.time()
                 async with _escalate_lock:
-                    if now - last_escalate_time > 300:
-                        escalate_count_since_resolve = 1  # fresh burst, reset counter
+                    if now < breaker_tripped_until:
+                        # DEBT-0001: cooldown window — deny everything until cooldown expires
+                        verdict = Verdict.DENY
+                        reason = f"熔断冷却中 ({breaker_tripped_until - now:.0f}s 后恢复)，拒绝 (fail-closed)"
                     else:
                         escalate_count_since_resolve += 1
-                    last_escalate_time = now
-                    if escalate_count_since_resolve >= CIRCUIT_BREAKER_LIMIT:
-                        # v0.2.0 (AUDIT-0005): breaker trips to DENY, NOT ALLOW.
-                        # A gateway that lost judgment must refuse, not bypass itself.
-                        verdict = Verdict.DENY
-                        reason = f"连续 {escalate_count_since_resolve} 次升级未获审批，熔断拒绝 (fail-closed)"
-                        escalate_count_since_resolve = 0
-                    else:
-                        verdict = Verdict.ESCALATE
-                        reason = rule.reason or f"匹配规则 '{rule.name}' → 升级人工审批"
+                        last_escalate_time = now
+                        if escalate_count_since_resolve >= CIRCUIT_BREAKER_LIMIT:
+                            # v0.2.0 (AUDIT-0005): breaker trips to DENY, NOT ALLOW.
+                            # DEBT-0001: trip starts a cooldown window; counter resets but
+                            # the cooldown prevents immediate re-accumulation.
+                            breaker_tripped_until = now + CIRCUIT_COOLDOWN_SECONDS
+                            escalate_count_since_resolve = 0
+                            verdict = Verdict.DENY
+                            reason = f"连续 {CIRCUIT_BREAKER_LIMIT} 次升级未获审批，熔断拒绝 (fail-closed)"
+                        else:
+                            verdict = Verdict.ESCALATE
+                            reason = rule.reason or f"匹配规则 '{rule.name}' → 升级人工审批"
             else:
                 verdict = Verdict.ALLOW
                 reason = rule.reason or f"匹配规则 '{rule.name}' → 放行"
@@ -144,6 +150,7 @@ async def intercept_handler(request: web.Request) -> web.Response:
                 async with _escalate_lock:
                     escalate_count_since_resolve = 0
                     last_escalate_time = 0.0
+                    breaker_tripped_until = 0.0
 
     # 3. persist decision (strong-typed model, serialized at DB edge)
     decision = DecisionRecord(
@@ -543,11 +550,12 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
 # ── app factory ─────────────────────────────────────────────────────
 
 def create_app() -> web.Application:
-    global policy_engine, storage, escalate_count_since_resolve, last_escalate_time, _escalate_lock
+    global policy_engine, storage, escalate_count_since_resolve, last_escalate_time, breaker_tripped_until, _escalate_lock
     policy_engine = PolicyEngine()
     storage = Storage()
     escalate_count_since_resolve = 0
     last_escalate_time = 0.0
+    breaker_tripped_until = 0.0
     _escalate_lock = asyncio.Lock()
 
     app = web.Application()

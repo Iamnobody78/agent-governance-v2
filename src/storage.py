@@ -15,6 +15,7 @@ class Storage:
         # on the event loop; the single shared connection (check_same_thread=False)
         # must be serialized across threads → guard every operation with a lock.
         self._lock = threading.Lock()
+        self._pending: List[Dict] = []  # DEBT-0008: degraded-mode in-memory buffer
         self._init()
 
     def _init(self) -> None:
@@ -37,23 +38,64 @@ class Storage:
         self.conn.commit()
 
     def save(self, decision: Dict) -> str:
-        with self._lock:
-            self.conn.execute(
-                """INSERT INTO decisions (id, verdict, reason, matched_rule, timestamp, path, method, agent_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    decision["id"],
-                    decision["verdict"],
-                    decision["reason"],
-                    decision.get("matched_rule"),
-                    decision["timestamp"],
-                    decision["path"],
-                    decision["method"],
-                    decision.get("agent_id"),
-                ),
-            )
-            self.conn.commit()
+        try:
+            with self._lock:
+                self.conn.execute(
+                    """INSERT INTO decisions (id, verdict, reason, matched_rule, timestamp, path, method, agent_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        decision["id"],
+                        decision["verdict"],
+                        decision["reason"],
+                        decision.get("matched_rule"),
+                        decision["timestamp"],
+                        decision["path"],
+                        decision["method"],
+                        decision.get("agent_id"),
+                    ),
+                )
+                self.conn.commit()
+        except sqlite3.Error:
+            # DEBT-0008: degraded mode — buffer decision in memory with timestamp;
+            # flush_pending() retries later. Do NOT raise (gateway must not fail).
+            entry = dict(decision)
+            entry["_cached_at"] = datetime.now(timezone.utc).isoformat()
+            with self._lock:
+                self._pending.append(entry)
         return decision["id"]
+
+    def flush_pending(self) -> int:
+        """DEBT-0008: retry writing buffered decisions. Returns number flushed."""
+        flushed = 0
+        with self._lock:
+            remaining = []
+            for entry in self._pending:
+                try:
+                    self.conn.execute(
+                        """INSERT INTO decisions (id, verdict, reason, matched_rule, timestamp, path, method, agent_id)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            entry["id"],
+                            entry["verdict"],
+                            entry["reason"],
+                            entry.get("matched_rule"),
+                            entry["timestamp"],
+                            entry["path"],
+                            entry["method"],
+                            entry.get("agent_id"),
+                        ),
+                    )
+                    self.conn.commit()
+                    flushed += 1
+                except sqlite3.Error:
+                    remaining.append(entry)
+            self._pending = remaining
+        return flushed
+
+    def pending_count(self) -> int:
+        """DEBT-0008: number of decisions buffered in degraded mode."""
+        with self._lock:
+            return len(self._pending)
 
     def get_recent(self, limit: int = 50) -> List[Dict]:
         with self._lock:
