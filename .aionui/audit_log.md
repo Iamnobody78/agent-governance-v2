@@ -3,6 +3,18 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0036 — Phase HA: 高可用多实例协调（src/ha/）
+
+- PR: N/A（Phase HA——三循环引擎单点运行治理，用户裁决 A 后首个执行项）
+- 标题: `src/ha/` 三模块——FileLock（跨平台 OS 级互斥）/ Lease（租约心跳+过期检测）/ FailoverCoordinator（单写者模型：guard_write 拦截非主写 + recover 过期接管）
+- 变更文件: `src/ha/__init__.py`（新增）、`src/ha/file_lock.py`（新增）、`src/ha/lease.py`（新增）、`src/ha/failover.py`（新增）、`tests/test_ha.py`（新增 10）、`docs/ha_design.md`（新增三层方案）
+- 测试: HA-1 FileLock 互斥（并发仅一成功）/ HA-2 Lease 过期→接管 / HA-3 非主写 NotPrimaryError / HA-4 接管后续写零丢失 + 生命周期 6 项
+- 全量回归: **441 passed**（431 + 10），零失败
+- GATE 8: PASS 5/5（`python -m src.critic.runner` exit 0，零发现）
+- 关键决策: **不迁移 PostgreSQL/Redis**——storage.py 深度耦合 SQLite 特有语法（WAL/PRAGMA/sqlite3.Error/executemany），迁移不可无缝；单写者模型（低频写）无需分布式锁
+- 修复缺陷: ①Windows msvcrt 锁定空文件字节区不产生真实锁（MSDN: EOF 外区域不报错不生效）→ 创建时写 1 字节；②测试时序（持有 0.3s < 等待 1.5s → 竞争方仍成功）→ Event 同步起点 + 持有>超时
+- 版本: 快照 v1.16.0；架构文档同步（HA 层 + 部署拓扑）
+
 ## AUDIT-0035 — P7: 代理自举工具集（agent_tools）
 
 - PR: N/A（P7——自举循环 Sense→Diagnose→Remediate 工具化落地）
