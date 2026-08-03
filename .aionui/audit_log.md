@@ -238,3 +238,20 @@
   - 主: 测试优先裁决再次兑现 —— Tester 契约要求 str() 强制 + None 默认 → Builder 2 行最小修复
   - 次: probe e 确认 maybe_reload 恰 2 处（L94/L471），接口向后兼容（PolicyEngine(config_path=p) 用法无破坏）
   - 防口頭验证: 152 全量回归 + Reviewer 独立重跑 10/10 + 5 项契约探测 + probe e 补跑
+
+
+## AUDIT-0014 · 2026-08-03T13:00:00Z
+
+- PR: N/A · 新约束固化（TASK-REAL-001 真实场景教训 → 协议规则）
+- 主题: 将 TASK-REAL-001 暴露的 3 条真实场景边界约束固化为协议/注册表规则，防重复踩坑
+- 变更文件: `.aionui/protocols/teams_collaboration.md` (新增 §2.7 + §2.5 教训第 4 条), `.aionui/tools/agent_registry.yaml` (Builder 补丁语义 + 路由仲裁规则 9-11)
+- 变更量: +54/-0 (approx)
+- 结果: **三增量全部合并，锚点断言 count==1 全过，验证通过**
+- 问题: 1（增量 2 起草时字符串内嵌双引号导致 SyntaxError → 转义引号修复，一次性解决）
+- Commit: 本次提交（独立提交，便于追溯）
+- 结论:
+  - 主: **R1 补丁语义** —— 真实任务 Builder 指令必须携带完整 diff/精确锚点（count==1 断言），禁止"读全部代码再设计"；探索由 Coordinator 完成并注入。锚点: TASK-REAL-001 Builder v1 12 turns 0 writes
+  - 主: **R2 JSON-RPC 直写** —— 内容含 `\n` 字面量/复杂转义时绕过 mcp_client CLI 转义，直接 JSON-RPC 发原始 payload + file_info 自证。锚点: check_policy.py f-string 损坏
+  - 主: **R3 协调者兜底落盘** —— Reviewer verdict 写盘前截断时，Coordinator 按 stdout 补全落盘并标注（写后审优先于渠道纯净）。锚点: verdict skeleton 592B → 补全 2080B
+  - 次: §2.7 含恢复流程（截断 → file_info 检查 → 补丁语义重建 / 按 stdout 补全）；债务修复前固化，避免真实任务迭代重复触发同类截断/转义/丢失
+  - 防口頭验证: 三处合并后脚本级断言（2.7 present / lesson4 present / 补丁语义 present / rule9 present）全 True

@@ -145,6 +145,28 @@ PASS / FAIL / REJECT
 - verdict 先落盘（provisional）→ 深查后更新（final）——先落盘原则延续
 
 **本轮实测数据**：Builder 90 行自检 OK；Tester 177 行 21 用例全过；Reviewer 独立重跑 21 passed + AST 精确 + 契约探测全过；双报告交叉一致（0 偏差）；全量回归 **130 passed**。
+### 2.7 调度层第三阶段：MCP 工具共享 + 真实场景边界约束（v0.2.4+，AUDIT-0012/0013）
+
+> **目标**：子代理经 MCP 统一工具总线交换产物（Builder/Tester 写、Reviewer 只读）。
+> 验证实验：TASK-SCHED-003（MCP 通道，142 passed）+ TASK-REAL-001（真实债务清偿，152 passed）。
+
+**MCP 通道**（§8 详述）：`scripts/mcp_client.py` → `filesystem_mcp_server.py`（stdio JSON-RPC）；
+工具 read_file / write_file / list_directory / create_directory / file_info；沙箱 = repo root，路径逃逸拒绝。
+
+**真实场景边界约束（TASK-REAL-001 实测暴露，最高优先级）**：
+
+| # | 约束 | 规则（必须遵守） | 实测教训 |
+|:-:|------|------------------|----------|
+| R1 | **真实任务 prompt 过大 → Builder READ 阶段截断** | **补丁语义而非探索语义**：子代理任务指令必须携带完整 diff / 精确锚点（锚点唯一性断言 count==1），禁止"读全部代码再设计"；需要探索时由 Coordinator 完成并注入 | v1 12 turns 0 writes（只读不写）→ v2 补丁语义恢复 |
+| R2 | **mcp_client `\n` 转义损坏真实代码**（f-string 含字面 `\n`） | **JSON-RPC 直写而非 CLI 转义**：内容含 `\n` 字面量/复杂转义时，绕过 CLI 的 `\n`→换行替换，直接 JSON-RPC 发送原始 payload；或先 `file_info` 自证 + 立即重跑受影响测试 | check_policy.py f-string 被 `\n` 转义损坏 → 直接 JSON-RPC 重提交修复 |
+| R3 | **Reviewer 在 verdict 写盘前截断** | **协调者兜底落盘**：Reviewer 截断时，Coordinator 按子代理 stdout 输出补全 verdict 落盘（标注"Coordinator 补全"），写后审协议优先于渠道纯净 | Reviewer 输出 OVERALL 但 verdict 仍是 PROVISIONAL skeleton（592B）→ Coordinator 补全（2080B） |
+
+**恢复流程（真实任务专用）**：
+- 子代理截断 → Coordinator 检查落盘产物（file_info）：
+  - 产物缺失 → 用**补丁语义**重建（注入完整 diff + 锚点，禁止重新探索）
+  - 产物存在但 incomplete → 接受现状 + 标注，或按 stdout 补全（仅 Reviewer verdict）
+- 每轮 MCP 写入后必须 `file_info` 自证大小（防截断丢失）
+
 ### 2.5 调度层第一阶段：自动接力循环（v0.2.2+，AUDIT-0010）
 
 > **目标**：Builder → Reviewer 接力由 Coordinator **自动驱动**，用户零介入。
@@ -173,6 +195,9 @@ BUILD(n) → 验证产物落盘 → REVIEW(n) → 读 verdict
    所有**关键产物**（verdict、报告）必须"先落盘、后完善"，不得依赖子代理完整跑完。
 2. **Builder 必须自证**：测试命令 + 真实输出写在 builder_output.md，Reviewer 独立重跑验证（防口头通过）。
 3. **断言 vs 产物**：接力判断只认落盘文件（verdict 存在且首行含 PASS/REJECT），不认子代理的 stdout 摘要。
+4. **协调者兜底落盘（TASK-REAL-001 新增）**：Reviewer（或任何子代理）在 verdict 写盘前被截断时，
+   Coordinator 必须按其 stdout 输出**补全 verdict 落盘**，并标注「Coordinator 补全（子代理截断）」。
+   写后审协议优先于渠道纯净——接力判断只认落盘文件，不认 stdout，但落盘内容可以来自 stdout（带标注）。
 
 **文件分配**（防撞车，沿用 §2.2）：
 - Builder 写 src/、	ests/（≤2 文件）+ work/<TASK>/builder_output.md

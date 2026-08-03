@@ -8,7 +8,7 @@
 
 | 角色 | 能力边界 | 允许写入 | 只读 | 状态 |
 |------|----------|----------|------|------|
-| **Builder** 🛠️ | 生成/修改源代码 ≤2 文件/任务 | `src/`, `config/`, `tests/` | — | 可用（TASK-SCHED-001/002 验证） |
+| **Builder** 🛠️ | 生成/修改源代码 ≤2 文件/任务；**任务指令必须携带完整 diff/精确锚点（补丁语义），禁止探索式读取** | `src/`, `config/`, `tests/` | — | 可用（SCHED-001/002/003 + REAL-001 验证） |
 | **Tester** 🧪 | 按接口契约编写并运行测试 | `tests/` + `work/<TASK>/tester_output.md` | `src/`（只读） | 可用（TASK-SCHED-002 验证，21 用例） |
 | **Reviewer** 🔍 | 合并审查多角色产物、独立重跑验证 | 仅 `work/<TASK>/reviewer_verdict.md` | `src/`, `tests/`, `work/` | 可用（v2 先落盘协议验证；002 合并审查验证） |
 | **Archivist** 📁 | 更新文档/审计日志 | `*.md`, `.aionui/` | — | 备用（2 代理模式由 Reviewer 兼任） |
@@ -62,3 +62,8 @@ Reviewer:
 ### 路由仲裁规则（新增第 8 条）
 8. 任务需工具级共享（Reviewer 读、Builder/Tester 写同一模块）→ 启用 MCP 通道；
    并行写不同文件允许；Reviewer 必须经 MCP 读取并独立重跑
+
+9. 真实任务（>自造任务复杂度）→ Builder 指令必须**补丁语义**：携带完整 diff / 精确锚点（count==1 断言），
+   禁止"读全部代码再设计"（TASK-REAL-001: Builder v1 READ 截断 0 writes 教训）
+10. 内容含 `\n` 字面量/复杂转义 → 禁用 mcp_client CLI 转义，**JSON-RPC 直写**原始 payload（TASK-REAL-001: f-string 损坏教训）
+11. Reviewer verdict 未落盘即截断 → Coordinator **兜底补全落盘**并标注（写后审优先于渠道纯净）
