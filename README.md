@@ -1,8 +1,8 @@
 # ARCHITECTURE.md — agent-governance v2
 
-![Tests](https://img.shields.io/badge/tests-542%20passed-green)
+![Tests](https://img.shields.io/badge/tests-574%20passed-green)
 ![GATE 8](https://img.shields.io/badge/GATE%208-5%2F5%20PASS-green)
-![Snapshot](https://img.shields.io/badge/snapshot-v1.24.0-blue)
+![Snapshot](https://img.shields.io/badge/snapshot-v1.25.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![CI](https://img.shields.io/badge/CI-GATE%201--8-blueviolet)
 ![Meta](https://img.shields.io/badge/meta-5%2F7%20%CE%94%20%28%E2%9C%94+%E2%9A%A0%EF%B8%8F%29-orange)
@@ -192,6 +192,10 @@ rules:
 **v0.5.0 新增（TASK-REAL-012，Phase 4 治理大脑阶段 1——可解释引擎 + 五级判定）**：`DecisionRecord.rationale` 第 13 列（每个决策记录匹配规则与原因，`_migrate` 12→13 列无损扩容）+ **五级 Verdict**——`ALLOW`（200 透传）/ `ALLOW_WITH_WARNING`（200 + `X-Governance-Warning` 响应头，转发不中断）/ `ESCALATE`（202 升舱待审）/ `DENY`（403 硬拒）/ `SUSPEND`（403 挂起待人工复审，与 DENY 区分"临时冻结"）+ `create_app(config_path)` 策略注入（测试/多租户可加载独立策略文件）+ 网关版本 0.5.0。
 
 **v0.6.0 新增（TASK-REAL-012，Phase 5 Context Hook HMAC——L3 治理大脑收尾）**：治理头防伪造——`X-Trace-ID`/`X-Parent-Span-ID`/`X-Span-ID` 以 HMAC-SHA256 签名（`X-Governance-Signature` + `X-Governance-Timestamp`，±300s 防重放窗），伪造头 fail-safe 降级为新链根（隔离孤立节点，永不进入审计链）；`CONTEXT_HMAC_KEY` 环境变量开关（未设置 = 兼容模式，行为与 v0.5.0 完全一致）+ 网关版本 0.6.0。五层架构 L1-L5 全部闭环。
+
+**v1.25.0 新增（Tree-sitter AST 硬阻断引擎——L1 内核强化）**：Priority 0 前门先于一切 YAML 规则匹配——`src/ast_guard.py`（P1 Capture 校验 / P2 payload_extractor 提取 / P3 命令表仅存 .scm 零硬编码 / fail-closed 启动）+ `queries/{python,bash,sql}.scm`（S-expression 零正则）+ policy.py `_ast_gate` 集成 + main.py 注入（`AG_AST_DISABLE=1` 逃生舱）；审计 trace 携带精确行号 + S-expression 标签；依赖锁定 `tree-sitter==0.21.3` + `tree-sitter-languages==1.5.0`（0.25+ 移除 Query 匹配 API）；574 tests。
+
+**v1.24.0 新增（社区标准合规补全——模范开源项目）**：CODE_OF_CONDUCT.md + SECURITY.md + Issue/PR 模板 + dependabot.yml + codeql.yml + README 3 社区徽章；13 项开源社区标准核查全闭合；542 tests。
 
 **v1.13.0 基线（P6 认证层前置，main.py 兼容模式引用）**：五层架构闭环后、P13 认证授权层引入前的稳定基线——`auth: Optional[TenantAuth] = None` 即"兼容模式"（直接放行，391 回归保障）；本条目为 README 版本声明与 main.py 历史版本引用的一致性记录（Critic-Docs D2）。
 

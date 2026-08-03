@@ -294,9 +294,16 @@ class PolicyConfig:
 
 
 class PolicyEngine:
-    def __init__(self, config_path: Optional[str] = "config/policies.yaml"):
+    def __init__(self, config_path: Optional[str] = "config/policies.yaml",
+                 ast_guard=None):
+        """ast_guard: 可选 AST 硬阻断引擎（Priority 0 前门, Tree-sitter 裁决）。
+
+        None=禁用（向后兼容 / 隔离测试）。生产路径由 main.py 注入
+        ast_guard.ASTGuard；缺失/损坏时 main.py fail-closed 拒绝启动。
+        """
         if config_path is None:
             config_path = "config/policies.yaml"
+        self.ast_guard = ast_guard  # P-AST: Priority 0 前门
         self.config: PolicyConfig = PolicyConfig(name="default", version="0.1.0")
         self.rules: List[Rule] = []
         self._config_path = str(config_path)
@@ -374,9 +381,34 @@ class PolicyEngine:
         Backward compatible: rules without json_path ignore `body` entirely,
         so existing callers (path/method only) keep identical behavior.
         """
+        # P-AST: Priority 0 —— AST 硬阻断先于一切 YAML 规则匹配 (Tree-sitter 裁决)
+        ast_rule = self._ast_gate(path, method, body)
+        if ast_rule is not None:
+            return ast_rule
         for rule in self._jp_index.candidates(body):
             if rule.tenant_id is not None and rule.tenant_id != tenant_id:
                 continue  # 跨租户私有规则: 不参与本请求评估 (隔离语义)
             if rule.matches(path, method, body):
                 return rule
         return None
+
+    # P-AST: Priority 0 AST 硬阻断前门 (Tree-sitter 裁决, 修复+优先集成)。
+    # 设计: AST block 必须发生在所有 YAML 规则匹配之前 —— evaluate() 首行调用;
+    # 命中即返回合成 DENY Rule (priority 0), 不进入 _jp_index 候选循环。
+    # 审计 trace: reason 携带精确行号 + S-expression 标签 (Rule.reason →
+    # DecisionRecord.reason, 由 main.py 落库)。纯放行请求 (无代码片段)
+    # 返回 None, 与原有 YAML 评估路径完全一致 (Authorization passthrough)。
+    def _ast_gate(self, path: str, method: str, body) -> Optional[Rule]:
+        if self.ast_guard is None or body is None:
+            return None
+        block = self.ast_guard.check_request(body)
+        if block is None:
+            return None
+        return Rule(
+            name=f"ast-block-{block.language}",
+            path_pattern="*",
+            method=method,
+            action="DENY",
+            reason=block.summary,
+            priority=0,
+        )

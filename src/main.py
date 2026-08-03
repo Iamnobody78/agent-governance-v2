@@ -8,6 +8,7 @@ Usage:
 import asyncio
 import json
 import logging
+import os
 import time
 import traceback
 import uuid
@@ -828,6 +829,18 @@ def create_app(config_path: Optional[str] = None,
         logger.info("P6 auth enabled: %d tenant(s) — %s", len(auth.tenant_ids()),
                     ", ".join(auth.tenant_ids()))
     policy_engine = PolicyEngine(config_path)
+    # P-AST: Priority 0 AST 硬阻断引擎注入 (Tree-sitter 裁决)。
+    # fail-closed: ASTGuard 加载失败（查询文件缺失/损坏/语言包不可用）→ 拒绝启动,
+    # 除非显式设置环境变量 AG_AST_DISABLE=1（逃生舱, 仅限无代码分析需求的部署）。
+    if os.environ.get("AG_AST_DISABLE") != "1":
+        try:
+            from .ast_guard import ASTGuard
+            ast_guard = ASTGuard()
+            policy_engine.ast_guard = ast_guard
+            logger.info("ASTGuard loaded: %s", ", ".join(ast_guard.loaded_languages))
+        except Exception as e:  # noqa: BLE001 — fail-closed: AST 缺失必须拒绝启动
+            logger.error("ASTGuard failed to load (fail-closed): %s", e)
+            raise
     storage = Storage()
     # DEBT-0011: restore persisted breaker state (restart must not reset counters)
     breaker_state = storage.load_breaker_state()

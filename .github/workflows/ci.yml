@@ -171,8 +171,8 @@ jobs:
         run: |
           test -f .aionui/audit_log.md || { echo "GATE 7 FAIL: audit_log.md missing"; exit 1; }
           test -f .aionui/context/TRIPLE_LOOP_SNAPSHOT.md || { echo "GATE 7 FAIL: snapshot missing"; exit 1; }
-          grep -q "^> 版本: v1.24.0" .aionui/context/TRIPLE_LOOP_SNAPSHOT.md || { echo "GATE 7 FAIL: snapshot version != v1.24.0"; exit 1; }
-          grep -q "AUDIT-0045" .aionui/audit_log.md || { echo "GATE 7 FAIL: AUDIT-0045 missing"; exit 1; }
+          grep -q "^> 版本: v1.25.0" .aionui/context/TRIPLE_LOOP_SNAPSHOT.md || { echo "GATE 7 FAIL: snapshot version != v1.25.0"; exit 1; }
+          grep -q "AUDIT-0046" .aionui/audit_log.md || { echo "GATE 7 FAIL: AUDIT-0046 missing"; exit 1; }
           echo "GATE 7 PASS: artifacts consistent"
       - name: "GATE 8 — critic team (5 critics, majority pass)"
         run: python -m src.critic.runner

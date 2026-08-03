@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.24.0
-> 快照时间: 2026-08-03（社区标准合规补全——CODE_OF_CONDUCT + SECURITY + Issue/PR 模板 + Dependabot，成为"模范开源项目"）
-> 最近审计: AUDIT-0045（社区标准合规补全）+ AUDIT-0044（Meta-Binding）+ AUDIT-0043（P13 认证授权层）
+> 版本: v1.25.0
+> 快照时间: 2026-08-03（Tree-sitter AST 硬阻断引擎——Priority 0 前门，五层架构 L1 内核强化；零正则 S-expression 查询）
+> 最近审计: AUDIT-0046（AST 硬阻断引擎）+ AUDIT-0045（社区标准合规补全）+ AUDIT-0044（Meta-Binding）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,14 +12,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 542 passed（502 基线 + 40 新增 MH-1/2/3；trace 15 + proposer 14 + pareto 11） |
+| **测试全量** | 574 passed（基线 542 + 新增 32：ASTGuard 18 + PayloadExtractor 9 + policy 集成 5；另 2 网络类 flaky 环境性失败记录） |
 | **覆盖率** | 87%（`--source=src` 实测 2026-08-03；门槛 ≥ 60%；较 90.12% 旧口径降低系 scope 含 meta_harness 68-70%，非回归） |
 | **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞）；DEBT-0027（P6 认证缺失）已清偿 |
 | **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受） |
-| **最近事件** | **社区标准合规补全完成** ✅（对照开源社区最佳实践 13 项核查：提交描述✅/编码频率✅(GitHub Insights)/依赖图⚠️→补 Dependabot(pip+github-actions weekly)/README✅/网络行为守则🔴→补 CODE_OF_CONDUCT.md(Contributor Covenant 2.1)/Fork✅/贡献操作✅(P10 CONTRIBUTING.md)/使用指标⚠️(未发布 PyPI 暂不要求)/执照✅/CI 徽章✅/安全策略🔴→补 SECURITY.md(24h 响应/7d 初评/30d 补丁, 含 P10 私钥事件披露)/问题模板🔴→补 bug_report+feature_request(needs-triage 标签)/PR 模板🔴→补 PULL_REQUEST_TEMPLATE(检查清单+ED25519 签名项)；README 增 3 社区徽章(行为守则/安全策略/PRs Welcome)；542 tests；P13 认证授权层+META-BINDING 此前完成）；GATE 8 5/5 PASS |
+| **最近事件** | **Tree-sitter AST 硬阻断引擎完成** ✅（裁决：修复+优先集成 policy.py → AST 前门 Priority 0，先于一切 YAML 规则匹配；`src/ast_guard.py`(P1 Capture 校验/P2 payload_extractor 提取/P3 命令表仅存 .scm 零硬编码/fail-closed 启动) + `src/payload_extractor.py` + `queries/{python,bash,sql}.scm`(S-expression 零正则) + policy.py `_ast_gate` 集成 + main.py 注入(AG_AST_DISABLE=1 逃生舱)；依赖锁定 tree-sitter==0.21.3+tree-sitter-languages==1.5.0（0.25+ 移除 Query 匹配 API、#any-of? 谓词在 0.21.3 失效已改 #match?）；574 tests；GATE 8 5/5 PASS。此前：**社区标准合规补全** ✅（v1.24.0：CODE_OF_CONDUCT/SECURITY/Issue+PR 模板/Dependabot/codeql.yml/README 3 社区徽章；542 tests） |
 | **CI 状态** | ✅ GATE 1-8 全绿（GATE 8 = Critic Agent 五批判者，全量回归 exit 0） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …P13: `docs/AUTH.md + 快照` 提交 `c5687db`（v1.23.0）→ META-BINDING 提交 `0e157d4`/`5520b7d` → 社区标准: `CODE_OF_CONDUCT+SECURITY+模板+Dependabot` 提交 `（v1.24.0）` |
+| **提交链** | …P13: `docs/AUTH.md + 快照` 提交 `c5687db`（v1.23.0）→ META-BINDING 提交 `0e157d4`/`5520b7d` → 社区标准: `CODE_OF_CONDUCT+SECURITY+模板+Dependabot+codeql` 提交 `（v1.24.0）` → AST 硬阻断: `ast_guard+payload_extractor+queries+policy 集成` 提交 `（v1.25.0）` |
 
 ---
 
@@ -93,7 +93,7 @@
 1. **加载此文件**：读取当前快照，理解状态
 2. **加载协议**：读取 `.aionui/protocols/teams_collaboration.md` 获取完整协作流程
 3. **加载债务账本**：读取 `debt_registry.md`（仓库根）获取剩余债务
-4. **验证测试**：运行 `pytest tests/ -q` 确认 420 passed
+4. **验证测试**：运行 `pytest tests/ -q` 确认 574 passed
 5. **继续治理**：运行 `@governance start` 启动下一轮治理循环
 
 ---
@@ -141,6 +141,8 @@
 - **v1.18.0**（2026-08-03）：P9 外部代理示例（examples/：external_agent_demo 进程内 agent_tools + langchain/autogen 零侵入 base_url 被动 sidecar + _stub_llm 测试双 + run_examples.ps1/sh 双 runner；真实 SDK 调用被网关 403 治理；修复既有 TestZeroTouchClaim 3 失败；450 tests；GATE 8 5/5 PASS；AUDIT-0038）
 - **v1.19.0**（2026-08-03）：P10 开源就绪（CONTRIBUTING.md 含 Agent 治理流程 + .github/workflows/ci.yml GATE 1-8 真实 CI + docs/CERTIFICATION.md 认证指南 + README 徽章块；git push origin main 同步 24 commits；GATE 5 实测 sign→verify OK；CI GATE 7 自验证快照版本 + AUDIT 链；AUDIT-0039）
 - **v1.20.0**（2026-08-03）：P11 元编程声明（裁决：补全"自生成"为 ✅——src/codegen/generator.py 编译式生成 + _generated_matches.py 入库 + tests/test_codegen.py 38 测试含 16 项运行时等价性 + policy_sync.py --generate 漂移自愈；docs/META_CAPABILITIES.md 7 项诚实声明（✅×5 ⚠️×2 人类在环）；README 元能力徽章；488 tests；AUDIT-0040）
+- **v1.24.0**（2026-08-03）：社区标准合规补全（CODE_OF_CONDUCT.md + SECURITY.md + Issue/PR 模板 + dependabot.yml + codeql.yml + README 3 社区徽章；13 项开源社区标准核查全闭合；542 tests；AUDIT-0045）
+- **v1.25.0**（2026-08-03）：Tree-sitter AST 硬阻断引擎（src/ast_guard.py + payload_extractor.py + queries/{python,bash,sql}.scm + policy.py Priority 0 前门 + main.py fail-closed 注入；三约束验收：P1 Capture 校验/P2 Payload 提取/P3 Bash 零硬编码；依赖锁定 tree-sitter==0.21.3+tree-sitter-languages==1.5.0；574 tests；GATE 8 5/5 PASS；AUDIT-0046）
 
 ---
 

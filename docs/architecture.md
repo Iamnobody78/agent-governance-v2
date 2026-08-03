@@ -1,6 +1,6 @@
 # agent-governance v2 — 架构设计（权威参考）
 
-> **版本对应**: 快照 v1.24.0 · 提交 社区标准合规（CODE_OF_CONDUCT + SECURITY + Issue/PR 模板 + Dependabot） · 2026-08-03
+> **版本对应**: 快照 v1.25.0 · 提交 Tree-sitter AST 硬阻断引擎（Priority 0 前门，五层架构 L1 内核强化） · 2026-08-03
 > **维护铁律**: 本文档与代码同仓库、同提交链。任何架构级变更（新增模块/层、修改请求生命周期、加固点增减）必须在同一提交中同步更新本文档——「文档与代码同提交」。
 > **关联**: README.md（v1→v2 演进叙事 + ADR 附录，历史叙述）；`.aionui/context/TRIPLE_LOOP_SNAPSHOT.md`（治理快照，状态维度）。
 

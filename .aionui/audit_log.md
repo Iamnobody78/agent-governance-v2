@@ -3,6 +3,22 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0046 — Tree-sitter AST 硬阻断引擎（Priority 0 前门）
+
+- **类型**: 架构强化 + 依赖锁定（五层架构 L1 内核）
+- **裁决依据**: "AI 停留在正则舒适区"偏执诊断 + "修复并优先集成 policy.py 并跑通测试"（验证优先于扩展）
+- **交付**:
+  - `src/ast_guard.py` — ASTGuard 引擎：三约束验收 P1 Capture 校验（未知捕获名忽略并记录，防 .scm 篡改注入）/ P2 Payload 提取（一律经 payload_extractor，零自写扫描）/ P3 Bash 硬编码（危险命令表仅存 queries/bash.scm 谓词参数，引擎零命令名）；fail-closed 启动（查询文件缺失/损坏 → 拒绝启动）；审计 trace 携带精确行号 + S-expression 标签（ASTFinding.summary → Rule.reason → DecisionRecord.reason）
+  - `src/payload_extractor.py` — 代码片段提取器（递归 dict/list、语言提示字段 + 父键名映射、MAX_FRAGMENTS/MAX_CODE_LEN/MAX_DEPTH 防 DoS、代码容器不二次提取）
+  - `queries/{python,bash,sql}.scm` — S-expression 查询（零正则）：python 危险函数（eval/exec/compile + os/subprocess/pickle/yaml 等 20+ 模块方法 + importlib 动态导入）；bash 危险命令表（rm/sudo/mkfs/curl/sh 等 70+）+ 危险标志组合；sql 破坏性语句（drop/delete/truncate）
+  - `src/policy.py` — `_ast_gate` 集成：evaluate() 首行 Priority 0 检查，先于一切 YAML 规则匹配；合成 Rule(name=ast-block-*, action=DENY, priority=0)
+  - `src/main.py` — ASTGuard 注入（fail-closed：加载失败拒绝启动；`AG_AST_DISABLE=1` 显式逃生舱）+ `import os`
+  - `tests/test_ast_guard.py`（18 用例）+ `tests/test_ast_policy_integration.py`（5 用例）
+- **依赖锁定**: tree-sitter==0.21.3 + tree-sitter-languages==1.5.0
+  - 依赖考古结论：tree-sitter 0.25+ 移除 Query.captures/matches 匹配 API；0.22-0.24 与 tree-sitter-languages 双参 Language 不兼容；0.20.x 无 SQL grammar（ABI 15 的 tree-sitter-sql 0.3.x 需 0.25+ 核心）；#any-of? 谓词在 0.21.3 运行时失效（编译接受但被忽略）→ 值表统一改 #match?（正则仅做模式筛选，AST 解析仍在 tree-sitter）
+- **验证**: 574 passed（新增 32：ASTGuard 18 + PayloadExtractor 9 + policy 集成 5）；GATE 8 5/5 PASS（修复 T1：测试需含裸 assert；D2：main.py v1.13.0 注释版本补 README 条目）；2 环境性 flaky（test_revoke/test_semantic_hook mock 连接超时，请求体无代码字段，与 AST 无逻辑关联）记录在案
+- **v1.25.0 快照**: TRIPLE_LOOP_SNAPSHOT.md 更新（574 tests / 提交链 / 版本历史）
+
 ## AUDIT-0045 — 社区标准合规补全（模范开源项目）
 
 - 提交: `（v1.24.0）`（author=`agent-governance`，已 push origin/main）
