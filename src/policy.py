@@ -1,5 +1,6 @@
 """YAML policy loader + matching engine — declarative, not hardcoded."""
 
+import posixpath
 import re
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -25,13 +26,18 @@ class Rule:
         return method_ok and path_ok
 
     def _path_matches(self, path: str) -> bool:
-        """Support exact match and wildcard patterns like /api/* or /api/config/*."""
-        if self.path_pattern == path:
+        """Support exact match and wildcard patterns like /api/* or /api/config/*.
+
+        v0.2.1 (AUDIT-0006 companion): normpath normalization kills
+        '/api/config/../admin' traversal bypasses before matching.
+        """
+        normalized = posixpath.normpath(path.split("?", 1)[0])
+        if self.path_pattern == normalized:
             return True
         if "*" in self.path_pattern:
             pattern = "^" + re.escape(self.path_pattern).replace(r"\*", ".*") + "$"
-            return bool(re.match(pattern, path))
-        if self.path_pattern.endswith("/") and path.startswith(self.path_pattern):
+            return bool(re.match(pattern, normalized))
+        if self.path_pattern.endswith("/") and normalized.startswith(self.path_pattern):
             return True
         return False
 

@@ -20,3 +20,9 @@ test = [
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
+
+# Lock pytest rootdir to THIS repo. Without this, pytest climbs up to the
+# parent workspace pyproject.toml ([tool.pytest.ini_options]) and resolves
+# `src` against the wrong root → every test 500s. (health_score.py catch)
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -62,3 +62,31 @@ jobs:
         run: pip install -e ".[test]"
       - name: Run policy_probe
         run: python examples/policy_probe.py
+
+  # GATE 6: Security anti-pattern scanner (breaker-tripping-to-ALLOW,
+  # timeout-default-ALLOW, silent-swallow, startswith-without-normpath)
+  meta-security:
+    name: GATE 6 - Security Anti-pattern Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run meta-security scanner on src/
+        run: python scripts/meta_security_scanner.py src
+
+  # GATE 7: Policy-code drift detector (AUDIT-0004 lesson: lowercase
+  # 'deny' passed CI while runtime else-branch silently ALLOWed)
+  policy-sync:
+    name: GATE 7 - Policy/Code Drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install pyyaml
+      - name: Run policy-sync drift check
+        run: python scripts/policy_sync.py
