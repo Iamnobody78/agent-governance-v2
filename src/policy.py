@@ -114,13 +114,16 @@ def _extract_at(node, segments, idx, out) -> None:
         return
 
 
-def _json_extract(body, json_path: str) -> List[str]:
+def _json_extract(body, json_path: str, segments=None) -> List[str]:
     """Extract json_path values from a body as a list of matchable strings.
 
     Values are stringified for regex matching: scalars via str, containers
     via compact JSON. Non-dict/list bodies (None, undecodable str, scalar)
     yield [] — the caller treats an unextractable body as 'rule cannot apply'
     (safe fallback: no structured tool call can exist in an unparseable body).
+
+    P3 (DEBT-0026): segments 可传入 __post_init__ 预解析的缓存, 避免每条
+    规则每次请求重复 tokenize。
     """
     if isinstance(body, str) and body.strip():
         try:
@@ -129,7 +132,8 @@ def _json_extract(body, json_path: str) -> List[str]:
             return []
     if body is None or isinstance(body, (str, int, float, bool)):
         return []
-    segments = _parse_json_path(json_path)  # validated at rule load; still guarded
+    if segments is None:
+        segments = _parse_json_path(json_path)  # validated at rule load; still guarded
     found = []
     _extract_at(body, segments, 0, found)
     strings = []
@@ -141,6 +145,64 @@ def _json_extract(body, json_path: str) -> List[str]:
         else:
             strings.append(str(v))
     return strings
+
+
+# ── P3 (DEBT-0026): json_path 前缀索引树 ─────────────────────────────
+# 规则多时 evaluate() 对每条 json_path 规则都 _json_extract 全量走树
+# (O(R×N))。索引按规则 json_path 首段键桶化; 请求体顶层键集合单次 O(N)
+# 收集后剪枝: 首段为具体键但不在顶层键中的规则, 其提取必然为空 (与
+# _extract_at 的 dict 分支语义等价), 直接跳过 —— 只对候选规则做完整提取。
+# 首段为 wild/descend/idx 的路径可命中任意位置 (含任意深度), 不可剪枝,
+# 保留为常驻候选。剪枝只跳过"结果必为 False"的规则, 候选集保持原优先级
+# 序, 故 evaluate() 结果与线性扫描逐位等价。
+
+def _top_level_keys(body):
+    """Mirror _json_extract's body normalization; return (top_keys, body_is_list)."""
+    if isinstance(body, str) and body.strip():
+        try:
+            body = json.loads(body)
+        except json.JSONDecodeError:
+            return set(), False
+    if isinstance(body, dict):
+        return set(body.keys()), False
+    if isinstance(body, list):
+        return set(), True
+    return set(), False
+
+
+class JsonPathIndex:
+    """json_path 前缀索引树: 首段键桶 + 剪枝候选生成, 保持规则优先级序。"""
+
+    def __init__(self, rules):
+        self._rules = list(rules)
+        self._prune = {}  # id(rule) -> ("key", k) | ("idx",) | ("any",)
+        for rule in rules:
+            if rule.json_path is None:
+                self._prune[id(rule)] = ("any",)
+                continue
+            segs = rule._segments  # __post_init__ 已预解析
+            kind = segs[0][0] if segs else "any"
+            if kind == "key":
+                self._prune[id(rule)] = ("key", segs[0][1])
+            elif kind == "idx":
+                self._prune[id(rule)] = ("idx",)
+            else:  # wild / descend / 空路径
+                self._prune[id(rule)] = ("any",)
+
+    def candidates(self, body):
+        """剪枝后的候选规则 (保持 _rules 优先级序) — 语义与线性扫描等价。"""
+        top_keys, body_is_list = _top_level_keys(body)
+        out = []
+        for rule in self._rules:
+            pr = self._prune.get(id(rule), ("any",))
+            if pr[0] == "any":
+                out.append(rule)
+            elif pr[0] == "key":
+                if pr[1] in top_keys:
+                    out.append(rule)
+            elif body_is_list:  # idx 首段: 仅列表体可提取
+                out.append(rule)
+        return out
 
 
 @dataclass
@@ -174,7 +236,8 @@ class Rule:
                 f"body 模式规则必须有提取路径 (fail-closed)"
             )
         if self.json_path is not None:
-            _parse_json_path(self.json_path)  # raises ValueError on bad syntax
+            # P3 (DEBT-0026): 预解析缓存 segments —— 每条规则只 tokenize 一次
+            self._segments = _parse_json_path(self.json_path)  # raises ValueError on bad syntax
             if self.json_pattern is not None:
                 try:
                     re.search(self.json_pattern, "")
@@ -193,7 +256,7 @@ class Rule:
             return True
         # 条件规则: 请求体 JSON 中 json_path 提取值需匹配 json_pattern。
         # 非 JSON 体/无法提取 → 条件不满足 → 规则不匹配 (安全回退)。
-        values = _json_extract(body, self.json_path)
+        values = _json_extract(body, self.json_path, segments=self._segments)
         if not values:
             return False
         if self.json_pattern is None:
@@ -255,6 +318,7 @@ class PolicyEngine:
             new_rules.append(rule)
         new_rules.sort(key=lambda r: r.priority)
         self.rules = new_rules
+        self._jp_index = JsonPathIndex(new_rules)  # P3 (DEBT-0026): 前缀索引树
         self.config.name = data.get("name", self.config.name)
         self.config.version = data.get("version", self.config.version)
         try:
@@ -288,12 +352,12 @@ class PolicyEngine:
         return False
 
     def evaluate(self, path: str, method: str, body=None) -> Optional[Rule]:
-        """First matching rule by priority; json_path rules inspect `body`.
+        """First matching rule by priority; json_path 规则经前缀索引剪枝 (P3, DEBT-0026)。
 
         Backward compatible: rules without json_path ignore `body` entirely,
         so existing callers (path/method only) keep identical behavior.
         """
-        for rule in self.rules:
+        for rule in self._jp_index.candidates(body):
             if rule.matches(path, method, body):
                 return rule
         return None
