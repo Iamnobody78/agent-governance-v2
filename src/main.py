@@ -225,6 +225,309 @@ async def decisions_handler(request: web.Request) -> web.Response:
     return web.json_response({"total": len(decisions), "decisions": decisions})
 
 
+# ── OpenAI-compatible endpoint (B1: LangChain zero-touch integration) ─
+
+# Tools whose invocation must be blocked at the LLM request level.
+# LangChain exposes them as JSON functions inside the request body;
+# the gateway inspects tool_calls/tools before forwarding.
+# NOTE (AUDIT-0008, Reviewer REJECT fix): names are compared casefolded +
+# NFKC-normalized on BOTH sides, so 'Delete_File', 'delete_fιle' (U+03B9)
+# and fullwidth variants cannot bypass the exact-match blacklist.
+DANGEROUS_TOOL_NAMES = ("delete_file", "delete_user", "sudo_exec", "rm_file")
+
+import unicodedata as _unicodedata
+
+# Homoglyph confusables: characters that LOOK like ASCII but are NOT
+# folded by NFKC/casefold (Greek iota vs Latin i, Cyrillic lookalikes,
+# Roman numerals). Reviewer finding R2: 'delete_fιle' (U+03B9) passes an
+# exact-match blacklist and is NOT caught by NFKC alone — casefold keeps
+# it as U+03B9. This map is the deliberate, documented defense-in-depth.
+_CONFUSABLE_MAP = str.maketrans({
+    # Greek iota lookalikes -> i
+    "\u03b9": "i", "\u0399": "i", "\u03ca": "i", "\u03aa": "i",
+    # Cyrillic lookalikes (a, e, o, p, c, i, b)
+    "\u0430": "a", "\u0435": "e", "\u043e": "o", "\u0440": "p",
+    "\u0441": "c", "\u0456": "i", "\u0406": "i",
+    # Roman numerals I/i
+    "\u2160": "i", "\u2170": "i",
+})
+
+
+def _norm_tool_name(name) -> str:
+    """Normalize a tool name for comparison.
+
+    Pipeline: NFKC (compat decomposition, folds fullwidth forms) ->
+    confusable map (homoglyph lookalikes) -> casefold (case variants).
+    Agent frameworks normalize before tool lookup, so the gateway must
+    match — otherwise 'Delete_File', 'delete＿file' (fullwidth U+FF3F) or
+    'delete_fιle' (U+03B9) slip past the blacklist and execute upstream.
+    """
+    if not isinstance(name, str):
+        return ""
+    return (
+        _unicodedata.normalize("NFKC", name)
+        .translate(_CONFUSABLE_MAP)
+        .casefold()
+    )
+
+
+def _extract_tool_names(req: InterceptRequest) -> list:
+    """Extract tool/function names from an OpenAI-format chat request.
+
+    Type-confusion hardened (Reviewer fix): 'tools' / 'messages' /
+    'tool_calls' are REQUIRED to be lists; dict bodies yield zero names
+    and are treated as undecodable → the handler's fail-closed path
+    takes over. Function values must be dicts, names must be strings.
+    """
+    body = req.body
+    if isinstance(body, str) and body.strip():
+        try:
+            body = json.loads(body)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(body, dict):
+        return []
+    names = []
+    tools = body.get("tools")
+    if isinstance(tools, list):
+        for tool in tools:
+            if not isinstance(tool, dict):
+                continue
+            fn = tool.get("function")
+            if isinstance(fn, dict):            # must be dict, not str
+                name = fn.get("name")
+                if isinstance(name, str) and name:
+                    names.append(name)
+    messages = body.get("messages")
+    if isinstance(messages, list):
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            tc = msg.get("tool_calls")
+            if isinstance(tc, list):
+                for call in tc:
+                    if not isinstance(call, dict):
+                        continue
+                    fn = call.get("function")
+                    if isinstance(fn, dict):    # must be dict, not str
+                        name = fn.get("name")
+                        if isinstance(name, str) and name:
+                            names.append(name)
+    return names
+
+
+def _malformed_tool_declaration(req) -> str | None:
+    """Detect tool declarations that are present but structurally invalid.
+
+    Fail-closed principle: a declaration we CANNOT verify must never be
+    silently ignored and forwarded — a lenient upstream parser may still
+    execute it, bypassing governance. Returns an error description or None.
+
+    Reviewer finding R1/R3/R4 extension: 'tools' as dict, 'function' as
+    string, non-str 'name' all previously produced an EMPTY name list ->
+    treated as ordinary chat -> forwarded upstream. That is a bypass, not
+    a crash fix. Malformed declarations must reject the request outright.
+    """
+    body = req.body
+    if isinstance(body, str) and body.strip():
+        try:
+            body = json.loads(body)
+        except json.JSONDecodeError:
+            return None  # JSON errors are handled by the caller
+    if not isinstance(body, dict):
+        return None  # no declaration to inspect
+
+    tools = body.get("tools")
+    if tools is not None and not isinstance(tools, list):
+        return "field 'tools' must be a list"
+    if isinstance(tools, list):
+        for i, tool in enumerate(tools):
+            if not isinstance(tool, dict):
+                return f"tools[{i}] must be an object"
+            fn = tool.get("function")
+            if fn is not None and not isinstance(fn, dict):
+                return f"tools[{i}].function must be an object"
+            if isinstance(fn, dict):
+                name = fn.get("name")
+                if name is not None and not isinstance(name, str):
+                    return f"tools[{i}].function.name must be a string"
+
+    messages = body.get("messages")
+    if messages is not None and not isinstance(messages, list):
+        return "field 'messages' must be a list"
+    if isinstance(messages, list):
+        for i, msg in enumerate(messages):
+            if not isinstance(msg, dict):
+                continue  # non-object messages are skipped, not tool decls
+            tc = msg.get("tool_calls")
+            if tc is not None and not isinstance(tc, list):
+                return f"messages[{i}].tool_calls must be a list"
+            if isinstance(tc, list):
+                for j, call in enumerate(tc):
+                    if not isinstance(call, dict):
+                        return f"messages[{i}].tool_calls[{j}] must be an object"
+                    fn = call.get("function")
+                    if fn is not None and not isinstance(fn, dict):
+                        return f"messages[{i}].tool_calls[{j}].function must be an object"
+                    if isinstance(fn, dict):
+                        name = fn.get("name")
+                        if name is not None and not isinstance(name, str):
+                            return f"messages[{i}].tool_calls[{j}].function.name must be a string"
+    return None
+
+
+def _deny_decision(req, reason, status, matched_rule) -> web.Response:
+    """Record a DENY decision and return the gateway rejection response.
+
+    Shared by the malformed-declaration path and the dangerous-tool path
+    so persistence + error shape stay identical.
+    """
+    decision = DecisionRecord(
+        id=str(uuid.uuid4()),
+        verdict=Verdict.DENY,
+        reason=reason,
+        matched_rule=matched_rule,
+        path=req.path,
+        method=req.method,
+        agent_id=req.agent_id,
+    )
+    storage.save(decision.model_dump(mode="json"))
+    return web.json_response(
+        {
+            "error": {
+                "message": reason,
+                "type": "governance_denied",
+                "decision_id": decision.id,
+            }
+        },
+        status=status,
+    )
+
+
+async def chat_completions_handler(request: web.Request) -> web.Response:
+    """OpenAI-compatible /v1/chat/completions.
+
+    Sidecar mode for LangChain/AutoGen: the Agent sets base_url to the
+    gateway and talks normal OpenAI protocol — zero code changes. The
+    gateway inspects the request (tools + tool_calls) against governance
+    policy BEFORE forwarding upstream.
+    """
+    try:
+        raw = await request.read()
+        body = json.loads(raw) if raw else None
+    except json.JSONDecodeError:
+        return web.json_response(
+            {"error": {"message": "invalid JSON body", "type": "invalid_request_error"}},
+            status=400,
+        )
+
+    req = InterceptRequest(
+        path="/v1/chat/completions",
+        method="POST",
+        headers={k: v for k, v in request.headers.items()},
+        body=body,
+        agent_id=request.headers.get("x-agent-id"),
+    )
+
+    tool_names = _extract_tool_names(req)
+
+    # Fail-closed: a malformed tool declaration we cannot verify must
+    # reject the request outright (never silently forward upstream).
+    malformed = _malformed_tool_declaration(req)
+    if malformed:
+        return _deny_decision(
+            req,
+            reason=f"工具声明畸形，无法验证 — fail-closed 拒绝: {malformed}",
+            status=400,
+            matched_rule="malformed-tool-declaration",
+        )
+
+    # Reviewer REJECT fix: compare NORMALIZED names (NFKC + casefold) on
+    # both sides. Raw exact-match here would let 'Delete_File' /
+    # 'delete_fιle' (U+03B9) slip past the blacklist even though
+    # _norm_tool_name exists. Keep the original name for the reason text.
+    _dangerous_norms = {_norm_tool_name(n) for n in DANGEROUS_TOOL_NAMES}
+    dangerous_tools = [
+        t for t in tool_names if _norm_tool_name(t) in _dangerous_norms
+    ]
+
+    if dangerous_tools:
+        return _deny_decision(
+            req,
+            reason=f"LLM 请求声明危险工具调用 {dangerous_tools} — 拒绝转发",
+            status=403,
+            matched_rule="block-dangerous-tools",
+        )
+    else:
+        # ordinary chat → consult policy engine (allow-chat rule)
+        rule = await asyncio.to_thread(
+            policy_engine.evaluate, req.path, req.method
+        )
+        if rule is None:
+            # same default semantics as /v1/intercept: no match → ALLOW
+            verdict = Verdict.ALLOW
+            reason = "无匹配策略，默认放行"
+            status = 200
+            matched_rule = None
+        elif rule.action == "ALLOW":
+            verdict = Verdict.ALLOW
+            reason = f"匹配规则 '{rule.name}' → 放行"
+            status = 200
+            matched_rule = rule.name
+        else:
+            verdict = Verdict.ESCALATE
+            reason = f"匹配规则 '{rule.name}' → 升级"
+            status = 202
+            matched_rule = rule.name
+
+    decision = DecisionRecord(
+        id=str(uuid.uuid4()),
+        verdict=verdict,
+        reason=reason,
+        matched_rule=matched_rule,
+        path=req.path,
+        method=req.method,
+        agent_id=req.agent_id,
+    )
+    storage.save(decision.model_dump(mode="json"))
+
+    if verdict is not Verdict.ALLOW:
+        return web.json_response(
+            {
+                "error": {
+                    "message": reason,
+                    "type": "governance_denied",
+                    "decision_id": decision.id,
+                }
+            },
+            status=status,
+        )
+
+    # forward to upstream LLM (AGENT_BACKEND_URL + /v1/chat/completions)
+    upstream = f"{AGENT_BACKEND_URL}/v1/chat/completions"
+    try:
+        async with ClientSession(timeout=ClientTimeout(total=10, connect=3)) as session:
+            async with session.post(
+                upstream,
+                headers={
+                    k: v for k, v in request.headers.items()
+                    if k.lower() in FORWARD_HEADER_WHITELIST
+                },
+                json=body,
+            ) as resp:
+                text = await resp.text()
+                try:
+                    return web.json_response(json.loads(text), status=resp.status)
+                except json.JSONDecodeError:
+                    return web.Response(text=text, status=resp.status)
+    except Exception as e:
+        logger.warning("chat forward failed: %s", e)
+        return web.json_response(
+            {"error": {"message": "upstream LLM unreachable", "type": "upstream_error"}},
+            status=502,
+        )
+
+
 # ── app factory ─────────────────────────────────────────────────────
 
 def create_app() -> web.Application:
@@ -237,6 +540,7 @@ def create_app() -> web.Application:
 
     app = web.Application()
     app.router.add_post("/v1/intercept", intercept_handler)
+    app.router.add_post("/v1/chat/completions", chat_completions_handler)
     app.router.add_get("/v1/health", health_handler)
     app.router.add_get("/v1/decisions", decisions_handler)
     return app

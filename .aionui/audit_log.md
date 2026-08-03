@@ -3,6 +3,33 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0008 — 2026-08-03T07:00:00Z
+
+- PR: N/A（B1: LangChain 集成实验 + 团队化两阶段 Spawn 验证）
+- 标题: OpenAI 兼容端点 + 真实 LangChain 零侵入集成（B 阶段 B1）
+- 变更文件: `src/main.py` (+chat_completions_handler, +DANGEROUS_TOOL_NAMES, +_extract_tool_names, +_norm_tool_name, +_malformed_tool_declaration, +_deny_decision), `examples/langchain_agent.py`, `tests/test_integration_langchain.py` (+22), `scripts/b1_e2e.py`, `EXPERIMENT_B_REPORT.md`
+- 变更行数: +380/-20
+- 评级: 自验证 A- → **Spawn Reviewer REJECT**（R1-R4 四洞）→ 修复后 A
+- 结论: **PASS → REJECT → PASS**（团队化两阶段 Spawn 完整循环）
+- 问题数: 自验证 0 → Reviewer 发现 HIGH:2 MEDIUM:1 LOW:1 → 修复后 0
+- Reviewer: **Spawn `reviewer-b1`**（独立视角，非自我审查）
+- Commit: 待提交
+- 备注:
+  - **零侵入证据**: `examples/langchain_agent.py` AST 扫描 0 个 gateway import；只设 base_url；不调用 /v1/intercept（测试断言）
+  - **声明级拦截**: LangChain create_agent 首轮请求声明全部工具 → 网关检测 delete_file → 403，upstream 0 调用
+  - **真实 SDK E2E**: `scripts/b1_e2e.py`（venv: langchain 1.3.14）安全 Agent ALLOW + 危险 Agent DENY，双向入库
+  - 自发现修复 1: rule=None 时 chat handler 崩溃 → 与 /v1/intercept 一致的默认放行语义
+  - 自发现修复 2: e2e 中 thread.join() 死锁网关事件循环 → asyncio.to_thread
+  - 自发现修复 3: tools 字符串参数 → 工具对象映射（_ALL_TOOLS）
+  - **🔴 Reviewer R1 (HIGH) 类型混淆**: `tools` 传 dict → 迭代 keys → 0 名字 → ALLOW 透传。修复: `_extract_tool_names` 强制 `isinstance(x, list)`，dict 形状 fail-closed；新增 `_malformed_tool_declaration` 结构校验，畸形声明整体 400 拒绝（不静默忽略）
+  - **🔴 Reviewer R2 (HIGH) Unicode/大小写变体**: `Delete_File`、`delete_fιle`(U+03B9) 绕过精确匹配。修复: `_norm_tool_name` 三阶段管道 NFKC → confusable 同形映射（希腊 iota/西里尔/罗马数字）→ casefold；**关键发现: NFKC+casefold 本身不折叠同形字符，必须显式 confusable 表**
+  - **🟡 Reviewer R3 (MEDIUM) 字符串 function**: `"function": "delete_file"`（str 非 dict）→ `str.get` AttributeError → 500。修复: `isinstance(fn, dict)` 防护 + 畸形声明 400 拒绝（原测试曾误判为"忽略+透传"即可，全栈测试暴露深层 bypass）
+  - **🟢 Reviewer R4 (LOW) 非字符串 name**: list/dict/数字 name 被静默追加。修复: `isinstance(name, str) and name` 守卫
+  - 验证: 75/75 测试（+11 Reviewer 回归：R1 dict 形状 fail-closed ×3、R2 unicode/case/fullwidth 全栈 DENY ×3 + 持久化 ×1、R3 字符串 function 400 ×1、R4 非字符串 name ×1）+ GATE 1-7 全绿 + health_score 100/100
+  - 已知限制: stub LLM（非真实 GPT）、AutoGen B2 未测、b1_e2e 依赖 venv 未接 CI
+
+---
+
 ## AUDIT-0007 — 2026-08-03T06:00:00Z
 
 - PR: N/A（用户元批判 + 团队制落地决策）
