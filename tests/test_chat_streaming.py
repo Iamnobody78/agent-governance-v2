@@ -134,6 +134,51 @@ class TestChatStreaming(AioHTTPTestCase):
         finally:
             main_module.AGENT_BACKEND_URL = old
 
+    @unittest_run_loop
+    async def test_stream_chunks_forwarded_in_order(self):
+        # Critique R1 5.1: chunk ORDER must be verified, not just byte-exact body.
+        # Upstream emits 4 streamed chunks with order-sensitive payloads; the
+        # gateway must relay them in EXACT sequence (1,2,3,4).
+        import asyncio
+
+        async def chunked_upstream(request):
+            resp = web.StreamResponse(headers={"Content-Type": "text/event-stream"})
+            await resp.prepare(request)
+            for i in range(1, 5):
+                await resp.write(f"data: chunk-{i}\n\n".encode("utf-8"))
+                await asyncio.sleep(0.01)
+            await resp.write_eof()
+            return resp
+
+        upstream = web.Application()
+        upstream.router.add_post("/v1/chat/completions", chunked_upstream)
+        runner = web.AppRunner(upstream)
+        await runner.setup()
+        site = web.TCPSite(runner, "127.0.0.1", 0)
+        await site.start()
+        port = site._server.sockets[0].getsockname()[1]
+
+        old = main_module.AGENT_BACKEND_URL
+        main_module.AGENT_BACKEND_URL = f"http://127.0.0.1:{port}"
+        try:
+            resp = await self.client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "test-model",
+                    "messages": [{"role": "user", "content": "order test"}],
+                    "stream": True,
+                },
+            )
+            assert resp.status == 200
+            body = await resp.text()
+            # order-sensitive: chunk-1..chunk-4 must appear in exact sequence
+            idx = [body.find(f"chunk-{i}") for i in (1, 2, 3, 4)]
+            assert all(i >= 0 for i in idx), f"missing chunks: {idx}"
+            assert idx == sorted(idx), f"chunks out of order: {idx}"
+        finally:
+            main_module.AGENT_BACKEND_URL = old
+            await runner.cleanup()
+
 
 if __name__ == "__main__":
     import unittest
