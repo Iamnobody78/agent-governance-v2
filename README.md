@@ -170,6 +170,8 @@ rules:
 
 **v0.5.0 新增（TASK-REAL-012，Phase 4 治理大脑阶段 1——可解释引擎 + 五级判定）**：`DecisionRecord.rationale` 第 13 列（每个决策记录匹配规则与原因，`_migrate` 12→13 列无损扩容）+ **五级 Verdict**——`ALLOW`（200 透传）/ `ALLOW_WITH_WARNING`（200 + `X-Governance-Warning` 响应头，转发不中断）/ `ESCALATE`（202 升舱待审）/ `DENY`（403 硬拒）/ `SUSPEND`（403 挂起待人工复审，与 DENY 区分"临时冻结"）+ `create_app(config_path)` 策略注入（测试/多租户可加载独立策略文件）+ 网关版本 0.5.0。
 
+**v0.6.0 新增（TASK-REAL-012，Phase 5 Context Hook HMAC——L3 治理大脑收尾）**：治理头防伪造——`X-Trace-ID`/`X-Parent-Span-ID`/`X-Span-ID` 以 HMAC-SHA256 签名（`X-Governance-Signature` + `X-Governance-Timestamp`，±300s 防重放窗），伪造头 fail-safe 降级为新链根（隔离孤立节点，永不进入审计链）；`CONTEXT_HMAC_KEY` 环境变量开关（未设置 = 兼容模式，行为与 v0.5.0 完全一致）+ 网关版本 0.6.0。五层架构 L1-L5 全部闭环。
+
 ```yaml
   # 任意内部路径 + body 声明 shell 工具 → DENY
   - name: block-shell-tool

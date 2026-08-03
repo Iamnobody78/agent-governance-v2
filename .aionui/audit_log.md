@@ -3,6 +3,27 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0029 — 2026-08-03T19:10:00Z
+
+- PR: N/A（TASK-REAL-012 Phase 5——Context Hook HMAC：L3 治理大脑收尾，五层架构 L1-L5 全部闭环）
+- 标题: Context Hook HMAC——治理头 HMAC-SHA256 签名防伪造（CONTEXT_HMAC_KEY 环境变量开关；未设置 = 兼容模式）
+- 变更文件: `src/context_hmac.py`（新建 113 行：sign_headers/verify_headers/validate_trace_headers + canonical 固定字段序 + 防重放 ±300s + compare_digest）、`src/main.py`（_trace_context 信任门：伪造头→新链根隔离；_signed_trace_headers 响应签名，intercept/chat 3 处统一）、`tests/test_hmac.py`（新建 16 测试）
+- 变更行数: 核心 113 行（符合确认表"约 100 行"）+ 测试 186 行（提交 be8289b 统计）
+- 评级: 自验证 A → **347/347 测试**（331 基线 + 16 新增，零回归）+ GATE 8 **5/5 PASS**（真实 runner 运行）
+- 结论: **PASS**（伪造 trace 头→降级新 UUID 隔离验证：`forged-999` 不入链；可信签名头保留；禁用模式与 v0.5.0 行为一致；响应头携带签名下游可验）
+- 问题数: 前置 1（A3 批判者误报 relay_state IN_PROGRESS 为 HIGH——多阶段长任务语义缺失，独立提交 `ae311aa` 修复，基线 328→331）+ 执行期 0，修复后 0
+- Reviewer: N/A（门控即审查者——GATE 8 批判者 5/5）
+- Commit: `ae311aa`（critic 自我修复）+ `be8289b`（Phase 5 代码）+ closeout 提交（AUDIT-0029/relay COMPLETED/snapshot v1.11.0）
+- 备注:
+  - **防伪语义**: 验证失败→头值不可信→fail-safe 降级新链根（隔离孤立节点），拒绝而非报错——协作元数据不破坏可用性，伪造链永不进入审计链
+  - **canonical 防歧义**: 固定字段顺序 + 小写头名 + 缺失头空串占位（防删除头重签）；恒定时间比较
+  - **防重放**: 时间戳头 + ±300s 窗口，过期签名失效
+  - **向后兼容**: 未设置 CONTEXT_HMAC_KEY → sign_headers 返回空 dict、verify 信任、validate 返回 None——响应头与 v0.5.0 完全一致（集成测试 TestHmacDisabledCompat 验证）
+  - **部署**: 生产设置 CONTEXT_HMAC_KEY 即启用；下游校验需共享密钥
+  - **TASK-REAL-012 终态**: relay_state status=COMPLETED（5/5 phase 完成）；活跃债务 3（0018/0020/0021，无阻塞）；快照 v1.11.0
+
+---
+
 ## AUDIT-0028 — 2026-08-03T18:30:00Z
 
 - PR: N/A（TASK-REAL-012 Phase 4——治理大脑阶段 1：可解释引擎 rationale + 五级判定）

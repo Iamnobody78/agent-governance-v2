@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.10.0
-> 快照时间: 2026-08-03（TASK-REAL-012 Phase 4——治理大脑 Phase 1：可解释引擎 rationale + 五级判定后更新）
-> 最近审计: AUDIT-0028（Phase 4 治理大脑）+ AUDIT-0027（Phase 1-3 补记）
+> 版本: v1.11.0
+> 快照时间: 2026-08-03（TASK-REAL-012 Phase 5——Context Hook HMAC：五层架构 L1-L5 全部闭环后更新）
+> 最近审计: AUDIT-0029（Phase 5 HMAC）+ AUDIT-0028（Phase 4 治理大脑）+ AUDIT-0027（Phase 1-3 补记）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,14 +12,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 329 passed（319 基线 + 10 新增，零回归） |
-| **覆盖率** | 90.12%+（门槛 ≥ 60%，Phase 4 变更未降） |
+| **测试全量** | 347 passed（331 基线 + 16 新增，零回归） |
+| **覆盖率** | 90.12%+（门槛 ≥ 60%，Phase 5 变更未降） |
 | **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞）；DEBT-0022 已清偿（REAL-011.1）、DEBT-0019 已清偿（REAL-011） |
 | **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受） |
-| **最近事件** | TASK-REAL-012 Phase 4 ✅（治理大脑 Phase 1：Verdict 五级 ALLOW/ALLOW_WITH_WARNING/ESCALATE/DENY/SUSPEND + DecisionRecord.rationale 第 13 列 + X-Governance-Warning 响应头 + create_app(config_path) 策略注入；10 测试；GATE 8 5/5 PASS） |
-| **CI 状态** | ✅ GATE 1-8 全绿（GATE 8 = Critic Agent 五批判者，329 tests 全量回归 exit 0） |
+| **最近事件** | TASK-REAL-012 **全部完成** ✅（Phase 1-5：Critic GATE 8 + Meta-Harness 适配器/沙箱 + 治理大脑五级判定 + Context Hook HMAC——五层架构 L1-L5 闭环；relay_state status=COMPLETED） |
+| **CI 状态** | ✅ GATE 1-8 全绿（GATE 8 = Critic Agent 五批判者，347 tests 全量回归 exit 0） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …REAL-011: `d95f83c` → Phase 1: `0e389ea` → Phase 2: `c6a3a95` → 协议: `0f636e2` → Phase 3: `45e4561` → Phase 4: `42d938d`（+ closeout 提交） |
+| **提交链** | …Phase 3: `45e4561` → Phase 4: `42d938d` → closeout: `7c29be7` → critic 修复: `ae311aa` → Phase 5: `be8289b`（+ closeout 提交） |
 
 ---
 
@@ -93,7 +93,7 @@
 1. **加载此文件**：读取当前快照，理解状态
 2. **加载协议**：读取 `.aionui/protocols/teams_collaboration.md` 获取完整协作流程
 3. **加载债务账本**：读取 `debt_registry.md`（仓库根）获取剩余债务
-4. **验证测试**：运行 `pytest tests/ -q` 确认 329 passed
+4. **验证测试**：运行 `pytest tests/ -q` 确认 347 passed
 5. **继续治理**：运行 `@governance start` 启动下一轮治理循环
 
 ---
@@ -112,7 +112,7 @@
 下一阶段候选（按 B→C→D→E(自进化) 顺次）：
 1. **TASK-REAL-012 Phase 5：Context Hook HMAC**（约 100 行，HMAC 签名 context 头防伪造）——L3 治理大脑收尾，**待用户批准**
 2. **D：统计反馈调节器**（5min 扫描 DENY 高频模式 → pending_rules 推荐）——已在 Phase 2（Meta-Harness 适配器 `c6a3a95`）吸收：generate_policy_suggestions + pending_rules/ 候选 YAML
-2. **外部评审后续候选**（协商/学习引擎、Tree-sitter AST、HMAC Context Hook、Shadow Saga、Rust）：治理大脑已裁决并入 5 层架构（L3/L2）；L3 可解释引擎 + 五级判定 Phase 4 已落地（rationale + ALLOW_WITH_WARNING/SUSPEND）；**HMAC Context Hook 为 Phase 5**（约 100 行，待批准）；Tree-sitter/Rust 等阶段未来化
+2. **外部评审后续候选**（协商/学习引擎、Tree-sitter AST、Shadow Saga、Rust）：治理大脑已裁决并入 5 层架构（L3/L2）——可解释引擎 + 五级判定（Phase 4）与 HMAC Context Hook（Phase 5）均已落地；**Tree-sitter/Rust 等阶段未来化**（无硬依赖，可随时立项）
 3. **A 生产化**：拉取 qwen2.5:7b-instruct-q4_K_M（JUDGE_MODEL 热切换零代码）或 Bastion 70M 级联，实测延迟/准确率——待硬件到位
 4. **可解释主控 Step 2+**：CoT 推理链 / 上下文漂移（标记"待 A 就绪"）；Ls 权重表届时迁移 YAML
 5. **输出侧语义**（DEBT-0020）：代理转发后异步补判 agent_response

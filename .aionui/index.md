@@ -14,6 +14,7 @@
 | `src/norm.py` | 规范化单一来源（NFKC→confusable→casefold） | tests/test_json_path_policy.py |
 | `src/lethality.py` | Ls 工具致死性表（审计用） | tests/test_json_path_policy.py |
 | `src/critic/` | 批判者代理团队（GATE 8：audit/security/arch/test/docs + verdict + runner） | tests/test_critic.py |
+| `src/context_hmac.py` | Context Hook HMAC（治理头签名防伪造，CONTEXT_HMAC_KEY 开关，Phase 5） | tests/test_hmac.py |
 | `src/meta_harness/adapter.py` | Meta-Harness 轻量适配器（DENY 扫描→pending_rules 候选 YAML） | tests/test_meta_harness.py |
 | `src/meta_harness/sandbox.py` | Meta-Harness 沙箱（conflict 检查 + pytest 回归 + 可逆部署） | tests/test_sandbox.py |
 
@@ -48,7 +49,7 @@
 | `EXPERIMENT_REPORT.md` | v1→v2 对照实验 |
 | `docs/json_path_governance_report.md` | B 阶段 json_path 工具治理报告 |
 | `docs/trace_report.md` | C 阶段 Trace 因果追踪报告 |
-| `.aionui/audit_log.md` | 审计日志（AUDIT-0001~0028） |
+| `.aionui/audit_log.md` | 审计日志（AUDIT-0001~0029） |
 | `.aionui/critic_report.md` | GATE 8 批判报告（每次运行覆盖） |
 | `.aionui/protocols/teams_collaboration.md` | 两阶段 Spawn 协议 |
 | `.aionui/protocols/pr_review_loop.md` | PR 审查闭环 |
