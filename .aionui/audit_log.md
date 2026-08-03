@@ -3,6 +3,29 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0020 — 2026-08-03T17:40:00Z
+
+- PR: N/A（B3 混合模式验证，三循环协议执行；C 观测态产物：外部批判 → SCAN → DEBT-0011~0016 登记）
+- 标题: B3 混合模式验证 — 单网关服务 B1+B2 双客户端 + 流式 chunk 顺序补强
+- 变更文件: `tests/test_b3_mixed.py`（新建 140 行）, `tests/test_chat_streaming.py`（+1 测试）
+- 变更行数: +189
+- 评级: 自验证 A- → S3 Reviewer **APPROVE-WITH-NOTES**（独立审计 7 项全过，3 条非阻塞学习项）
+- 结论: **PASS**（187/187 测试 + GATE 7 绿 + 零 src/ 改动）
+- 问题数: 0 网关缺陷（纯验证范围，验证对象即已审计基线）
+- Reviewer: **Spawn `S3-Reviewer-B3`**（独立视角）
+- Commit: `31ec19d`
+- 备注:
+  - **V1 双客户端并发**: B1+B2 并发 safe chat 双 200（asyncio.gather）；危险工具 403 双框架且 `upstream_calls==0`（零上游泄漏）
+  - **V2 SSE 跨框架**: B2 风格 stream:true → `text/event-stream` + delta 重建断言 `"".join(chunks)=="B3 ok"`（S1 修复：SSE delta 需重建非朴素子串）
+  - **V3 路由隔离**: `x-agent-id` 双客户端正确到达上游（attribution）；拒绝的 B2 调用不污染 B1 后续 safe 调用（`upstream_calls==1`）
+  - **批判回应 R1 5.1**: chunk 顺序测试——上游分 4 块带 10ms sleep 发送顺序敏感 payload，断言存在性+单调性（idx==sorted(idx)）；S2 修复：aiohttp 顶层无 StreamResponse 导出 → `web.StreamResponse`
+  - **批判核实结论**: R1 的"main.py try/except fallback"指控**不成立**（L30 干净导入，R2 正确）；R2 的"空 YAML 静默 fail-open"**证实**（policy.py L72-73）→ 已登记 DEBT-0012
+  - **学习项（Reviewer）**: ① attribution 测试排序后只验证集合非配对——后续可断言 call→id 映射顺序；② `upstream_calls` 类级可变状态依赖 get_application 重置——考虑实例级列表；③ 403 测试未断言响应体 governance reason——深度微缺
+  - 验证: 187/187 + policy_sync GATE 7 PASS + git status 仅 2 测试文件 + 无临时文件
+  - 下一轮候选: DEBT-0011（熔断持久化, HIGH）、DEBT-0012（空策略 fail-closed, HIGH）——批判者认定"部署前必须修复"
+
+---
+
 ## AUDIT-0019 — 2026-08-03T17:00:00Z
 
 - PR: N/A（TASK-REAL-005 真实治理验证，三循环协议执行）

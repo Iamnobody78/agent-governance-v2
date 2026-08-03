@@ -1,44 +1,50 @@
 {
   "schema_version": "1.0",
-  "task_id": "TASK-REAL-005",
-  "title": "DEBT-0003 CI needs: aggregation (all-gates single check for branch protection)",
-  "created_at": "2026-08-03T16:45:00Z",
+  "task_id": "B3-VALIDATION",
+  "title": "B3 hybrid-mode validation — one gateway, B1+B2 clients (C observation parallel)",
+  "created_at": "2026-08-03T17:00:00Z",
   "status": "COMPLETED",
   "current_phase": "CLOSED",
   "round": 1,
   "max_rounds": 3,
-  "work_dir": ".aionui/scheduler/work/TASK-REAL-005",
+  "work_dir": ".aionui/scheduler/work/B3-VALIDATION",
   "mcp_channel": {
     "client": "scripts/mcp_client.py",
     "server": "filesystem_mcp_server.py",
     "sandbox": "BOTTLESUMO_ROOT=repo root",
     "tools": ["write_file", "read_file", "list_directory", "file_info"]
   },
-  "real_world_source": {
-    "DEBT-0003": "CI job 间无 needs: 声明 — 6 gate job 全并行，分支保护需锁定 6 个检查名而非 1 个"
+  "validation_scope": {
+    "propositions": [
+      "V1: concurrent B1+B2 safe chat → both 200, verdicts identical",
+      "V1b: dangerous tool → 403 for BOTH frameworks, zero upstream leakage",
+      "V2: SSE streaming cross-framework (B2 style stream:true) — delta content intact",
+      "V3: x-agent-id attribution per client; denied call does not poison other client",
+      "R1-5.1 response: chunk ORDER verification (order-sensitive, not byte-exact)"
+    ],
+    "zero_code_change": "Validation-only scope: tests/test_b3_mixed.py + test_chat_streaming.py +1; NO src/ modifications",
+    "evidence": "187/187 tests, GATE 7 PASS, S3 APPROVE-WITH-NOTES (3 learning items)"
   },
-  "contract": {
-    "r4_split_plan": "2 Spawn (≤6 锚点): [S1] Builder ci.yml 追加 all-gates 聚合 job (1 锚点 +8 行) [S2] Tester 新建 tests/test_ci_workflow.py (3 测试) → S3 Reviewer 独立审计",
-    "scope_decision": "AUDIT 侦察确认 6 gate job 无数据依赖链 → 修复方向是聚合 job 而非链式 needs; pyyaml 为核心依赖 → 测试可安全解析 YAML",
-    "targets": {
-      ".github/workflows/ci.yml": "追加 all-gates job: name 'All Gates Passed', needs: [6 gate jobs], echo step; 6 gate jobs 零改动",
-      "tests/test_ci_workflow.py": "3 测试: all-gates 存在; needs 覆盖全部 6 gate; 6 gate job 均已定义 (GATE_JOBS 显式常量)"
-    },
-    "acceptance": [
-      "pytest tests/ 全量 (178 + 3 = 181 预期)",
-      "YAML 语义独立解析: set(needs) == set(jobs) - {all-gates}, 恰好 7 jobs",
-      "git diff ci.yml 仅 +8 行追加 (6 gate job 名零改动)",
-      "GATE 7 policy_sync PASS (4 prefixes) — CI 变更不影响代码漂移门",
-      "git status 仅 2 文件 (ci.yml + test_ci_workflow.py)"
-    ]
+  "critique_register": {
+    "source": "2 independent external critique reports (post-push, base 0a501ec)",
+    "verified_true": [
+      "DEBT-0011 breaker state not persisted (main.py L37-39 in-memory) HIGH",
+      "DEBT-0012 empty policies.yaml silent fail-open (policy.py L72-73) HIGH",
+      "DEBT-0013 pending cap drops without backup MEDIUM",
+      "DEBT-0014 flush_pending no retry cap MEDIUM",
+      "DEBT-0015 shutdown flush not linked to shutdown_timeout MEDIUM",
+      "DEBT-0016 stale docs (CRITIQUE_V2/EXPERIMENT_REPORT) MEDIUM"
+    ],
+    "verified_false": "claim of try/except fallback in main.py (L30 is clean import — report 2 correct)",
+    "commit": "48c3453 (debt registration)"
   },
   "history": [
     {
       "round": 1,
       "event": "COMPLETED",
-      "ts": "2026-08-03T17:00:00Z",
-      "summary": "S1 Builder (ci.yml +8 行 all-gates, YAML_OK needs=6), S2 Tester (3 测试全绿, 全量 181), S3 Reviewer APPROVE (7 项独立审计全过). DEBT-0003 清偿 → 债务账本 8/8 全清零里程碑. R5/R6 第三轮应用, 双 Spawn 无 BLOCKED. A2 note: .aionui/ 有意图地被 git 跟踪 (32 文件审计轨迹, 保持).",
-      "commit": "bd3f8f1"
+      "ts": "2026-08-03T17:40:00Z",
+      "summary": "S1 Builder (test_b3_mixed.py 5 tests), S2 Tester (chunk order test), S3 Reviewer APPROVE-WITH-NOTES. 187 passed. Zero gateway changes. C observation: critique → SCAN → DEBT-0011..0016 registered (48c3453). Next: DEBT-0011/0012 (deploy-blocking per critics).",
+      "commit": "31ec19d"
     }
   ]
 }
