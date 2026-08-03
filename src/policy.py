@@ -218,6 +218,9 @@ class Rule:
     # TASK-REAL-010 (B): 条件规则字段 — 命中路径/方法后还需检查请求体 JSON
     json_path: Optional[str] = None      # JSONPath 子集 (见 _parse_json_path)
     json_pattern: Optional[str] = None   # 与提取值匹配的正则 (re.search 语义)
+    # P6 (外部评审缺口 #1): 租户作用域 — None=全局规则 (所有租户生效);
+    # 指定 tenant_id 的规则仅对该租户的请求生效 (跨租户隔离, 见 evaluate)。
+    tenant_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         normalized = str(self.action).upper()
@@ -246,6 +249,14 @@ class Rule:
                         f"rule '{self.name}': invalid json_pattern "
                         f"{self.json_pattern!r} — {e} (fail-closed)"
                     ) from e
+        # P6: tenant_id 必须是 None 或非空字符串 (fail-closed: 空/错型拒绝载入)
+        if self.tenant_id is not None and (
+            not isinstance(self.tenant_id, str) or not self.tenant_id.strip()
+        ):
+            raise ValueError(
+                f"rule '{self.name}': tenant_id must be a non-empty string or "
+                f"omitted (None = global rule) — got {self.tenant_id!r} (fail-closed)"
+            )
 
     def matches(self, path: str, method: str, body=None) -> bool:
         method_ok = self.method is None or self.method.upper() == method.upper()
@@ -314,6 +325,7 @@ class PolicyEngine:
                 escalation_channel=rule_data.get("escalation_channel", "slack"),
                 json_path=rule_data.get("json_path"),
                 json_pattern=rule_data.get("json_pattern"),
+                tenant_id=rule_data.get("tenant_id"),
             )
             new_rules.append(rule)
         new_rules.sort(key=lambda r: r.priority)
@@ -351,13 +363,20 @@ class PolicyEngine:
             return self.reload()
         return False
 
-    def evaluate(self, path: str, method: str, body=None) -> Optional[Rule]:
+    def evaluate(self, path: str, method: str, body=None,
+                 tenant_id: Optional[str] = None) -> Optional[Rule]:
         """First matching rule by priority; json_path 规则经前缀索引剪枝 (P3, DEBT-0026)。
+
+        P6 (外部评审缺口 #1): 租户隔离 — tenant_id 指定的私有规则仅对该租户
+        生效; 跨租户请求看不到其他租户的规则 (隔离)。tenant_id=None (未认证/
+        兼容模式) 时私有规则全部跳过, 仅全局规则参与 —— 与 v1.13.0 行为一致。
 
         Backward compatible: rules without json_path ignore `body` entirely,
         so existing callers (path/method only) keep identical behavior.
         """
         for rule in self._jp_index.candidates(body):
+            if rule.tenant_id is not None and rule.tenant_id != tenant_id:
+                continue  # 跨租户私有规则: 不参与本请求评估 (隔离语义)
             if rule.matches(path, method, body):
                 return rule
         return None

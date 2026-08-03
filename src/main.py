@@ -21,6 +21,7 @@ from .policy import PolicyEngine, Rule, _json_extract
 from .storage import Storage
 from .revoke import revoke_registry  # P1 (暗雷区): 异步弱监督撤销注册表
 from . import context_hmac  # TASK-REAL-012 Phase 5: Context Hook HMAC（防头伪造）
+from .auth import TenantAuth, load_auth_or_none  # P6: 服务身份认证 + 多租户隔离
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ breaker_tripped_until = 0.0  # DEBT-0001: deny-all until this timestamp after tr
 _escalate_lock: asyncio.Lock = None  # guards escalate_count_since_resolve / last_escalate_time
 policy_engine: Optional[PolicyEngine] = None
 storage: Optional[Storage] = None
+auth: Optional[TenantAuth] = None  # P6: None=兼容模式 (v1.13.0 行为); 注入后启用认证
 
 
 def _uptime() -> float:
@@ -106,8 +108,32 @@ def _trace_context(headers) -> tuple:
     return trace_id, parent_span_id
 
 
+def _auth_gate(request):
+    """P6 (外部评审缺口 #1): 网关第一道门 — 认证 + 租户一致性。
+
+    auth 未启用 (None) → 直接放行 (兼容模式, v1.13.0 行为, 391 回归保障)。
+    返回 (tenant_id, None) 放行; 或 (None, 401/403 json response) 拒绝。
+    - 401: 缺失/无效 API key
+    - 403: X-Tenant-ID 与认证身份不符 (跨租户冒称)
+    """
+    if auth is None:
+        return None, None
+    tenant_id, err = auth.resolve_tenant(request)
+    if err is not None:
+        return None, web.json_response(
+            {"error": err["error"], "detail": err["detail"]},
+            status=err["status"],
+        )
+    return tenant_id, None
+
+
 async def intercept_handler(request: web.Request) -> web.Response:
     global escalate_count_since_resolve, last_escalate_time, breaker_tripped_until
+
+    # P6: 网关第一道门 — 身份认证先于一切 (未认证请求不进入治理/审计链)
+    tenant_id, auth_resp = _auth_gate(request)
+    if auth_resp is not None:
+        return auth_resp
 
     try:
         data = await request.json()
@@ -134,7 +160,7 @@ async def intercept_handler(request: web.Request) -> web.Response:
     #    TASK-REAL-010 (B): req.body 传入 — json_path 条件规则检查请求体 JSON
     try:
         rule = await asyncio.wait_for(
-            asyncio.to_thread(policy_engine.evaluate, req.path, req.method, req.body),
+            asyncio.to_thread(policy_engine.evaluate, req.path, req.method, req.body, tenant_id),
             timeout=INTERCEPT_TIMEOUT,
         )
     except asyncio.TimeoutError:
@@ -329,6 +355,10 @@ async def health_handler(request: web.Request) -> web.Response:
 
 
 async def decisions_handler(request: web.Request) -> web.Response:
+    # P6: 审计查询端点受身份门保护 (未认证 → 401)
+    _, auth_resp = _auth_gate(request)
+    if auth_resp is not None:
+        return auth_resp
     limit = int(request.query.get("limit", 50))
     decisions = storage.get_recent(limit)
     return web.json_response({"total": len(decisions), "decisions": decisions})
@@ -341,6 +371,10 @@ async def trace_handler(request: web.Request) -> web.Response:
     审计字段 (tool_lethality) 作为边权重, 审计人员可快速定位"哪一步引入
     最大风险"。trace 不存在 → 404 (诚实语义: 资源不存在)。
     """
+    # P6: 因果链查询端点受身份门保护 (未认证 → 401)
+    _, auth_resp = _auth_gate(request)
+    if auth_resp is not None:
+        return auth_resp
     trace_id = request.match_info["trace_id"]
     # TASK-REAL-011.1 (Critic-Security): URL 超长 trace_id 无 DB 风险 (参数化
     # 查询 + 无匹配即空), 但拒绝无意义的大查询 — 与 _trace_context 的
@@ -549,6 +583,10 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
     gateway inspects the request (tools + tool_calls) against governance
     policy BEFORE forwarding upstream.
     """
+    # P6: 网关第一道门 — 身份认证先于一切 (chat 入口与 intercept 同等保护)
+    tenant_id, auth_resp = _auth_gate(request)
+    if auth_resp is not None:
+        return auth_resp
     # TASK-REAL-011.1 (Critic-Security/DEBT-0022): 入口处提取 Trace 上下文 —
     # chat 路径全部决策分支 (malformed DENY / dangerous DENY / 主路径) 必须
     # 携带 trace_id/parent_span_id, 否则多 Agent 链跨端点断链。
@@ -613,7 +651,7 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
         # ordinary chat → consult policy engine (allow-chat rule)
         await asyncio.to_thread(policy_engine.maybe_reload)
         rule = await asyncio.to_thread(
-            policy_engine.evaluate, req.path, req.method, body
+            policy_engine.evaluate, req.path, req.method, body, tenant_id
         )
         if rule is None:
             # same default semantics as /v1/intercept: no match → ALLOW
@@ -773,10 +811,22 @@ async def _flush_pending_on_shutdown(app: web.Application) -> None:
         logger.debug("shutdown flush_pending traceback:\n%s", traceback.format_exc())
 
 
-def create_app(config_path: Optional[str] = None) -> web.Application:
+def create_app(config_path: Optional[str] = None,
+               auth_override: Optional[TenantAuth] = None) -> web.Application:
+    """Build the aiohttp app.
+
+    config_path: policies YAML (默认 ./config/policies.yaml)。
+    auth_override: P6 身份认证实例 (TenantAuth.from_yaml(...)); None 时若
+    AUTH_ENABLED=1 自动加载 config/tenants.yaml; 否则认证关闭 (兼容模式)。
+    """
     global policy_engine, storage, escalate_count_since_resolve, last_escalate_time, breaker_tripped_until, _escalate_lock
     # TASK-REAL-012 Phase 4 (治理大脑 Phase 1): config_path 可注入 —
     # 测试/多租户可加载独立策略文件；None 保持默认 config/policies.yaml。
+    global auth  # P6: 认证门读取全局 auth; 显式注入优先, 否则 AUTH_ENABLED 自动加载
+    auth = load_auth_or_none() if auth_override is None else auth_override
+    if auth is not None:
+        logger.info("P6 auth enabled: %d tenant(s) — %s", len(auth.tenant_ids()),
+                    ", ".join(auth.tenant_ids()))
     policy_engine = PolicyEngine(config_path)
     storage = Storage()
     # DEBT-0011: restore persisted breaker state (restart must not reset counters)
