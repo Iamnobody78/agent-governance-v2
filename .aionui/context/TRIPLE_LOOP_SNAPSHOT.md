@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.11.0
-> 快照时间: 2026-08-03（TASK-REAL-012 Phase 5——Context Hook HMAC：五层架构 L1-L5 全部闭环后更新）
-> 最近审计: AUDIT-0029（Phase 5 HMAC）+ AUDIT-0028（Phase 4 治理大脑）+ AUDIT-0027（Phase 1-3 补记）
+> 版本: v1.12.0
+> 快照时间: 2026-08-03（暗雷区修复 P0-P2——异常堆栈日志 / 异步弱监督 / WAL+批量提交 完成后更新）
+> 最近审计: AUDIT-0032（暗雷区 P2 WAL+批量）+ AUDIT-0031（暗雷区 P1 异步弱监督）+ AUDIT-0030（暗雷区 P0 日志堆栈）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,14 +12,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 347 passed（331 基线 + 16 新增，零回归） |
-| **覆盖率** | 90.12%+（门槛 ≥ 60%，Phase 5 变更未降） |
-| **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞）；DEBT-0022 已清偿（REAL-011.1）、DEBT-0019 已清偿（REAL-011） |
-| **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受） |
-| **最近事件** | TASK-REAL-012 **全部完成** ✅（Phase 1-5：Critic GATE 8 + Meta-Harness 适配器/沙箱 + 治理大脑五级判定 + Context Hook HMAC——五层架构 L1-L5 闭环；relay_state status=COMPLETED） |
-| **CI 状态** | ✅ GATE 1-8 全绿（GATE 8 = Critic Agent 五批判者，347 tests 全量回归 exit 0） |
+| **测试全量** | 370 passed（361 基线 + 10 新增 - 1 语义修正，零失败） |
+| **覆盖率** | 87%（`--source=src` 实测 2026-08-03；门槛 ≥ 60%；较 90.12% 旧口径降低系 scope 含 meta_harness 68-70%，非回归） |
+| **债务清偿率** | 活跃 4（DEBT-0018/0020/0021/0026，无阻塞）；DEBT-0023/0024/0025 已清偿（暗雷区 P0/P1/P2） |
+| **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）、DEBT-0026（json_path 线性匹配, LOW, 暗雷区 P3 待执行） |
+| **最近事件** | 暗雷区修复 **P0-P2 完成** ✅（P0 异常堆栈日志 `1ef39a0` + P1 语义钩子异步弱监督/撤销注册表 `be0b5ee` + P2 SQLite WAL/批量提交 `c40dc41`；GATE 8 5/5 PASS）；暗雷区 3/4 完成，**P3（json_path 前缀索引树）待执行** |
+| **CI 状态** | ✅ GATE 1-8 全绿（GATE 8 = Critic Agent 五批判者，370 tests 全量回归 exit 0） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …Phase 3: `45e4561` → Phase 4: `42d938d` → closeout: `7c29be7` → critic 修复: `ae311aa` → Phase 5: `be8289b`（+ closeout 提交） |
+| **提交链** | …Phase 5: `be8289b` → closeout → 暗雷区 P0: `1ef39a0` → P1: `be0b5ee` → P2: `c40dc41` → closeout 提交 |
 
 ---
 
@@ -93,7 +93,7 @@
 1. **加载此文件**：读取当前快照，理解状态
 2. **加载协议**：读取 `.aionui/protocols/teams_collaboration.md` 获取完整协作流程
 3. **加载债务账本**：读取 `debt_registry.md`（仓库根）获取剩余债务
-4. **验证测试**：运行 `pytest tests/ -q` 确认 347 passed
+4. **验证测试**：运行 `pytest tests/ -q` 确认 370 passed
 5. **继续治理**：运行 `@governance start` 启动下一轮治理循环
 
 ---
@@ -106,11 +106,13 @@
 | DEBT-0020 | 输出侧语义评估缺失 | 🟢 LOW | 代理转发后异步补判 agent_response（待 A 就绪） |
 | DEBT-0021 | timeout 分支不覆盖 json_path 规则 | 🟢 LOW | 已文档化接受；后续可在 danger.py 增加 body 感知或接受纵深防御 |
 | DEBT-0022 | chat/completions 路径未注入 trace 上下文 | 🟢 LOW | ✅ 已清偿（REAL-011.1 `6c25bd9`：chat 提取 trace + 两处 DENY 注入 + 主路径 DecisionRecord + 全响应分支回传头 + MAX_TRACE_ID_LEN=128） |
+| DEBT-0026 | json_path 线性匹配：规则多时逐条解析路径，命中率低 | 🟢 LOW | 暗雷区 P3：前缀索引树（~60 行），**待执行** |
 
-当前治理循环扫描结论：**18 项债务已清偿（含 DEBT-0019/0022），3 项活跃（DEBT-0018/0020/0021，均无阻塞）**。TASK-REAL-012 自进化引擎 Phase 4 完成（治理大脑 Phase 1：rationale + 五级判定），L1-L4 层架构全部落地。
+当前治理循环扫描结论：**21 项债务已清偿（含暗雷区 DEBT-0023/0024/0025），4 项活跃（DEBT-0018/0020/0021/0026，均无阻塞）**。暗雷区修复 P0-P2 完成（异常堆栈日志 / 异步弱监督+撤销 / WAL+批量提交），P3（json_path 前缀索引）待执行。
 
 下一阶段候选（按 B→C→D→E(自进化) 顺次）：
-1. **TASK-REAL-012 Phase 5：Context Hook HMAC**（约 100 行，HMAC 签名 context 头防伪造）——L3 治理大脑收尾，**待用户批准**
+1. **暗雷区 P3：json_path 前缀索引树**（约 60 行，DEBT-0026）——**已批准按序执行，立即启动**
+2. **TASK-REAL-012 Phase 5：Context Hook HMAC**（约 100 行，HMAC 签名 context 头防伪造）——L3 治理大脑收尾，**待用户批准**
 2. **D：统计反馈调节器**（5min 扫描 DENY 高频模式 → pending_rules 推荐）——已在 Phase 2（Meta-Harness 适配器 `c6a3a95`）吸收：generate_policy_suggestions + pending_rules/ 候选 YAML
 2. **外部评审后续候选**（协商/学习引擎、Tree-sitter AST、Shadow Saga、Rust）：治理大脑已裁决并入 5 层架构（L3/L2）——可解释引擎 + 五级判定（Phase 4）与 HMAC Context Hook（Phase 5）均已落地；**Tree-sitter/Rust 等阶段未来化**（无硬依赖，可随时立项）
 3. **A 生产化**：拉取 qwen2.5:7b-instruct-q4_K_M（JUDGE_MODEL 热切换零代码）或 Bastion 70M 级联，实测延迟/准确率——待硬件到位
@@ -129,6 +131,9 @@
 - **v1.7.0**（2026-08-03）：REAL-009 A 阶段语义旁路 LLM-Judge（judge/llm_judge.py + src/semantic_hook.py + main.py 集成 + 14 测试；215 tests；架构全链路验证 PASS；0.5b 模型边界诚实记录；DEBT-0018/0019/0020 登记；AUDIT-0024）
 - **v1.8.0**（2026-08-03）：REAL-010 B 阶段 json_path 工具治理 + 可解释主控 Step 1（src/policy.py 零依赖 JSONPath 子集 + 条件规则 + norm.py/lethality.py 新建 + DecisionRecord/storage 10 列审计 Schema + _migrate 无损迁移 + policies.yaml v0.2.0 两条 json_path 规则 + GATE 5/7 联动；250 tests；覆盖率 90.07%；DEBT-0021 登记；AUDIT-0025；提交 e45a02b）
 - **v1.9.0**（2026-08-03）：REAL-011 C 阶段 Trace 因果追踪（DecisionRecord/InterceptResponse + trace_id/parent_span_id + storage 12 列迁移 + idx_trace（_migrate 后）+ get_trace 递归 CTE（max_depth=50/max_nodes=500）+ intercept 入口 X-Trace-ID/X-Parent-Span-ID 集成 + X-Span-ID 响应头 + GET /v1/trace/{trace_id} + v0.4.0；20 测试；270 tests；覆盖率 90.12%；DEBT-0019 清偿（d95f83c）、DEBT-0022 登记；AUDIT-0026）
+- **v1.10.0**（2026-08-03）：TASK-REAL-012 Phase 1-4（Critic GATE 8 五批判者 + Meta-Harness 适配器/沙箱 + 治理大脑 rationale + 五级判定 ALLOW/ALLOW_WITH_WARNING/ESCALATE/DENY/SUSPEND；331 tests；AUDIT-0027/0028；提交 45e4561+42d938d+7c29be7+ae311aa）
+- **v1.11.0**（2026-08-03）：TASK-REAL-012 Phase 5 Context Hook HMAC（src/context_hmac.py + 信任门 + _signed_trace_headers + 16 测试；347 tests；AUDIT-0029；提交 be8289b；五层架构 L1-L5 全部闭环）
+- **v1.12.0**（2026-08-03）：暗雷区修复 P0-P2（P0 异常堆栈日志 `1ef39a0` + P1 语义钩子异步弱监督/撤销注册表 `be0b5ee` + P2 SQLite WAL/批量提交 `c40dc41`；370 tests；覆盖率 87%（--source=src 含 meta_harness）；DEBT-0023/0024/0025 清偿、DEBT-0026 登记待 P3；AUDIT-0030/0031/0032；GATE 8 5/5 PASS）
 
 ---
 

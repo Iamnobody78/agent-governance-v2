@@ -3,6 +3,34 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0032 — P2: SQLite WAL + 批量提交（暗雷区修复 #3）
+
+- PR: N/A（暗雷区 P2——SQLite 写锁瓶颈 → WAL + 批量提交；DEBT-0025 清偿）
+- 标题: `storage.py` 写路径重构——`PRAGMA journal_mode=WAL` + `synchronous=NORMAL` + `batch_size` 写缓冲批量提交
+- 变更文件: `src/storage.py`（__init__ 加 WAL/batch_size；save() 入缓冲满批 executemany 提交；_flush_write_buffer()/_buffer_or_fallback()；读路径 get_recent/count/get_by_id/get_trace 前置 flush 保读-己-写一致；flush_pending/close 先冲缓冲）
+- 测试: `tests/test_storage_batch.py`（新增 10：满批 flush/读-己-写一致/降级驱逐/重试上限/backoff/shutdown flush/并发批次）；契约适配 `test_pending_fallback.py`（batch_size=1 保旧逐条语义 + FakeConn.executemany）、`test_storage_degraded.py`（executemany）、`test_trace.py`（直接 SQL 前显式 flush——P2 缓冲语义下 UPDATE 需先落库否则命中 0 行）
+- 全量回归: **370 passed**（361 + 10 新增 - 1 语义修正），零失败；覆盖率 87%（--source=src 含 meta_harness）
+- GATE 8: PASS 5/5（`python -m src.critic.runner` exit 0）
+- 债务: DEBT-0025（SQLite 写锁瓶颈）清偿 ✅
+
+## AUDIT-0031 — P1: 语义钩子异步弱监督（暗雷区修复 #2）
+
+- PR: N/A（暗雷区 P1——语义钩子同步链路延迟 + judge 异常时绕过监督；DEBT-0024 清偿）
+- 标题: 语义钩子改异步弱监督——`semantic_audit_async()` 后台 fire-and-forget + `RevokeRegistry` 进程级单例撤销注册表（DENY 优先只升不降；judge 服务异常时撤销保持而不是绕过）
+- 变更文件: `src/main.py`（asyncio.create_task 后台监督 + 撤销短路 + create_app(config_path)）、`src/semantic_hook.py`（semantic_audit_async 入口）、`src/revoke.py`（新建 74 行有界注册表）
+- 测试: `tests/test_revoke.py`（新增 10）；`test_semantic_hook.py` 契约更新（同步升舱→异步撤销；tearDown 清 revoke 注册表）
+- 全量回归: 361 passed；GATE 8 PASS
+- 债务: DEBT-0024（语义钩子延迟+绕过风险）清偿 ✅
+
+## AUDIT-0030 — P0: 异常处理堆栈日志（暗雷区修复 #1）
+
+- PR: N/A（暗雷区 P0——异常处理"过于优雅"：故障时仅 1 行无上下文日志；DEBT-0023 清偿）
+- 标题: 分级异常日志——`logger.exception`（error+堆栈）+ `logger.debug(traceback.format_exc())`；响应体不暴露内部细节；warning 保持简短
+- 变更文件: `src/main.py`（traceback import + 4 处分级日志）、`src/policy.py`（reload() 改 logger.exception + traceback.debug）
+- 测试: `tests/test_logging_p0.py`（新增 4：error 含堆栈/响应体无内部细节/无 traceback 泄漏）
+- 全量回归: 361 passed；GATE 8 PASS
+- 债务: DEBT-0023（异常日志无堆栈）清偿 ✅
+
 ## AUDIT-0029 — 2026-08-03T19:10:00Z
 
 - PR: N/A（TASK-REAL-012 Phase 5——Context Hook HMAC：L3 治理大脑收尾，五层架构 L1-L5 全部闭环）
