@@ -8,7 +8,6 @@ Usage:
 import asyncio
 import json
 import logging
-import posixpath
 import time
 import uuid
 from typing import Optional
@@ -27,9 +26,8 @@ CIRCUIT_BREAKER_LIMIT = 10    # consecutive ESCALATE without resolution → DENY
 CIRCUIT_COOLDOWN_SECONDS = 30.0  # breaker trip cooldown window (DEBT-0001)
 AGENT_BACKEND_URL = "http://localhost:8000"   # upstream Agent (for proxy mode)
 
-# Shared heuristic constants — exported for policy_probe.py (single source of truth)
-DANGEROUS_PREFIXES = ("/api/delete", "/api/admin", "/api/config", "/api/model")
-DANGEROUS_METHODS = ("DELETE", "POST", "PUT", "PATCH")
+# Shared heuristic constants — single source of truth moved to src/danger.py (DEBT-0002)
+from .danger import DANGEROUS_PREFIXES, DANGEROUS_METHODS, is_dangerous as _is_dangerous
 
 # Only these headers are forwarded to the upstream backend (never Authorization)
 FORWARD_HEADER_WHITELIST = ("content-type", "accept", "user-agent", "x-agent-id")
@@ -46,31 +44,6 @@ storage: Optional[Storage] = None
 
 def _uptime() -> float:
     return time.time() - start_time
-
-
-def _is_dangerous(path: str, method: str) -> bool:
-    """Heuristic: operations that modify state are dangerous when uncertain.
-
-    Defense layers (v0.2.0 security hardening, AUDIT-0005):
-      1. normpath normalizes '/api/delete/../admin/exec' → '/api/admin/exec',
-         killing path-traversal bypasses.
-      2. Boundary matching: '/api/delete-evil' does NOT match prefix '/api/delete'.
-      3. Segment-level fallback: '/api/v1/delete' (path variant) hits the
-         dangerous tail segment 'delete' even without an exact prefix match.
-    """
-    if method.upper() not in DANGEROUS_METHODS:
-        return False
-    normalized = posixpath.normpath(path.split("?", 1)[0])
-    # 1) exact/prefix match with boundary
-    for prefix in DANGEROUS_PREFIXES:
-        if normalized == prefix or normalized.startswith(prefix + "/"):
-            return True
-    # 2) segment-level fallback: any dangerous tail segment anywhere in path
-    dangerous_tails = {p.rsplit("/", 1)[-1] for p in DANGEROUS_PREFIXES}
-    segments = normalized.split("/")
-    if any(seg in dangerous_tails for seg in segments):
-        return True
-    return False
 
 
 # ── handlers ────────────────────────────────────────────────────────
@@ -549,6 +522,28 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
 
 # ── app factory ─────────────────────────────────────────────────────
 
+async def _flush_pending_on_shutdown(app: web.Application) -> None:
+    """Flush degraded-mode pending records on clean shutdown (DEBT-0010).
+
+    storage.save() buffers entries in memory while sqlite3 is unavailable
+    (DEBT-0008 degraded mode). On shutdown we retry the flush once so the
+    last decisions are not lost silently. Registered via on_cleanup so it
+    runs on SIGINT/SIGTERM graceful shutdown, not only SIGKILL.
+
+    NOTE (DEBT-0002 hardening, REAL-003): must be async — aiohttp signals
+    await each receiver; a sync function returning None crashes cleanup
+    with "object NoneType can't be used in 'await' expression".
+    """
+    if storage is None:
+        return
+    try:
+        n = storage.flush_pending()
+        if n:
+            logger.info("shutdown: flushed %d pending decision(s)", n)
+    except Exception as e:  # noqa: BLE001 — shutdown path must never crash the app
+        logger.warning("shutdown flush_pending failed: %s", e)
+
+
 def create_app() -> web.Application:
     global policy_engine, storage, escalate_count_since_resolve, last_escalate_time, breaker_tripped_until, _escalate_lock
     policy_engine = PolicyEngine()
@@ -559,6 +554,7 @@ def create_app() -> web.Application:
     _escalate_lock = asyncio.Lock()
 
     app = web.Application()
+    app.on_cleanup.append(_flush_pending_on_shutdown)
     app.router.add_post("/v1/intercept", intercept_handler)
     app.router.add_post("/v1/chat/completions", chat_completions_handler)
     app.router.add_get("/v1/health", health_handler)
@@ -570,4 +566,6 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     app = create_app()
     logger.info("governance-gateway v0.2.0 starting on :9000")
-    web.run_app(app, port=9000)
+    # DEBT-0007: explicit shutdown_timeout (default 60s) — fast graceful
+    # shutdown lets on_cleanup flush pending decisions (DEBT-0010) quickly.
+    web.run_app(app, port=9000, shutdown_timeout=10)

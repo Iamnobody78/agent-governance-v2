@@ -1,13 +1,13 @@
 {
   "schema_version": "1.0",
-  "task_id": "TASK-REAL-002",
-  "title": "熔断器时间衰减(冷却窗口) + SQLite 降级缓存 — DEBT-0001 + DEBT-0008",
-  "created_at": "2026-08-03T13:30:00Z",
+  "task_id": "TASK-REAL-003",
+  "title": "危险路径解耦 + shutdown/flush 时机 + pending 上限 — DEBT-0002/0007/0009/0010",
+  "created_at": "2026-08-03T14:30:00Z",
   "status": "COMPLETED",
-  "current_phase": "DONE",
-  "round": 2,
+  "current_phase": "CLOSED",
+  "round": 1,
   "max_rounds": 3,
-  "work_dir": ".aionui/scheduler/work/TASK-REAL-002",
+  "work_dir": ".aionui/scheduler/work/TASK-REAL-003",
   "mcp_channel": {
     "client": "scripts/mcp_client.py",
     "server": "filesystem_mcp_server.py",
@@ -15,63 +15,46 @@
     "tools": ["write_file", "read_file", "list_directory", "file_info"]
   },
   "real_world_source": {
-    "DEBT-0001": "外部盘点最终判定: 熔断器语义缺陷需部署前修复；攻击者分散触发(间隔>300s)可绕过累计",
-    "DEBT-0008": "外部盘点 3.1: SQLite 写入失败无降级路径(无 try/except, 直接抛异常)"
+    "DEBT-0002": "私有 API _is_dangerous 耦合: examples/policy_probe.py L19 依赖 src.main 私有符号",
+    "DEBT-0007": "web.run_app 未显式 shutdown_timeout (依赖 aiohttp 默认 60s, 调参偏好)",
+    "DEBT-0009": "_pending 内存缓存无上限 (DEBT-0008 引入, 长时降级内存占用风险)",
+    "DEBT-0010": "flush_pending() 重试时机未明确 (建议 main.py 启动/关闭时触发)"
   },
   "contract": {
-    "semantics_decision": "现有 test_circuit_breaker.py 的 '间隔>300s 不累计' 断言与 DEBT-0001 '分散触发不可绕过' 冲突 → 测试以新契约为准(重写该文件)；escalate_count_since_resolve 变量名保留",
+    "r4_split_plan": "任务规模 >6 锚点 → 按 R4 拆分 3 次 Spawn: [S1] Builder main 组(新建 danger.py + main.py 修改) [S2] Builder storage 组(DEBT-0009) [S3] Tester(测试扩展 + policy_probe 公共导入)",
     "targets": {
-      "src/main.py": "CIRCUIT_COOLDOWN_SECONDS=30.0; breaker_tripped_until 全局+2 handler global+ALLOW 重置+init 重置; ESCALATE 分支冷却逻辑; 分散触发计数不再时间重置",
-      "src/storage.py": "_pending 缓存+_cached_at; save() try/except 降级; flush_pending(); pending_count()",
-      "tests/test_circuit_breaker.py": "重写 6 测试(冷却窗口/时间衰减恢复/分散触发累计)",
-      "tests/test_storage_degraded.py": "新建 5 测试(FakeConn 降级模拟)"
+      "src/danger.py": "新建: DANGEROUS_PREFIXES/DANGEROUS_METHODS 常量 + is_dangerous(path, method) 公共函数(从 main.py 迁移逻辑, 含 normpath/边界匹配/segment fallback 三层防御)",
+      "src/main.py": [
+        "删除模块级 DANGEROUS_PREFIXES/DANGEROUS_METHODS/_is_dangerous 定义, 改为: from src.danger import DANGEROUS_PREFIXES, DANGEROUS_METHODS, is_dangerous as _is_dangerous (保留 _is_dangerous 名向后兼容测试)",
+        "create_app 增加 app.on_cleanup.append(_flush_pending_on_shutdown) — shutdown 时调用 storage.flush_pending() (DEBT-0010)",
+        "新增 _flush_pending_on_shutdown(app) 函数: try storage.flush_pending() except 记录日志",
+        "__main__ 块: web.run_app(app, port=9000, shutdown_timeout=10) 显式声明 (DEBT-0007)"
+      ],
+      "src/storage.py": [
+        "新增 PENDING_MAX = 1000 模块常量",
+        "save() 降级分支: if len(self._pending) >= PENDING_MAX: self._pending.pop(0) (丢最旧 + logger.warning)"
+      ],
+      "examples/policy_probe.py": "L19 改为 from src.danger import is_dangerous, DANGEROUS_PREFIXES (消除对 src.main 私有符号依赖, DEBT-0002 核心)",
+      "tests/test_danger_module.py": "新建: is_dangerous 公共 API 存在且行为与 _is_dangerous 一致; danger.py 可独立导入",
+      "tests/test_storage_degraded.py": "扩展: pending 上限(填充 PENDING_MAX+1 条 → 只保留 PENDING_MAX 且最旧被丢); 新增 test_shutdown_flushes_pending(on_cleanup 触发 flush)"
     },
     "acceptance": [
-      "pytest tests/ 全量通过(152 + 净增)",
-      "熔断: trip 后 COOLDOWN 内 ESCALATE → DENY; 冷却到期自动恢复",
-      "分散触发: 间隔>300s 的 10 次 ESCALATE 仍累计 → 第 10 次 trip",
-      "storage: sqlite 写入失败不抛异常, 缓存 pending, flush 后持久化",
-      "R1/R2/R3 约束实战验证",
-      "DEBT-0001/0008 移入已清偿区并标注 commit"
+      "pytest tests/ 全量通过(159 + 新增/扩展)",
+      "policy_probe.py 不再依赖 src.main 私有符号 (grep 验证: examples/policy_probe.py 无 _is_dangerous/DANGEROUS_ 导入自 src.main)",
+      "is_dangerous 行为与旧 _is_dangerous 完全一致 (test_security_hardening 13 测试保持通过)",
+      "pending 上限生效: 超 PENDING_MAX 丢最旧 + 警告",
+      "shutdown 时 flush_pending 触发 (on_cleanup)",
+      "R4 拆分实战: 3 次 Spawn 各自 ≤6 锚点, 无单子代理截断",
+      "DEBT-0002/0007/0009/0010 移入已清偿区并标注 commit"
     ]
   },
   "history": [
     {
       "round": 1,
-      "phase": "PARALLEL_BUILD_TEST",
-      "actions": {
-        "builder": "R1 补丁语义锚点侦察 9 处全 count==1 确认, 然后 token 截断 0 writes",
-        "tester": "token 截断 0 writes",
-        "reviewer": "not started"
-      },
-      "outcome": "BOTH_TRUNCATED",
-      "notes": [
-        "真实任务第 3 次容量暴露: 任务规模(9 锚点+2 测试文件)超单子代理单轮 token 预算",
-        "R1 验证: 补丁语义指令有效(Builder 无探索式读取), 但执行容量是新的边界",
-        "按 R3 协调者兜底: Coordinator 应用 Builder 设计的 diff + 按 Tester 契约落盘测试"
-      ]
-    },
-    {
-      "round": 2,
-      "phase": "COORDINATOR_FALLBACK + REVIEW",
-      "actions": {
-        "coordinator": "应用 7 处 main.py + 3 处 storage.py 锚点补丁; 经 MCP 提交 2 测试文件(6458B/4749B); 修正 test_security_hardening 旧语义; 落盘 builder/tester 报告(标注 R3 兜底)",
-        "reviewer": "MCP 只读独立验证: 11p 定向 + 159p 全量 + 契约探测全绿"
-      },
-      "outcome": "PASS (Reviewer 本轮首个全 PASS)",
-      "notes": [
-        "Reviewer 证据: breaker_tripped_until ×8(≥6), main.py '>300' 计数=0, 全测试扫描 'fresh burst'=0, 分散触发测试断言 403",
-        "测试优先裁决: test_security_hardening.test_after_trip_counter_resets 更新为冷却期 DENY → 过期恢复",
-        "发现: sqlite3.Connection.execute 只读不可 patch.object → FakeConn 替换",
-        "Full regression: 159 passed (152 + 11 - 4 旧语义)"
-      ],
-      "mcp_self_proof": {
-        "test_circuit_breaker.py": "6458B via MCP write_file + file_info",
-        "test_storage_degraded.py": "4749B via MCP write_file + file_info",
-        "builder_report.md": "1752B",
-        "tester_report.md": "2398B",
-        "reviewer_verdict.md": "2234B via file_info"
-      }
+      "event": "COMPLETED",
+      "ts": "2026-08-03T15:30:00Z",
+      "summary": "S1 Builder main (R3 Coordinator fallback: sub-agent BLOCKED 0 edits, design verified; + policy_sync AST migration + on_cleanup async fix), S2 Builder storage (done), S3 Tester (12+2 tests, probe migrated), S4 Reviewer APPROVE. Full regression 173 passed. GATE 7 green.",
+      "commit": "PIN_AFTER_COMMIT"
     }
   ]
 }

@@ -2,10 +2,10 @@
 """GATE 7: policy-code drift detector.
 
 Detects drift between the DENY rules in config/policies.yaml and the
-hardcoded DANGEROUS_PREFIXES in src/main.py (AUDIT-0004 lesson: a YAML
+DANGEROUS_PREFIXES heuristic in src/danger.py (AUDIT-0004 lesson: a YAML
 action written as lowercase 'deny' passed CI while the runtime silently
-fell through to ALLOW; and _is_dangerous used to be a separate heuristic
-that could drift from the YAML).
+fell through to ALLOW; and the heuristic used to live as a separate
+function in src/main.py that could drift from the YAML).
 
 What it actually checks (real semantics, no fake asserts):
   1. Every DENY rule's path prefix in policies.yaml must be covered by a
@@ -29,21 +29,29 @@ import yaml
 
 POLICY_FILE = Path("config/policies.yaml")
 MAIN_FILE = Path("src/main.py")
+DANGER_FILE = Path("src/danger.py")
 ALLOWED_ACTIONS = {"ALLOW", "DENY", "ESCALATE"}
 
 
 def load_dangerous_prefixes() -> List[str]:
-    """Read DANGEROUS_PREFIXES tuple from src/main.py via AST (real runtime constant)."""
+    """Read DANGEROUS_PREFIXES tuple via AST (real runtime constant).
+
+    DEBT-0002: the heuristic moved from src/main.py to src/danger.py.
+    Scan danger.py first; fall back to main.py for older checkouts.
+    """
     import ast
 
-    tree = ast.parse(MAIN_FILE.read_text(encoding="utf-8"))
-    for node in tree.body:
-        if isinstance(node, ast.Assign):
-            for t in node.targets:
-                if isinstance(t, ast.Name) and t.id == "DANGEROUS_PREFIXES":
-                    if isinstance(node.value, ast.Tuple):
-                        return [c.value for c in node.value.elts
-                                if isinstance(c, ast.Constant)]
+    for file in (DANGER_FILE, MAIN_FILE):
+        if not file.exists():
+            continue
+        tree = ast.parse(file.read_text(encoding="utf-8"))
+        for node in tree.body:
+            if isinstance(node, ast.Assign):
+                for t in node.targets:
+                    if isinstance(t, ast.Name) and t.id == "DANGEROUS_PREFIXES":
+                        if isinstance(node.value, ast.Tuple):
+                            return [c.value for c in node.value.elts
+                                    if isinstance(c, ast.Constant)]
     return []
 
 

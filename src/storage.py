@@ -1,10 +1,14 @@
 """SQLite-based persistent decision storage — not an in-memory dict."""
 
 import json
+import logging
 import sqlite3
 import threading
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
+
+PENDING_MAX = 1000  # DEBT-0009: cap on degraded-mode in-memory buffer (memory safety)
+logger = logging.getLogger(__name__)
 
 
 class Storage:
@@ -62,6 +66,9 @@ class Storage:
             entry["_cached_at"] = datetime.now(timezone.utc).isoformat()
             with self._lock:
                 self._pending.append(entry)
+                if len(self._pending) > PENDING_MAX:  # DEBT-0009: drop oldest, keep bounded
+                    dropped = self._pending.pop(0)
+                    logger.warning("degraded buffer full (%d): dropping oldest decision %s", PENDING_MAX, dropped.get("id"))
         return decision["id"]
 
     def flush_pending(self) -> int:

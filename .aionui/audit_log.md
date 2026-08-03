@@ -3,6 +3,27 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0017 — 2026-08-03T15:30:00Z
+
+- PR: N/A（TASK-REAL-003 真实治理验证，三循环协议执行）
+- 标题: 危险路径解耦 + shutdown/flush 时机 + pending 上限（DEBT-0002/0007/0009/0010 清偿）
+- 变更文件: `src/danger.py`(新建), `src/main.py`(删私有启发式+async shutdown flush+shutdown_timeout=10), `src/storage.py`(PENDING_MAX=1000 上限), `scripts/policy_sync.py`(AST 扫描迁移至 danger.py), `examples/policy_probe.py`(公共导入), `tests/test_danger_module.py`(新建 12), `tests/test_storage_degraded.py`(+2), `.aionui/scheduler/relay_state.json`, `debt_registry.md`
+- 变更行数: +244/-80
+- 评级: 自验证 A- → S4 Reviewer **APPROVE**（独立审计 8 项全过）
+- 结论: **PASS**（173/173 测试 + GATE 7 绿 + 无私有导入泄漏）
+- 问题数: 执行期自发现 2（sync on_cleanup 崩溃 → async；policy_sync AST 耦合 → 迁移）→ 修复后 0
+- Reviewer: **Spawn `S4-Reviewer-REAL003`**（独立视角）
+- Commit: 待提交
+- 备注:
+  - **R3 兜底执行**: S1 Builder 子代理误读"不要调用工具"返回 BLOCKED(0 编辑)，但已验证全部锚点唯一性；Coordinator 按已验证设计兜底落盘（第 2 次子代理失败 → 学习循环提取新约束）
+  - **Coordinator 新发现 1**: `scripts/policy_sync.py::load_dangerous_prefixes()` AST 扫描 main.py 常量 → 迁移后读空列表 → GATE 7 假漂移。修复: 优先扫描 `src/danger.py`，回退 main.py（DEBT-0002 完整语义：私有符号所有消费者必须迁移）
+  - **Coordinator 新发现 2**: `_flush_pending_on_shutdown` 初始为 sync → aiohttp on_cleanup await 每个 receiver → `TypeError: object NoneType can't be used in 'await'`，测试夹具 teardown 崩溃 6 红。修复: `async def`（计划阶段无此缺陷，仅执行验证暴露 → AUDIT→PLAN→SPAWN→VERIFY 循环价值实证）
+  - **兼容性**: `src.main._is_dangerous` 以别名保留（test_security_hardening.py L18），策略为公共 API 优于别名（S4 学习循环建议）
+  - 验证: 173/173（12 danger + 7 storage + 14 security + 140 其余）+ policy_probe 无 src.main 泄漏 + policy_sync 读 4 前缀 + shutdown_timeout=10 + pending 上限丢最旧 + shutdown 全量 flush
+  - 已知限制: DEBT-0003(CI needs)/DEBT-0004(流式代理) 未在本轮范围；S1 子代理指令歧义待协议 §2.7 补充
+
+---
+
 ## AUDIT-0008 — 2026-08-03T07:00:00Z
 
 - PR: N/A（B1: LangChain 集成实验 + 团队化两阶段 Spawn 验证）

@@ -126,3 +126,37 @@ class TestStorageDegradedMode:
         assert flushed == 0
         assert s.pending_count() == 1
         s.conn.close()
+
+    def test_pending_cap_drops_oldest(self):
+        # DEBT-0009: degraded buffer is bounded — filling past PENDING_MAX
+        # drops the OLDEST entry so memory stays bounded.
+        from src.storage import PENDING_MAX
+        s = make_storage()
+        s.conn = FakeConn()
+        for i in range(PENDING_MAX + 5):
+            d = make_decision()
+            d["id"] = f"cap-{i:04d}"
+            s.save(d)
+        assert s.pending_count() == PENDING_MAX
+        ids = {e["id"] for e in s._pending}
+        assert "cap-0000" not in ids, "oldest entry must be dropped"
+        assert f"cap-{PENDING_MAX + 4:04d}" in ids, "newest entry kept"
+        s.conn.close()
+
+    def test_shutdown_flush_drains_buffer(self):
+        # DEBT-0010: on graceful shutdown main._flush_pending_on_shutdown
+        # retries the flush once — a recovered disk drains the whole buffer.
+        s = make_storage()
+        s.conn = FakeConn()
+        for i in range(3):
+            d = make_decision()
+            d["id"] = f"shutdown-{i}"
+            s.save(d)
+        assert s.pending_count() == 3
+        s._init()  # disk recovers
+        flushed = s.flush_pending()
+        assert flushed == 3
+        assert s.pending_count() == 0
+        recent = s.get_recent(limit=10)
+        assert any(r.get("id") == "shutdown-2" for r in recent)
+        s.conn.close()

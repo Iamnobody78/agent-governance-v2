@@ -1,4 +1,4 @@
-"""Policy probe: dump YAML rules and cross-check against main._is_dangerous().
+"""Policy probe: dump YAML rules and cross-check against src.danger.is_dangerous().
 
 Usage:
     python examples/policy_probe.py
@@ -15,8 +15,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-# Single source of truth: import from src.main, don't duplicate constants.
-from src.main import _is_dangerous, DANGEROUS_PREFIXES
+# Single source of truth: import from src.danger, don't duplicate constants.
+from src.danger import is_dangerous, DANGEROUS_PREFIXES
 
 BLOCKING_ACTIONS = ("DENY", "ESCALATE")
 ALLOWED_ACTIONS = BLOCKING_ACTIONS + ("ALLOW",)
@@ -58,19 +58,19 @@ def main() -> int:
             continue  # already reported above
         # Missing method = wildcard (matches all) per policy.py Rule.matches
         if method is None:
-            # treat as wildcard: check path against _is_dangerous for any method
-            dangerous = any(_is_dangerous(path, m) for m in ("GET", "POST", "DELETE", "PUT", "PATCH"))
+            # treat as wildcard: check path against is_dangerous for any method
+            dangerous = any(is_dangerous(path, m) for m in ("GET", "POST", "DELETE", "PUT", "PATCH"))
             method_for_report = "*"
         else:
-            dangerous = _is_dangerous(path, method)
+            dangerous = is_dangerous(path, method)
             method_for_report = method
         if action in BLOCKING_ACTIONS and not dangerous:
-            warnings.append(f"{name}: {action} rule '{path}' ({method_for_report}) NOT covered by _is_dangerous()")
+            warnings.append(f"{name}: {action} rule '{path}' ({method_for_report}) NOT covered by is_dangerous()")
         if action == "ALLOW" and dangerous:
             warnings.append(f"{name}: ALLOW rule '{path}' ({method_for_report}) wrongly flagged as dangerous")
 
     # ── MEDIUM fix (Reviewer): orphan-prefix reverse check ──
-    # A prefix in _is_dangerous with NO matching YAML rule means the
+    # A prefix in is_dangerous with NO matching YAML rule means the
     # timeout fail-closed branch would DENY requests the YAML has allowed.
     covered_prefixes = set()
     for r in rules:
@@ -80,7 +80,7 @@ def main() -> int:
                 covered_prefixes.add(prefix)
     for prefix in DANGEROUS_PREFIXES:
         if prefix not in covered_prefixes:
-            warnings.append(f"orphan prefix '{prefix}' in _is_dangerous() has NO YAML rule — timeout branch would DENY allowed traffic")
+            warnings.append(f"orphan prefix '{prefix}' in is_dangerous() has NO YAML rule — timeout branch would DENY allowed traffic")
 
     if warnings:
         print(f"WARNING: {len(warnings)} inconsistency(ies):")
