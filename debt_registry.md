@@ -13,9 +13,9 @@
 | DEBT-0018 | 请求/响应无大小上限（10MB body 拖慢反序列化与 hook 截断前的内存占用；hook 输入已截断 2000 字符，但网关层无显式 body 上限） | MEDIUM | 2026-08-03 | 否 | 外部代码审查（"storage 存全文拖慢 SQLite"指控不成立——v2 不存 body 全文，但大小上限缺口真实存在） |
 | DEBT-0020 | 语义输出侧评估缺失（A 阶段仅评估 user_prompt 输入侧；agent_response 在代理转发后产生，可异步补判） | LOW | 2026-08-03 | 否 | TASK-REAL-009 已知边界 |
 | DEBT-0021 | timeout fail-closed 分支的 path 启发式（danger.py）看不到请求体——json_path 规则在超时降级路径不生效（已文档化接受：timeout 3s+熔断兜底；json_path 规则是纵深防御附加层） | LOW | 2026-08-03 | 否 | TASK-REAL-010 已知边界 |
-| DEBT-0026 | json_path 规则线性匹配（规则多时逐条解析 jsonpath 遍历，命中率低；→ 前缀索引树 ~60 行） | LOW | 2026-08-03 | 否 | 暗雷区 P3（已批准按序执行，待启动） |
+| DEBT-0026 | json_path 规则线性匹配（规则多时逐条解析 jsonpath 遍历，命中率低；→ 前缀索引树 ~60 行） | LOW | 2026-08-03 | 否 | 暗雷区 P3（已清偿 `ebe9002`，见清偿表） |
 
-> **当前活跃债务：4 项（MEDIUM×1 / LOW×3，无阻塞）** —— 暗雷区修复 P0-P2 closeout 时清点。DEBT-0023（P0 异常日志）、DEBT-0024（P1 语义钩子）、DEBT-0025（P2 SQLite 写锁）已清偿（见清偿表）；DEBT-0026（json_path 线性匹配）为暗雷区 P3，待执行。DEBT-0022 已清偿（`6c25bd9`，REAL-011.1）；DEBT-0019 已清偿（`d95f83c`）。上一批 16/16 已清偿于 TASK-REAL-001..008。
+> **当前活跃债务：3 项（MEDIUM×1 / LOW×2，无阻塞）** —— 暗雷区修复 P0-P3 closeout 时清点。DEBT-0023（P0 异常日志）、DEBT-0024（P1 语义钩子）、DEBT-0025（P2 SQLite 写锁）、DEBT-0026（P3 json_path 线性匹配）已全部清偿（见清偿表）——**暗雷区 4/4 收官**。DEBT-0022 已清偿（`6c25bd9`，REAL-011.1）；DEBT-0019 已清偿（`d95f83c`）。上一批 16/16 已清偿于 TASK-REAL-001..008。
 
 ## 已清偿
 
@@ -43,4 +43,5 @@
 | DEBT-0023 | 异常处理"过于优雅"：主路径日志无堆栈/异常细节，故障时仅 1 行无上下文（→ logger.exception + traceback.debug 分级） | `1ef39a0` (暗雷区 P0) | 2026-08-03 |
 | DEBT-0024 | 语义钩子同步链路延迟 + judge 服务异常时绕过监督无撤销路径（→ semantic_audit_async 异步弱监督 + RevokeRegistry 进程级单例，DENY 优先只升不降） | `be0b5ee` (暗雷区 P1) | 2026-08-03 |
 | DEBT-0025 | SQLite 逐条 INSERT + 每事务 fsync 提交的写锁瓶颈（→ WAL + synchronous=NORMAL + batch_size 批量 executemany 提交 + 读路径前置 flush 保读-己-写一致 + 降级 _buffer_or_fallback） | `c40dc41` (暗雷区 P2) | 2026-08-03 |
+| DEBT-0026 | json_path 规则线性匹配（→ JsonPathIndex 前缀索引树：首段键桶化 + 顶层键集合单次收集剪枝 + segments 预解析缓存；首段 wild/descend/idx 不可剪枝；候选保持优先级序，与线性扫描逐位等价） | `ebe9002` (暗雷区 P3) | 2026-08-03 |
 

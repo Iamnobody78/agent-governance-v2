@@ -3,6 +3,16 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0033 — P3: json_path 前缀索引树（暗雷区修复 #4）
+
+- PR: N/A（暗雷区 P3——json_path 规则线性匹配 O(R×N)；DEBT-0026 清偿）
+- 标题: `JsonPathIndex` 前缀索引树——Rule.__post_init__ 预解析缓存 segments；按首段键桶化；evaluate() 单次 O(N) 收集 body 顶层键集合剪枝；首段 wild/descend/空路径不可剪枝（可命中任意深度）；候选集保持优先级序，结果与线性扫描逐位等价；`_json_extract` 增可选 segments 参数
+- 变更文件: `src/policy.py`（_top_level_keys 新增 + JsonPathIndex 新增 + Rule 缓存 segments + evaluate 走索引）
+- 测试: `tests/test_json_path_index.py`（新增 21：归一化一致/剪枝正确性/engine 级 vs 线性参考逐 body 等价/monkeypatch 提取计数证明剪枝生效）
+- 全量回归: **391 passed**（370 + 21），零失败
+- GATE 8: PASS 5/5（`python -m src.critic.runner` exit 0）
+- 债务: DEBT-0026（json_path 线性匹配）清偿 ✅ —— **暗雷区 P0-P3 全部完成**
+
 ## AUDIT-0032 — P2: SQLite WAL + 批量提交（暗雷区修复 #3）
 
 - PR: N/A（暗雷区 P2——SQLite 写锁瓶颈 → WAL + 批量提交；DEBT-0025 清偿）
