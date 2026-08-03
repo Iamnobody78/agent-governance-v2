@@ -52,7 +52,8 @@ class Storage:
                 tool_name TEXT,
                 tool_lethality REAL,
                 trace_id TEXT,
-                parent_span_id TEXT
+                parent_span_id TEXT,
+                rationale TEXT
             )
         """)
         self.conn.execute("""
@@ -75,10 +76,11 @@ class Storage:
         self.conn.commit()
 
     def _migrate(self) -> None:
-        """TASK-REAL-010 (Step 1) + TASK-REAL-011 (C): additive schema migrations.
+        """TASK-REAL-010/011 + TASK-REAL-012 Phase 4: additive schema migrations.
 
-        Pre-existing databases gain tool_name / tool_lethality (REAL-010) and
-        trace_id / parent_span_id (REAL-011) via SQLite ALTER TABLE ADD COLUMN
+        Pre-existing databases gain tool_name / tool_lethality (REAL-010),
+        trace_id / parent_span_id (REAL-011) and rationale (REAL-012 Phase 4,
+        治理大脑 Phase 1 可解释字段) via SQLite ALTER TABLE ADD COLUMN
         (non-destructive, defaults NULL); fresh databases already carry all
         columns in CREATE TABLE. Old rows read back with NULL — no data loss,
         no backfill. All migrations are additive and idempotent.
@@ -92,13 +94,15 @@ class Storage:
             self.conn.execute("ALTER TABLE decisions ADD COLUMN trace_id TEXT")
         if "parent_span_id" not in cols:
             self.conn.execute("ALTER TABLE decisions ADD COLUMN parent_span_id TEXT")
+        if "rationale" not in cols:
+            self.conn.execute("ALTER TABLE decisions ADD COLUMN rationale TEXT")
 
     def save(self, decision: Dict) -> str:
         try:
             with self._lock:
                 self.conn.execute(
-                    """INSERT INTO decisions (id, verdict, reason, matched_rule, timestamp, path, method, agent_id, tool_name, tool_lethality, trace_id, parent_span_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    """INSERT INTO decisions (id, verdict, reason, matched_rule, timestamp, path, method, agent_id, tool_name, tool_lethality, trace_id, parent_span_id, rationale)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         decision["id"],
                         decision["verdict"],
@@ -112,6 +116,7 @@ class Storage:
                         decision.get("tool_lethality"),
                         decision.get("trace_id"),
                         decision.get("parent_span_id"),
+                        decision.get("rationale"),
                     ),
                 )
                 self.conn.commit()
@@ -155,8 +160,8 @@ class Storage:
             for entry in self._pending:
                 try:
                     self.conn.execute(
-                        """INSERT INTO decisions (id, verdict, reason, matched_rule, timestamp, path, method, agent_id, tool_name, tool_lethality, trace_id, parent_span_id)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        """INSERT INTO decisions (id, verdict, reason, matched_rule, timestamp, path, method, agent_id, tool_name, tool_lethality, trace_id, parent_span_id, rationale)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             entry["id"],
                             entry["verdict"],
@@ -170,6 +175,7 @@ class Storage:
                             entry.get("tool_lethality"),
                             entry.get("trace_id"),
                             entry.get("parent_span_id"),
+                            entry.get("rationale"),
                         ),
                     )
                     self.conn.commit()
@@ -318,6 +324,7 @@ class Storage:
             "tool_lethality": row[9],
             "trace_id": row[10],
             "parent_span_id": row[11],
+            "rationale": row[12] if len(row) > 12 else None,
         }
 
     def close(self) -> None:

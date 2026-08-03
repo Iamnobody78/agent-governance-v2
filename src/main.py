@@ -159,9 +159,18 @@ async def intercept_handler(request: web.Request) -> web.Response:
                             verdict = Verdict.ESCALATE
                             reason = rule.reason or f"匹配规则 '{rule.name}' → 升级人工审批"
             else:
-                verdict = Verdict.ALLOW
-                reason = rule.reason or f"匹配规则 '{rule.name}' → 放行"
-                # successful ALLOW = request resolved → reset circuit breaker
+                # TASK-REAL-012 Phase 4 (治理大脑 Phase 1): 五级响应 — ALLOW /
+                # ALLOW_WITH_WARNING / SUSPEND 分支。既有 ALLOW 语义不变。
+                if rule.action == "ALLOW_WITH_WARNING":
+                    verdict = Verdict.ALLOW_WITH_WARNING
+                    reason = rule.reason or f"匹配规则 '{rule.name}' → 放行但警告"
+                elif rule.action == "SUSPEND":
+                    verdict = Verdict.SUSPEND
+                    reason = rule.reason or f"匹配规则 '{rule.name}' → 挂起审查"
+                else:
+                    verdict = Verdict.ALLOW
+                    reason = rule.reason or f"匹配规则 '{rule.name}' → 放行"
+                # successful ALLOW(-family) = request resolved → reset circuit breaker
                 async with _escalate_lock:
                     escalate_count_since_resolve = 0
                     last_escalate_time = 0.0
@@ -188,6 +197,9 @@ async def intercept_handler(request: web.Request) -> web.Response:
 
     # 3. persist decision (strong-typed model, serialized at DB edge)
     _tname, _tleth = _audit_tool_fields(req)
+    # TASK-REAL-012 Phase 4 (治理大脑 Phase 1): rationale 可解释字段 —
+    # 记录"为什么这么判"（匹配规则 + 语义旁路说明），审计可复核。
+    _rationale = (f"rule={matched_rule}" if matched_rule else "no-rule(default-allow)")
     decision = DecisionRecord(
         id=str(uuid.uuid4()),
         verdict=verdict,
@@ -200,15 +212,16 @@ async def intercept_handler(request: web.Request) -> web.Response:
         tool_lethality=_tleth,
         trace_id=trace_id,
         parent_span_id=parent_span_id,
+        rationale=_rationale,
     )
     # v0.2.2 (external critique #3.1): sqlite3 writes are synchronous — run in
     # the thread pool so the event loop is not blocked (Storage has an internal
     # threading.Lock to serialize access to the shared connection).
     await asyncio.to_thread(storage.save, decision.model_dump(mode="json"))
 
-    # 4. if ALLOW and proxy mode → forward to upstream Agent
+    # 4. if ALLOW(-family) and proxy mode → forward to upstream Agent
     response_body = None
-    if verdict == Verdict.ALLOW and AGENT_BACKEND_URL:
+    if verdict in (Verdict.ALLOW, Verdict.ALLOW_WITH_WARNING) and AGENT_BACKEND_URL:
         response_body = await _proxy_forward(req)
 
     # 5. build response — TASK-REAL-011: 回传 trace 上下文供下游链接
@@ -221,16 +234,23 @@ async def intercept_handler(request: web.Request) -> web.Response:
         trace_id=trace_id,
     )
     _trace_headers = {"X-Trace-ID": trace_id, "X-Span-ID": decision.id}
-
+    # TASK-REAL-012 Phase 4 (治理大脑 Phase 1): 五级响应输出 —
+    # ALLOW_WITH_WARNING → 200 + X-Governance-Warning 头（可观测警告）;
+    # SUSPEND → 403（挂起审查，语义区别于 DENY）。
     if verdict == Verdict.DENY:
         return web.json_response(resp.model_dump(mode="json"), status=403, headers=_trace_headers)
     elif verdict == Verdict.ESCALATE:
         return web.json_response(resp.model_dump(mode="json"), status=202, headers=_trace_headers)
+    elif verdict == Verdict.SUSPEND:
+        return web.json_response(resp.model_dump(mode="json"), status=403, headers=_trace_headers)
     else:
         result = resp.model_dump(mode="json")
         if response_body:
             result["upstream_response"] = response_body
-        return web.json_response(result, status=200, headers=_trace_headers)
+        _resp_headers = dict(_trace_headers)
+        if verdict == Verdict.ALLOW_WITH_WARNING:
+            _resp_headers["X-Governance-Warning"] = reason
+        return web.json_response(result, status=200, headers=_resp_headers)
 
 
 async def _proxy_forward(req: InterceptRequest) -> Optional[dict]:
@@ -444,7 +464,7 @@ def _malformed_tool_declaration(req) -> str | None:
 
 
 async def _deny_decision(req, reason, status, matched_rule, tool_name=None, tool_lethality=None,
-                         trace_id=None, parent_span_id=None) -> web.Response:
+                         trace_id=None, parent_span_id=None, rationale=None) -> web.Response:
     """Record a DENY decision and return the gateway rejection response.
 
     Shared by the malformed-declaration path and the dangerous-tool path
@@ -466,6 +486,7 @@ async def _deny_decision(req, reason, status, matched_rule, tool_name=None, tool
         tool_lethality=tool_lethality,
         trace_id=trace_id,
         parent_span_id=parent_span_id,
+        rationale=rationale or f"rule={matched_rule}",
     )
     # v0.2.2 (external critique #3.1): sqlite3 writes are synchronous — run in
     # the thread pool so the event loop is not blocked (Storage has an internal
@@ -570,6 +591,18 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
             reason = f"匹配规则 '{rule.name}' → 放行"
             status = 200
             matched_rule = rule.name
+        elif rule.action == "ALLOW_WITH_WARNING":
+            # TASK-REAL-012 Phase 4 (治理大脑 Phase 1): 放行但附警告（可观测）
+            verdict = Verdict.ALLOW_WITH_WARNING
+            reason = rule.reason or f"匹配规则 '{rule.name}' → 放行但警告"
+            status = 200
+            matched_rule = rule.name
+        elif rule.action == "SUSPEND":
+            # 挂起审查 — 拒绝转发（语义区别于 DENY，供人工审查队列）
+            verdict = Verdict.SUSPEND
+            reason = rule.reason or f"匹配规则 '{rule.name}' → 挂起审查"
+            status = 403
+            matched_rule = rule.name
         else:
             verdict = Verdict.ESCALATE
             reason = f"匹配规则 '{rule.name}' → 升级"
@@ -577,6 +610,8 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
             matched_rule = rule.name
 
     _tname, _tleth = _audit_tool_fields(req, tool_names)
+    # TASK-REAL-012 Phase 4 (治理大脑 Phase 1): rationale 可解释字段
+    _rationale = (f"rule={matched_rule}" if matched_rule else "no-rule(default-allow)")
     decision = DecisionRecord(
         id=str(uuid.uuid4()),
         verdict=verdict,
@@ -589,6 +624,7 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
         tool_lethality=_tleth,
         trace_id=trace_id,
         parent_span_id=parent_span_id,
+        rationale=_rationale,
     )
     # v0.2.2 (external critique #3.1): sqlite3 writes are synchronous — run in
     # the thread pool so the event loop is not blocked (Storage has an internal
@@ -596,7 +632,7 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
     await asyncio.to_thread(storage.save, decision.model_dump(mode="json"))
     _trace_headers = {"X-Trace-ID": trace_id, "X-Span-ID": decision.id}
 
-    if verdict is not Verdict.ALLOW:
+    if verdict in (Verdict.DENY, Verdict.SUSPEND, Verdict.ESCALATE):
         return web.json_response(
             {
                 "error": {
@@ -608,6 +644,9 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
             status=status,
             headers=_trace_headers,
         )
+    # ALLOW / ALLOW_WITH_WARNING 转发前附加治理警告头（可观测）
+    if verdict == Verdict.ALLOW_WITH_WARNING:
+        _trace_headers["X-Governance-Warning"] = reason
 
     # forward to upstream LLM (AGENT_BACKEND_URL + /v1/chat/completions)
     upstream = f"{AGENT_BACKEND_URL}/v1/chat/completions"
@@ -697,9 +736,11 @@ async def _flush_pending_on_shutdown(app: web.Application) -> None:
         logger.warning("shutdown flush_pending failed: %s", e)
 
 
-def create_app() -> web.Application:
+def create_app(config_path: Optional[str] = None) -> web.Application:
     global policy_engine, storage, escalate_count_since_resolve, last_escalate_time, breaker_tripped_until, _escalate_lock
-    policy_engine = PolicyEngine()
+    # TASK-REAL-012 Phase 4 (治理大脑 Phase 1): config_path 可注入 —
+    # 测试/多租户可加载独立策略文件；None 保持默认 config/policies.yaml。
+    policy_engine = PolicyEngine(config_path)
     storage = Storage()
     # DEBT-0011: restore persisted breaker state (restart must not reset counters)
     breaker_state = storage.load_breaker_state()

@@ -14,9 +14,15 @@ from pydantic import BaseModel, Field, field_serializer
 
 
 class Verdict(str, Enum):
+    """五级判定响应（TASK-REAL-012 Phase 4 治理大脑 Phase 1）:
+    ALLOW / ALLOW_WITH_WARNING / ESCALATE / DENY / SUSPEND。
+    既有值语义不变（增量扩展，不破坏旧行为）。
+    """
     ALLOW = "ALLOW"
-    DENY = "DENY"
+    ALLOW_WITH_WARNING = "ALLOW_WITH_WARNING"
     ESCALATE = "ESCALATE"
+    DENY = "DENY"
+    SUSPEND = "SUSPEND"
 
 
 class InterceptRequest(BaseModel):
@@ -55,6 +61,9 @@ class DecisionRecord(BaseModel):
     verdict: Verdict
     reason: str
     matched_rule: Optional[str] = None
+    # TASK-REAL-012 Phase 4 (治理大脑 Phase 1): 可解释字段 — 为什么这么判。
+    # 来自匹配规则的 reason + 上下文（熔断/超时/语义旁路追加说明）。
+    rationale: Optional[str] = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     path: str
     method: str

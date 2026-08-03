@@ -9,7 +9,7 @@ from typing import List, Literal, Optional
 
 import yaml
 
-VALID_ACTIONS: tuple = ("ALLOW", "DENY", "ESCALATE")
+VALID_ACTIONS: tuple = ("ALLOW", "ALLOW_WITH_WARNING", "DENY", "ESCALATE", "SUSPEND")
 
 
 # ── B 阶段 (TASK-REAL-010): json_path 条件规则支持 ──────────────────
@@ -144,7 +144,7 @@ class Rule:
     name: str
     path_pattern: str
     method: Optional[str] = None
-    action: Literal["ALLOW", "DENY", "ESCALATE"] = "ALLOW"
+    action: Literal["ALLOW", "ALLOW_WITH_WARNING", "DENY", "ESCALATE", "SUSPEND"] = "ALLOW"
     reason: str = ""
     priority: int = 100
     escalation_timeout: int = 300
