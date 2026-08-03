@@ -130,6 +130,33 @@ def test_audit_relay_state_unfinished_is_high(tmp_path):
     assert any(f["severity"] == "HIGH" and "A3" in f["check"] for f in resp["findings"])
 
 
+def test_audit_relay_state_multi_phase_in_progress_is_low(tmp_path):
+    """多阶段长任务：存在 PENDING phase 时 IN_PROGRESS 合法（LOW 提示，不阻断）。"""
+    _write(tmp_path, ".aionui/scheduler/relay_state.json",
+           json.dumps({"task_id": "TASK-REAL-012", "status": "IN_PROGRESS",
+                       "phases": {"1": {"status": "COMPLETED"},
+                                  "2": {"status": "COMPLETED"},
+                                  "3": {"status": "COMPLETED"},
+                                  "4": {"status": "COMPLETED"},
+                                  "5": {"status": "PENDING"}}}))
+    resp = audit_critic.run(tmp_path)
+    assert not any(f["severity"] == "HIGH" and "A3" in f["check"]
+                   for f in resp["findings"])
+    assert any(f["severity"] == "LOW" and "A3" in f["check"]
+               for f in resp["findings"])
+
+
+def test_audit_relay_state_all_phases_done_in_progress_is_high(tmp_path):
+    """全部 phase 完成但 status 仍 IN_PROGRESS → 陈旧状态，HIGH。"""
+    _write(tmp_path, ".aionui/scheduler/relay_state.json",
+           json.dumps({"task_id": "TASK-X", "status": "IN_PROGRESS",
+                       "phases": {"1": {"status": "COMPLETED"},
+                                  "2": {"status": "COMPLETED"}}}))
+    resp = audit_critic.run(tmp_path)
+    assert any(f["severity"] == "HIGH" and "A3" in f["check"]
+               and "陈旧" in f["check"] for f in resp["findings"])
+
+
 def test_audit_drop_table_is_high(tmp_path):
     _write(tmp_path, "src/storage.py", "DROP TABLE decisions;\n")
     resp = audit_critic.run(tmp_path)

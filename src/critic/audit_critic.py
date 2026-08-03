@@ -118,10 +118,29 @@ def _check_relay_state(repo_root: Path, findings: list[dict]) -> None:
         return
     status = state.get("status")
     task_id = state.get("task_id")
-    if status != "COMPLETED":
+    phases = state.get("phases") or {}
+    if status == "COMPLETED":
+        pass  # 合法终态
+    elif status == "IN_PROGRESS" and phases:
+        # 多阶段长任务：任一 phase 未完成则 IN_PROGRESS 合法（REAL-012 自进化引擎场景）
+        pending = [n for n, p in phases.items()
+                   if not isinstance(p, dict) or p.get("status") != "COMPLETED"]
+        if pending:
+            findings.append(_finding(
+                "LOW", "A3: relay_state 多阶段进行中",
+                f"task_id={task_id!r} status=IN_PROGRESS"
+                f"（未完成 phase: {', '.join(sorted(pending))}）",
+                "多阶段长任务合法状态；全部 phase 完成后将 status 更新为 COMPLETED"))
+        else:
+            findings.append(_finding(
+                "HIGH", "A3: relay_state 陈旧",
+                f"status=IN_PROGRESS 但全部 {len(phases)} 个 phase 均已 COMPLETED",
+                "全部 phase 完成后必须将 status 更新为 COMPLETED"))
+    else:
         findings.append(_finding(
             "HIGH", "A3: relay_state 未完成",
-            f"task_id={task_id!r} status={status!r}（应为 COMPLETED）",
+            f"task_id={task_id!r} status={status!r}"
+            "（应为 COMPLETED，或带未完成 phases 的 IN_PROGRESS）",
             "任务未完成不可宣称完成；若已结束需更新 relay_state"))
     # task_id 应与最近 AUDIT 对应（宽松：audit_log 提到该 task_id）
     audit = repo_root / ".aionui" / "audit_log.md"
