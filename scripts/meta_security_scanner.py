@@ -119,7 +119,7 @@ class SecurityVisitor(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call):
         if isinstance(node.func, ast.Attribute) and node.func.attr == "startswith":
-            if not self._function_has_normpath(node):
+            if self._is_path_startswith(node) and not self._function_has_normpath(node):
                 self._add(
                     "MEDIUM", "startswith-path-bypass", node,
                     "path check via startswith() without normpath "
@@ -127,6 +127,32 @@ class SecurityVisitor(ast.NodeVisitor):
                     "(see AUDIT-0005 path traversal fix)",
                 )
         self.generic_visit(node)
+
+    @staticmethod
+    def _is_path_startswith(node: ast.Call) -> bool:
+        """Rule 4 precision fix (AUDIT-0047): only flag startswith calls that
+        look like PATH boundary checks.
+
+        Non-path usages — authz.startswith(\"Bearer \"), code.startswith(\"A\")
+        (git status), line.startswith(\"#\") (comment filter), json line
+        detection — all pass a plain string literal as the argument and are
+        NOT path checks. A genuine path comparison passes a variable /
+        expression (``str(base_dir)``) or a literal containing a path
+        separator (``/``, ``\\``, ``..``).
+        """
+        if len(node.args) < 1:
+            return False
+        arg = node.args[0]
+        # variable / expression argument -> real path comparison
+        if not isinstance(arg, ast.Constant):
+            return True
+        if not isinstance(arg.value, str):
+            return False
+        # literal with path separators -> path-ish
+        v = arg.value
+        if "/" in v or "\\" in v or ".." in v or v.startswith("."):
+            return True
+        return False
 
 
 def _annotate_enclosing_functions(tree: ast.AST):

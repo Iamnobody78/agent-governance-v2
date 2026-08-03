@@ -145,7 +145,7 @@ def match_block_shell_tool(path, method, tool_names=None):
         return False
     if not tool_names:
         return False
-    _re = re.compile(r"^(execute_command|system_run|shell_exec|terminal_exec|run_shell|bash|python_exec)$")
+    _re = re.compile(r"^(execute_command|system_run|shell_exec|terminal_exec|run_shell|bash|python_exec)$")  # noqa: policy (codegen from policies.yaml)
     return any(_re.search(t) for t in tool_names)
 
 
@@ -156,7 +156,7 @@ def match_escalate_file_write_tool(path, method, tool_names=None):
         return False
     if not tool_names:
         return False
-    _re = re.compile(r"^(write_file|edit_file|append_file|create_file|overwrite_file|delete_file|rm_file|set_secret|set_env)$")
+    _re = re.compile(r"^(write_file|edit_file|append_file|create_file|overwrite_file|delete_file|rm_file|set_secret|set_env)$")  # noqa: policy (codegen from policies.yaml)
     return any(_re.search(t) for t in tool_names)
 
 

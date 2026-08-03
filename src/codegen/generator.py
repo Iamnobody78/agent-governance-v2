@@ -104,7 +104,7 @@ def _render_json_match(rule: Dict[str, Any]) -> str:
         "        return False\n"
         "    if not tool_names:\n"
         "        return False\n"
-        f'    _re = re.compile(r"{pat}")\n'
+        f'    _re = re.compile(r"{pat}")  # noqa: policy (codegen from policies.yaml)\n'
         "    return any(_re.search(t) for t in tool_names)\n"
     )
 

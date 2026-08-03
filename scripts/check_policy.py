@@ -19,22 +19,42 @@ SRC_DIR = "src"
 
 
 class HardcodedPolicyVisitor(ast.NodeVisitor):
-    """Detects hardcoded policy patterns in Python source."""
+    """Detects hardcoded policy patterns in Python source.
 
-    def __init__(self, filepath: str):
+    Line-level exemption: a trailing ``# noqa: policy`` comment on the same
+    line suppresses findings — used for *technical parsing regexes* (commit
+    hashes, audit-log headers, version strings) that are tooling, not policy
+    (AUDIT-0047).
+    """
+
+    def __init__(self, filepath: str, source: list[str]):
         self.filepath = filepath
+        self.source = source  # source lines for # noqa: policy exemption
         self.violations: list[tuple[int, str, str]] = []  # (line, type, detail)
+
+    def _exempt(self, lineno: int) -> bool:
+        if 1 <= lineno <= len(self.source):
+            return "noqa: policy" in self.source[lineno - 1]
+        return False
 
     def visit_Call(self, node: ast.Call):
         # detect re.compile() — v1's GodelianBoundary pattern
         if isinstance(node.func, ast.Attribute):
             if node.func.attr == "compile" and isinstance(node.func.value, ast.Name):
                 if node.func.value.id == "re":
-                    self.violations.append((
-                        node.lineno,
-                        "re.compile",
-                        "hardcoded regex — move pattern to policies.yaml",
-                    ))
+                    # Precision fix (AUDIT-0047): only a re.compile() whose
+                    # pattern is a string LITERAL is a hardcoded policy regex.
+                    # re.compile(pattern) with a variable (user-provided
+                    # runtime input, e.g. proposer/reader.py grep_traces)
+                    # is not hardcoded policy.
+                    if node.args and isinstance(node.args[0], ast.Constant) \
+                            and isinstance(node.args[0].value, str) \
+                            and not self._exempt(node.lineno):
+                        self.violations.append((
+                            node.lineno,
+                            "re.compile",
+                            "hardcoded regex — move pattern to policies.yaml",
+                        ))
 
         self.generic_visit(node)
 
@@ -62,9 +82,10 @@ class HardcodedPolicyVisitor(ast.NodeVisitor):
 
 
 def scan_file(filepath: Path) -> list:
-    source = filepath.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(filepath))
-    visitor = HardcodedPolicyVisitor(str(filepath))
+    source_text = filepath.read_text(encoding="utf-8")
+    source_lines = source_text.splitlines()
+    tree = ast.parse(source_text, filename=str(filepath))
+    visitor = HardcodedPolicyVisitor(str(filepath), source_lines)
     visitor.visit(tree)
     return visitor.violations
 

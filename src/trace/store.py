@@ -168,7 +168,10 @@ class TraceStore:
     def read_artifact(self, trace_id: str, rel: str) -> bytes:
         """读取产物（rel 形如 artifacts/xxx）。"""
         path = (self.traces_dir / trace_id / rel).resolve()
-        if not str(path).startswith(str((self.traces_dir / trace_id).resolve())):
+        base = (self.traces_dir / trace_id).resolve()
+        # is_relative_to (Py3.9+): exact boundary check — startswith prefix
+        # matching would also accept sibling ids (abc vs abcd). (AUDIT-0047)
+        if not path.is_relative_to(base):
             raise ValueError("产物路径越界")
         return path.read_bytes()
 

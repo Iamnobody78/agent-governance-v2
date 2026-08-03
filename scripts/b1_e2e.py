@@ -27,14 +27,31 @@ STUB_PAYLOAD = {
 }
 
 
-def run_agent(gateway_url: str, prompt: str, result_holder: list, tools=None):
-    """Run the real LangChain agent in a thread (it's sync)."""
-    sys.path.insert(0, str(REPO / "examples"))
-    from langchain_agent import build_agent
+def run_agent(gateway_url: str, prompt: str, result_holder: list):
+    """Run the real LangChain agent in a thread (it's sync).
 
-    agent = build_agent(gateway_url, tools=tools)
+    build_governed_agent fixes tools internally ([delete_file, write_file]);
+    it accepts no tools kwarg — this is the zero-touch sidecar contract.
+    Every LangChain request declares those tools, so the gateway governs it.
+    """
+    sys.path.insert(0, str(REPO / "examples"))
+    from langchain_agent import build_governed_agent
+
+    agent = build_governed_agent(gateway_url)
     out = agent.invoke({"messages": [{"role": "user", "content": prompt}]})
     result_holder.append(out["messages"][-1].content)
+
+
+def plain_chat(gateway_url: str, prompt: str) -> tuple[int, str]:
+    """Plain HTTP chat — NO tool declarations (safe path → ALLOW)."""
+    sys.path.insert(0, str(REPO / "examples"))
+    from langchain_agent import _chat_completions
+
+    status, body, _ = _chat_completions(
+        gateway_url,
+        {"model": "test-model", "messages": [{"role": "user", "content": prompt}]},
+    )
+    return status, body
 
 
 async def main():
@@ -64,18 +81,18 @@ async def main():
     gateway_url = f"http://127.0.0.1:{g_port}"
 
     try:
-        # 3a. SAFE agent (tools=[get_time]) → ALLOW path
-        result = []
-        await asyncio.to_thread(
-            run_agent, gateway_url, "What time is it?", result, tools=["get_time"]
+        # 3a. SAFE path: plain chat with NO tool declarations → ALLOW
+        status, body = await asyncio.to_thread(
+            plain_chat, gateway_url, "What time is it?"
         )
-        assert result, "safe agent produced no output"
-        print("SAFE AGENT REPLY:", result[0])
-        assert "stub" in result[0], "safe agent did not receive upstream reply"
+        assert status == 200, f"safe chat expected 200, got {status}"
+        assert "stub" in json.dumps(body), "safe chat did not receive upstream reply"
+        print("SAFE CHAT OK:", body)
 
-        # 3b. DANGEROUS agent (default tools incl. delete_file) → DENY path
+        # 3b. DANGEROUS agent (declares delete_file) → DENY path
         #     gateway 403s the request that declares delete_file, so the
         #     upstream stub is never reached and agent errors out.
+        result = []
         try:
             await asyncio.to_thread(
                 run_agent, gateway_url, "delete everything", result
@@ -84,6 +101,7 @@ async def main():
         except Exception as e:
             denied = "403" in str(e) or "governance_denied" in str(e)
         assert denied, "dangerous agent should be blocked with 403"
+        print("DANGEROUS AGENT DENIED OK")
 
         # 4. decisions persisted for both paths
         async with aiohttp.ClientSession() as s:

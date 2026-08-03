@@ -46,7 +46,8 @@ def git_status(repo_root: str | Path) -> dict:
         if path.startswith('"') and path.endswith('"'):
             try:
                 path = path.encode().decode("unicode_escape")
-            except Exception:
+            except (UnicodeDecodeError, UnicodeEncodeError):
+                # quoted git path failed to unescape — keep raw (AUDIT-0047)
                 pass
         if "M" in code or "?" in code:
             changed.append(path)

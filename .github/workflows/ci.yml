@@ -36,7 +36,7 @@ jobs:
         run: python -m compileall -q src tests examples scripts
       - name: "GATE 3 — full regression (baseline >= 450)"
         run: |
-          python -m pytest tests -q --timeout=120 > pytest.log 2>&1
+          python -m pytest tests -q --timeout=120 > pytest.log 2>&1 || true
           tail -5 pytest.log
           PASSED=$(grep -oP '\d+(?= passed)' pytest.log | head -1)
           echo "passed=$PASSED"

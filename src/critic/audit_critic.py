@@ -16,10 +16,10 @@ import json
 import re
 from pathlib import Path
 
-COMMIT_RE = re.compile(r"[0-9a-fA-F]{7,}")
-AUDIT_RE = re.compile(r"^## AUDIT-(\d{4})", re.MULTILINE)
-TS_RE = re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}")
-VERSION_RE = re.compile(r"v(\d+\.\d+\.\d+)")
+COMMIT_RE = re.compile(r"[0-9a-fA-F]{7,}")  # noqa: policy (technical parser regex, not policy)
+AUDIT_RE = re.compile(r"^## AUDIT-(\d{4})", re.MULTILINE)  # noqa: policy (audit-log header parser)
+TS_RE = re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}")  # noqa: policy (timestamp parser)
+VERSION_RE = re.compile(r"v(\d+\.\d+\.\d+)")  # noqa: policy (version-string parser)
 
 SEVERITY_ORDER = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
 

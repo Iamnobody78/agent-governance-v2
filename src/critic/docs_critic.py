@@ -13,10 +13,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-REF_RE = re.compile(r"(?:tests|src|scripts|docs)/[\w./\-]+\.(?:py|md|yaml|yml|txt)")
+REF_RE = re.compile(r"(?:tests|src|scripts|docs)/[\w./\-]+\.(?:py|md|yaml|yml|txt)")  # noqa: policy (technical ref parser)
 # 批判者 v1.0.1 修正（自记录）: 原 VERSION_RE 要求 'v' 前缀，main.py 的
 # 裸版本常量（如 "0.4.0"）被漏检 → 真实仓库版本一致性从未被检查。
-VERSION_RE = re.compile(r"v?(\d+\.\d+\.\d+)")
+VERSION_RE = re.compile(r"v?(\d+\.\d+\.\d+)")  # noqa: policy (technical version parser)
 
 
 def run(repo_root: Path) -> dict:
