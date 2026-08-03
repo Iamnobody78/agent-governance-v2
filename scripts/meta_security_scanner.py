@@ -177,8 +177,11 @@ def main() -> int:
 
     # explicit severity ordering — string max() would rank 'HIGH' < 'MEDIUM'
     # ('H' < 'M' in ASCII), silently downgrading findings. (GATE 6 fix)
+    # NOTE: generator expression over findings — bare `f.severity` would use
+    # the loop-leftover variable from `for f in files` (a WindowsPath). (GATE 6 fix 2)
     _SEVERITY_RANK = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
-    highest = max(f.severity, key=lambda s: _SEVERITY_RANK.get(s, 0))
+    highest = max((g.severity for g in findings),
+                  key=lambda s: _SEVERITY_RANK.get(s, 0))
     for f in findings:
         print(f"[{f.severity}] {f.rule} | {f.file}:{f.line} | {f.message}")
 
