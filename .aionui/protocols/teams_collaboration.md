@@ -160,10 +160,13 @@ PASS / FAIL / REJECT
 | R1 | **真实任务 prompt 过大 → Builder READ 阶段截断** | **补丁语义而非探索语义**：子代理任务指令必须携带完整 diff / 精确锚点（锚点唯一性断言 count==1），禁止"读全部代码再设计"；需要探索时由 Coordinator 完成并注入 | v1 12 turns 0 writes（只读不写）→ v2 补丁语义恢复 |
 | R2 | **mcp_client `\n` 转义损坏真实代码**（f-string 含字面 `\n`） | **JSON-RPC 直写而非 CLI 转义**：内容含 `\n` 字面量/复杂转义时，绕过 CLI 的 `\n`→换行替换，直接 JSON-RPC 发送原始 payload；或先 `file_info` 自证 + 立即重跑受影响测试 | check_policy.py f-string 被 `\n` 转义损坏 → 直接 JSON-RPC 重提交修复 |
 | R3 | **Reviewer 在 verdict 写盘前截断** | **协调者兜底落盘**：Reviewer 截断时，Coordinator 按子代理 stdout 输出补全 verdict 落盘（标注"Coordinator 补全"），写后审协议优先于渠道纯净 | Reviewer 输出 OVERALL 但 verdict 仍是 PROVISIONAL skeleton（592B）→ Coordinator 补全（2080B） |
+| R4 | **任务规模超单子代理单轮预算**（Builder/Tester 双双 token 截断 0 writes） | **规模拆分**：>6 锚点或 >1 大文件重写 → 拆分为多次 Spawn（每次 ≤6 锚点）或 Coordinator 直接兜底执行 + 标注"R4 兜底"；禁止让单子代理硬扛大任务 | REAL-002: Builder+Tester 双截断 → R3 兜底恢复；REAL-001: 单 Builder 截断 |
 
 **恢复流程（真实任务专用）**：
 - 子代理截断 → Coordinator 检查落盘产物（file_info）：
-  - 产物缺失 → 用**补丁语义**重建（注入完整 diff + 锚点，禁止重新探索）
+  - 产物缺失 + 任务规模 >6 锚点/1 大文件 → **R4 拆分**：拆成多次 Spawn（每次 ≤6 锚点）
+  或 Coordinator 兜底执行（应用子代理已确认的锚点设计 + 标注"R4 兜底"）
+- 产物缺失 + 任务规模小 → 用**补丁语义**重建（注入完整 diff + 锚点，禁止重新探索）
   - 产物存在但 incomplete → 接受现状 + 标注，或按 stdout 补全（仅 Reviewer verdict）
 - 每轮 MCP 写入后必须 `file_info` 自证大小（防截断丢失）
 

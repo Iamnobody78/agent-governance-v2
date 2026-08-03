@@ -67,3 +67,5 @@ Reviewer:
    禁止"读全部代码再设计"（TASK-REAL-001: Builder v1 READ 截断 0 writes 教训）
 10. 内容含 `\n` 字面量/复杂转义 → 禁用 mcp_client CLI 转义，**JSON-RPC 直写**原始 payload（TASK-REAL-001: f-string 损坏教训）
 11. Reviewer verdict 未落盘即截断 → Coordinator **兜底补全落盘**并标注（写后审优先于渠道纯净）
+12. 任务规模 >6 锚点或 >1 大文件重写 → **拆分 Spawn**（每次 ≤6 锚点）或 Coordinator 兜底；
+   禁止单子代理硬扛大任务（TASK-REAL-002: Builder+Tester 双截断 0 writes 教训）

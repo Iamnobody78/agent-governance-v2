@@ -273,3 +273,17 @@
   - 次: 测试优先裁决 —— test_security_hardening.test_after_trip_counter_resets 旧语义（trip 后立即 202）与新契约冲突 → 更新为冷却期 DENY → 过期恢复
   - 次: 测试设计修正 —— sqlite3.Connection.execute 只读属性不可 patch.object → FakeConn 替换连接
   - 防口頭验证: Reviewer 独立重跑 11p 定向 + 159p 全量 + 契约探测（breaker ×8, '>300'=0, 'fresh burst'=0）
+
+
+## AUDIT-0016 · 2026-08-03T14:00:00Z
+
+- PR: N/A · R4 约束固化 + 审查者发现入库
+- 主题: REAL-002 暴露的新约束（任务规模超单子代理预算）固化为 R4；审查者 2 个隐含依赖注册为 DEBT-0009/0010
+- 变更文件: `.aionui/protocols/teams_collaboration.md` (§2.7 R4 行 + 恢复流程规模分支), `.aionui/tools/agent_registry.yaml` (路由规则 12), `debt_registry.md` (DEBT-0009/0010 注册)
+- 结果: **R4 固化完成**；债务账本: 已清偿 4/8, 活跃 6（0002/0003/0004/0007/0009/0010）
+- Commit: 本次提交
+- 结论:
+  - 主: **R4 与 R1 互补** —— R1 管"怎么读"（补丁语义，不探索），R4 管"干多少"（规模拆分）；REAL-001 单截断 → R1，REAL-002 双截断 → R4，同一问题的两个维度
+  - 主: 恢复流程新增规模判定分支 —— 产物缺失 + 规模>6 锚点 → 拆分 Spawn 或 Coordinator 兜底（标注"R4 兜底"）
+  - 次: 审查者隐含依赖入库 —— DEBT-0009 (_pending 无上限), DEBT-0010 (flush 重试时机未明确)，来源 REAL-002 Reviewer ②
+  - 防口頭验证: 三处合并后锚点断言 count==1 全过

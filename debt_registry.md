@@ -10,13 +10,12 @@
 
 | ID | 描述 | 严重度 | 创建日期 | 阻塞? | 来源 |
 |----|------|:---:|------|:---:|------|
+| DEBT-0009 | `_pending` 内存缓存无上限（DEBT-0008 引入，长时降级时内存占用风险） | LOW | 2026-08-03 | 否 | REAL-002 Reviewer |
+| DEBT-0010 | `flush_pending()` 重试时机未明确（建议 main.py 启动/关闭时触发） | LOW | 2026-08-03 | 否 | REAL-002 Reviewer |
 | DEBT-0002 | 私有 API `_is_dangerous` 耦合（policy_probe 依赖 src.main 私有符号） | LOW | 2026-08-03 | 否 | AUDIT-0005 审查 |
 | DEBT-0003 | CI job 间无 `needs:` 声明（依赖分支保护） | LOW | 2026-08-03 | 否 | Reviewer A3 发现 |
 | DEBT-0004 | `_proxy_forward` 请求体一次性加载（无流式） | LOW | 2026-08-03 | 否 | AUDIT-0005 审查 |
 | DEBT-0007 | `web.run_app` 未显式 shutdown_timeout（依赖 aiohttp 默认 60s，属调参偏好非缺陷） | LOW | 2026-08-03 | 否 | 外部批判 1.5 |
-
-
-
 ## 已清偿
 
 | ID | 描述 | 清偿 commit | 清偿日期 |
@@ -25,3 +24,4 @@
 | DEBT-0008 | SQLite 写入失败无降级路径（直接抛异常，无内存缓存重试） | `0e18760` (TASK-REAL-002) | 2026-08-03 |
 | DEBT-0005 | YAML 策略无热更新（修改 policies.yaml 需重启网关生效） | `661b77f` (TASK-REAL-001) | 2026-08-03 |
 | DEBT-0006 | check_policy.py AST 规则误报含 allow/deny 子串的 dict key（如 `allow_retry`） | `661b77f` (TASK-REAL-001) | 2026-08-03 |
+
