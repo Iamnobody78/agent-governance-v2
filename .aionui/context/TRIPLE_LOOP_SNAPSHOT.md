@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.19.0
-> 快照时间: 2026-08-03（P10 开源就绪完成——CONTRIBUTING + CI GATE 1-8 + 认证指南 + 远程推送）
-> 最近审计: AUDIT-0039（P10 开源就绪）+ AUDIT-0038（P9 外部代理示例）+ AUDIT-0037（P8 认证层）
+> 版本: v1.20.0
+> 快照时间: 2026-08-03（P11 元编程声明完成——"自生成"补全为 ✅：编译式 codegen + 运行时等价性测试）
+> 最近审计: AUDIT-0040（P11 元编程声明）+ AUDIT-0039（P10 开源就绪）+ AUDIT-0038（P9 外部代理示例）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,14 +12,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 450 passed（CI 化基线：GATE 3 断言 ≥450） |
+| **测试全量** | 488 passed（450 基线 + 38 新增 codegen；等价性测试 16 项证明生成代码==运行时语义） |
 | **覆盖率** | 87%（`--source=src` 实测 2026-08-03；门槛 ≥ 60%；较 90.12% 旧口径降低系 scope 含 meta_harness 68-70%，非回归） |
 | **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞）；DEBT-0027（P6 认证缺失）已清偿 |
 | **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受） |
-| **最近事件** | **P10 开源就绪完成** ✅（CONTRIBUTING.md 含 Agent 治理流程 + `.github/workflows/ci.yml` GATE 1-8 真实 CI + docs/CERTIFICATION.md 认证指南 + README 徽章；远程 origin 已推送，本地零未推送提交；24 commits ahead 全部同步；GATE 5 实测 sign→verify OK；CI 自验证快照版本/AUDIT-0039）；P9 外部代理示例此前完成 |
+| **最近事件** | **P11 元编程声明完成** ✅（裁决：补全"自生成"为 ✅——`src/codegen/generator.py` YAML→Python 匹配函数编译式生成 + `_generated_matches.py` 生成物入库 + `tests/test_codegen.py` 38 测试（16 项与 PolicyEngine 运行时等价性）+ `policy_sync.py --generate` 漂移自愈；`docs/META_CAPABILITIES.md` 诚实声明 7 项：自审计/自修复/自追踪/自认证/自生成 ✅×5，自修改/自部署 ⚠️×2（人类在环，诚实边界）；488 tests；GATE 8 5/5 PASS；README 元能力徽章 5/7）；P10 开源就绪此前完成 |
 | **CI 状态** | ✅ GATE 1-8 全绿（GATE 8 = Critic Agent 五批判者，450 tests 全量回归 exit 0） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …P9: `examples/` 提交 `8a1bcaa`（v1.18.0）→ P10: `CONTRIBUTING+CI+docs/CERTIFICATION` 提交 `fa2f4a8`（v1.19.0） |
+| **提交链** | …P10: `CONTRIBUTING+CI+docs/CERTIFICATION` 提交 `fa2f4a8`（v1.19.0）→ P11: `src/codegen+docs/META_CAPABILITIES` 提交（v1.20.0） |
 
 ---
 
@@ -140,6 +140,7 @@
 - **v1.17.0**（2026-08-03）：P8 认证层（src/certification/：ED25519 sign/verify + 密钥自动生成落盘 PKCS8 chmod600 + CLI；450 tests；AUDIT-0037；提交 8e2b71b；证明协议地基）
 - **v1.18.0**（2026-08-03）：P9 外部代理示例（examples/：external_agent_demo 进程内 agent_tools + langchain/autogen 零侵入 base_url 被动 sidecar + _stub_llm 测试双 + run_examples.ps1/sh 双 runner；真实 SDK 调用被网关 403 治理；修复既有 TestZeroTouchClaim 3 失败；450 tests；GATE 8 5/5 PASS；AUDIT-0038）
 - **v1.19.0**（2026-08-03）：P10 开源就绪（CONTRIBUTING.md 含 Agent 治理流程 + .github/workflows/ci.yml GATE 1-8 真实 CI + docs/CERTIFICATION.md 认证指南 + README 徽章块；git push origin main 同步 24 commits；GATE 5 实测 sign→verify OK；CI GATE 7 自验证快照版本 + AUDIT 链；AUDIT-0039）
+- **v1.20.0**（2026-08-03）：P11 元编程声明（裁决：补全"自生成"为 ✅——src/codegen/generator.py 编译式生成 + _generated_matches.py 入库 + tests/test_codegen.py 38 测试含 16 项运行时等价性 + policy_sync.py --generate 漂移自愈；docs/META_CAPABILITIES.md 7 项诚实声明（✅×5 ⚠️×2 人类在环）；README 元能力徽章；488 tests；AUDIT-0040）
 
 ---
 

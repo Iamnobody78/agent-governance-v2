@@ -3,6 +3,19 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0040 — P11: 元编程声明（自生成补全为 ✅ + 7 项诚实声明）
+
+- PR: N/A（P11——用户裁决：审查现有能力、诚实声明、补全可低成本补齐的缺口）
+- 裁决: **方案 A（补全"自生成"为 ✅）**——理由：①"自生成"是唯一可低成本补全的缺口（编译式生成，非 LLM 合成，边界诚实）；②P12 自举运行时前置依赖；③补全后有代码+测试+CI 三证。自修改/自部署**保持 ⚠️**（人类在环是有意设计，不补全）
+- 新增: `src/codegen/__init__.py` + `generator.py`（YAML 策略→Python 匹配函数，确定性+幂等+相对路径头注释）+ `_generated_matches.py`（生成物入库，DO NOT EDIT）+ `tests/test_codegen.py`（38 测试：产物/幂等/语义/16 项与 PolicyEngine 运行时等价性）+ `docs/META_CAPABILITIES.md`（7 项自检清单：自审计/自修复/自追踪/自认证/自生成 ✅×5，自修改/自部署 ⚠️×2）+ README 元能力徽章（5/7）
+- 修改: `scripts/policy_sync.py` 升级——新增 `--generate` 双模式：默认检测生成物漂移（stale→exit 1 且自动重写）+ `--generate` 自愈确认（P11"漂移自愈"闭环）；直接执行 sys.path 修复 + stdout UTF-8
+- 关键实现: 生成语义**逐分支复刻** `src/policy.py::_path_matches`（精确相等/`*` glob 正则 `^...$`/`/` 结尾前缀）+ `_json_rule_matches`（re.search）；规则名含连字符（block-delete）规范化 `_ident()`；`_MATCHERS` 键保留原始规则名；priority 升序首个命中；`posixpath.normpath` 对齐运行时
+- 修复的 bug: ①规则名连字符→非法函数名（_ident）；②`__init__.py` 顶层 import 触发 runpy 警告（改空包）；③`_MATCHERS` 在函数定义前引用（拼接顺序调整）；④头注释绝对/相对路径导致跨环境字节不一致（`_rel_posix`）；⑤policy_sync 直接执行 sys.path[0]=scripts/（repo root 注入）；⑥漂移测试用 PowerShell Set-Content 写 BOM 破坏 YAML（改 git checkout 恢复 + 生成物注入漂移）
+- 全量回归: **488 passed**（450 基线 + 38 codegen）零失败
+- GATE 8: PASS 5/5（4/5 无 MEDIUM+；docs D2 遗留 MEDIUM 多数放行）
+- AC 验收: AC1 docs/META_CAPABILITIES.md ✅ / AC2 自检清单与 src/ 逐项一致（每项附证据路径）✅ / AC3 488 ≥450 ✅ / AC4 快照 v1.20.0 ✅
+- 版本: 快照 v1.20.0；架构文档同步（README 徽章 + P11 指针 + docs/architecture.md 版本行）
+
 ## AUDIT-0039 — P10: 开源就绪（CONTRIBUTING + CI GATE 1-8 + 认证指南 + 远程推送）
 
 - PR: N/A（P10——让任何贡献者（人类或 Agent）可克隆、可验证、可贡献）

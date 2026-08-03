@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GATE 7: policy-code drift detector.
+"""GATE 7: policy-code drift detector (+ P11 codegen sync check).
 
 Detects drift between the DENY rules in config/policies.yaml and the
 DANGEROUS_PREFIXES heuristic in src/danger.py (AUDIT-0004 lesson: a YAML
@@ -19,10 +19,15 @@ What it actually checks (real semantics, no fake asserts):
   4. (TASK-REAL-010) json_path 条件规则豁免 path 覆盖检查 — 它们由请求体
      JSON 触发, timeout 分支的 path 启发式看不到 body (DEBT-0021), 但
      action 白名单检查照常生效。
+  5. (P11) codegen drift — src/codegen/_generated_matches.py must match
+     what src/codegen/generator.py would emit for the current YAML.
+     --generate 模式在漂移时自动重新生成（"自生成"闭环）；默认模式
+     报告漂移并 exit 1（强制提交生成物）。
 
 Exit codes: 0 = consistent, 1 = drift found.
 """
 
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -30,9 +35,19 @@ from typing import List, Tuple
 
 import yaml
 
+# scripts/ is not on sys.path when run directly: add repo root so
+# `from src.codegen.generator import ...` resolves from any CWD.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+if hasattr(sys.stdout, "reconfigure"):  # Windows cp950 兼容
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+from src.codegen.generator import generate as codegen_generate
+
 POLICY_FILE = Path("config/policies.yaml")
 MAIN_FILE = Path("src/main.py")
 DANGER_FILE = Path("src/danger.py")
+GENERATED_FILE = Path("src/codegen/_generated_matches.py")
 ALLOWED_ACTIONS = {"ALLOW", "DENY", "ESCALATE"}
 
 
@@ -92,7 +107,15 @@ def prefix_covered(deny_path: str, prefixes: List[str]) -> bool:
     return False
 
 
-def main() -> int:
+def main(argv: List[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--generate",
+        action="store_true",
+        help="auto-regenerate src/codegen/_generated_matches.py on drift "
+             "(default: report drift and exit 1)",
+    )
+    args = ap.parse_args(argv)
     errors: List[str] = []
 
     # 1. action whitelist (AUDIT-0004 HIGH fix)
@@ -121,12 +144,24 @@ def main() -> int:
                 f"in {POLICY_FILE} — orphan prefix (AUDIT-0004 reverse check)"
             )
 
+    # 4. P11 codegen drift — committed matchers must equal regenerated output
+    written, diags = codegen_generate(POLICY_FILE, GENERATED_FILE)
+    if written and not args.generate:
+        errors.append(
+            f"{GENERATED_FILE} is stale — run `python -m src.codegen.generator` "
+            "or `policy_sync.py --generate` and commit the regenerated file"
+        )
+
     if errors:
         print("GATE 7 (policy-sync): DRIFT FOUND")
         for e in errors:
             print(f"  - {e}")
         return 1
 
+    for d in diags:
+        print(f"GATE 7 (policy-sync): {d}")
+    if args.generate and written:
+        print("GATE 7 (policy-sync): regenerated matchers — commit the diff")
     print(f"GATE 7 (policy-sync): PASS — {len(non_allow_paths)} governed rules, "
           f"{len(prefixes)} prefixes, {len(invalid_actions)} invalid actions")
     return 0
