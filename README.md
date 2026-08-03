@@ -368,4 +368,17 @@ GET /v1/trace/{trace_id}   （v0.4.0，TASK-REAL-011 C 阶段）
 
 ---
 
+## 📚 更多文档
+
+| 文档 | 说明 |
+|------|------|
+| 📖 [Wiki 首页](https://github.com/Iamnobody78/agent-governance-v2/wiki) | 完整文档体系：入门/架构/API/部署/路线图/治理/FAQ |
+| 🏛️ [架构设计](https://github.com/Iamnobody78/agent-governance-v2/wiki/Architecture) | 五层架构详解 + 数据流 |
+| 📚 [API 参考](https://github.com/Iamnobody78/agent-governance-v2/wiki/API-Reference) | 所有端点 + 请求/响应格式 |
+| 🛠️ [部署指南](https://github.com/Iamnobody78/agent-governance-v2/wiki/Deployment) | Docker / K8s / 生产部署 |
+| 🧭 [路线图](https://github.com/Iamnobody78/agent-governance-v2/wiki/Roadmap) | 已完成 + 计划功能 |
+| 🤝 [治理机制](https://github.com/Iamnobody78/agent-governance-v2/wiki/Governance) | 治理流程 + Critic 机制 + 元能力 |
+
+---
+
 *本文档随 agent-governance v2 的每次架构变更更新。最后更新：2026-08-03（TASK-REAL-008：铁律 2 措辞与 GATE 1 对齐；超时/熔断 fail-closed 表述修正）。*
