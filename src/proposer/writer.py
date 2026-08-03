@@ -43,6 +43,11 @@ class Candidate:
     def file_count(self) -> int:
         return len(self.files)
 
+    @property
+    def id(self) -> str:
+        """别名: 与 Pareto Point.id 兼容。"""
+        return self.candidate_id
+
 
 class CandidateWriter:
     """候选 harness 的文件系统写入器。"""

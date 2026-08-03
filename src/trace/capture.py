@@ -30,6 +30,7 @@ class TraceCapture:
     def __init__(self, store: TraceStore, name: str, meta: dict | None = None):
         self.store = store
         self.trace: Trace = store.create(name, meta=meta)
+        self._forced_status: str | None = None  # 显式标记（如记录失败步骤）
 
     def __enter__(self) -> "TraceCapture":
         return self
@@ -42,14 +43,20 @@ class TraceCapture:
     def status(self) -> str:
         return self.trace.status
 
+    def fail(self, reason: str) -> None:
+        """显式标记轨迹失败（__exit__ 时生效，不会被覆盖为 ok）。"""
+        self._forced_status = "failed"
+        self.store.append_step(self.trace, TraceStep(
+            name="failed", detail=reason, status="failed"))
+
     def __exit__(self, exc_type, exc, tb) -> bool:
-        if exc_type is None:
-            self.store.finalize(self.trace, "ok",
-                                summary=f"{self.trace.step_count} 步完成")
+        if self._forced_status == "failed":
+            status, summary = "failed", "显式失败标记"
+        elif exc_type is None:
+            status, summary = "ok", f"{self.trace.step_count} 步完成"
         else:
-            self.store.finalize(
-                self.trace, "failed",
-                summary=f"异常 {exc_type.__name__}: {exc}")
+            status, summary = "failed", f"异常 {exc_type.__name__}: {exc}"
+        self.store.finalize(self.trace, status, summary=summary)
         return False  # 不吞异常
 
     # ---------- 便捷方法 ----------
