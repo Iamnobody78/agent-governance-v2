@@ -2,6 +2,9 @@
 
 > 本文档是 agent-governance v2 的架构设计文件。它以 v1.7.0-PoC 的自我批判为起点，定义了一个诚实的、可验证的、生产就绪的 Agent 治理框架。
 
+> **📐 现行架构权威参考（v1.13.0, 2026-08-03）**：[docs/architecture.md](docs/architecture.md)
+> 本文档为 v1→v2 的演进叙事与 ADR 附录；**当前五层架构（L1-L5）、模块清单、请求生命周期、暗雷区加固点**以 docs/architecture.md 为准，架构变更须与该文档同提交。
+
 ---
 
 ## 第一章：为什么重来
