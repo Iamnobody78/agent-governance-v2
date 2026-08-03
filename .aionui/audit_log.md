@@ -3,6 +3,28 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0024 — 2026-08-03T21:15:00Z
+
+- PR: N/A（TASK-REAL-009 A 阶段——语义旁路 LLM-Judge，用户裁决 A 优先）
+- 标题: 语义旁路风险评分器（LLM-Judge 集成）——零重建 Strangler Fig 第一层
+- 变更文件: `judge/llm_judge.py`（新建，旁路服务，元提示词固化 + Ollama 后端 + JSON 容错解析）、`src/semantic_hook.py`（新建，Hook：截断/超时降级/upgrade-only/opt-in）、`src/main.py`（+16 行集成，verdict 终值后持久化前）、`tests/test_semantic_hook.py`（新建 14 测试）、`examples/semantic_probe.py`（新建冒烟脚本）、`docs/semantic_bypass_report.md`（验证报告）、`debt_registry.md`（登记 DEBT-0018/0019/0020）
+- 变更行数: +670 左右（含测试与文档；核心逻辑 +116）
+- 评级: 自验证 A → 215/215 测试 + GATE 1 (445 asserts 0 dataclass) + GATE 2 (202 tests) 全绿
+- 结论: **PASS**（架构验证完成；模型效果 0.5b 不合格为已知边界，生产换 7B）
+- 问题数: 执行期自发现 4（FakeSession 绕过 ClientTimeout → 改真实慢服务器；async tearDown 未被 await 属 aiohttp 3.8+ 已知行为与 b3 同款不阻塞；DANGEROUS_PREFIXES 依赖错误——静态 DENY 在正常路径由 YAML 规则决定而非危险前缀；intercept 响应码映射 ALLOW=200/DENY=403/ESCALATE=202——断言改查 verdict 字段），修复后 0
+- Reviewer: N/A（门控即审查者）
+- Commit: TASK-REAL-009 提交（待 closeout 前记录）
+- 备注:
+  - **架构验证证据**: 真实链路冒烟（judge↔Ollama↔qwen2.5:0.5b）全通；3 样本中 1 次可解析（学术翻译误报 HIGH_RISK+DAN）、2 次输出不可解析 → 0.5b 仅够验证架构，生产选型 qwen2.5:7b-instruct-q4_K_M（JUDGE_MODEL 热切换零代码）或 Bastion 70M 级联
+  - **通信选型**: Windows Python 3.13 无 AF_UNIX → localhost TCP（可配置）；Linux 可切 UDS
+  - **语义边界**: A 阶段仅输入侧（user_prompt 越狱/注入）；输出侧评估（agent_response）在代理转发后异步补判为 DEBT-0020
+  - **fail-soft 四条降级路径全部有测试**: 超时（真实慢服务器 50ms 预算）/ 连接拒绝 / 非 200 / 非法 schema
+  - **upgrade-only 验证**: 静态 DENY（YAML block-delete 规则）时 hook 零调用；ALLOW 可被升级为 ESCALATE 且升级后裁决被完整审计
+  - **opt-in 验证**: SEMANTIC_HOOK_ENABLED=0 时零 judge 流量
+  - 活跃债务: DEBT-0018/0019/0020（均无阻塞）
+
+---
+
 ## AUDIT-0023 — 2026-08-03T20:10:00Z
 
 - PR: N/A（TASK-REAL-008 清偿 DEBT-0016，三循环协议执行）

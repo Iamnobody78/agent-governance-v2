@@ -1,7 +1,7 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.6.0
-> 快照时间: 2026-08-03（TASK-REAL-008 清偿 DEBT-0016 — **16/16 债务清零**后更新）
+> 版本: v1.7.0
+> 快照时间: 2026-08-03（TASK-REAL-009 A 阶段——语义旁路 LLM-Judge 落地后更新）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -11,13 +11,13 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 201 passed |
-| **债务清偿率** | **16/16 已清偿（DEBT-0001..0017）—— 零活跃债务** |
-| **活跃债务** | **无**（下一轮治理循环扫描从零基线重新开始） |
-| **最近事件** | TASK-REAL-008 ✅（DEBT-0016 文档诚实性：CRITIQUE_V2 修复横幅 + EXPERIMENT_REPORT 第 7 章 + README 铁律 2/fail-closed 修正，纯文档零代码变更） |
-| **CI 状态** | ✅ GATE 1-7 全绿（GATE 1: 417 asserts 0 违规；覆盖率 88.71% ≥ 60%） |
-| **约束体系** | R1-R6 已固化（REAL-003..008 六连验证） |
-| **提交链** | …REAL-007: `f61e5fa` → closeout: `a68288d` → REAL-008 文档: `e3f575d` → closeout: `HEAD` |
+| **测试全量** | 215 passed |
+| **债务清偿率** | 16/16 已清偿（TASK-REAL-001..008）+ 活跃 3（DEBT-0018/0019/0020，无阻塞） |
+| **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0019（Trace-ID, MEDIUM）、DEBT-0020（输出侧语义, LOW） |
+| **最近事件** | TASK-REAL-009 ✅（A 阶段：语义旁路 LLM-Judge——judge 旁路服务 + semantic_hook 集成 + 14 测试；架构全链路验证 PASS，0.5b 模型边界诚实记录） |
+| **CI 状态** | ✅ GATE 1-7 全绿（GATE 1: 445 asserts 0 违规；覆盖率 ≥ 60%） |
+| **约束体系** | R1-R6 已固化（REAL-003..009 七连验证） |
+| **提交链** | …REAL-008: `e3f575d` → closeout: `6fe1d18` → REAL-009: `HEAD` |
 
 ---
 
@@ -102,15 +102,14 @@
 |------|------|--------|----------|
 | DEBT-0016 | CRITIQUE_V2/EXPERIMENT_REPORT 过时 | 🟡 MEDIUM | 文档更新/标注已修复 |
 
-当前治理循环扫描结论：**16/16 债务清零，零活跃债务，无部署阻塞项**。DEBT-0016（文档诚实性）已清偿于 TASK-REAL-008（`e3f575d`）。
+当前治理循环扫描结论：**16/16 已清偿，3 项新活跃（均无阻塞）**。A 阶段（语义旁路）完成，绞杀藤四层第一层落地。
 
-下一阶段候选（外部评审"绞杀藤模式"四层增强，零重建，共 <500 行 + 1 旁路进程）：
-1. **语义旁路 Hook**（LLM-Judge 本地模型 UDS 调用，150ms 超时降级，score≥0.85 升级 ESCALATE）——补"AI 语义"空白，最贴合"治理智能体"定位
-2. **json_path 工具治理**（YAML 可选字段 + jsonpath-ng 预处理，~60 行）——补 Tool Calling 粒度
-3. **Trace 追踪**（trace_id/parent_span_id 列 + 递归 CTE 查询端点，~100 行）——补多智能体拓扑
-4. **统计反馈调节器**（5min 扫描 DENY 高频模式 → pending_rules 推荐，~150 行）——补自演进闭环
-
-或宣告 **"零债务 + 文档诚实" v2 稳定态**，冻结治理循环进入维护模式。
+下一阶段候选（按 A→D 顺次，复用语义信号）：
+1. **B：json_path 工具治理**（YAML 可选字段 + jsonpath-ng 预处理，~60 行）——补 Tool Calling 粒度（DEBT-0018 顺带：body 上限）
+2. **C：Trace 因果追踪**（trace_id/parent_span_id 列 + 递归 CTE 查询端点，~100 行）——DEBT-0019
+3. **D：统计反馈调节器**（5min 扫描 DENY 高频模式 → pending_rules 推荐，~150 行）——补自演进闭环
+4. **A 生产化**：拉取 qwen2.5:7b-instruct-q4_K_M（JUDGE_MODEL 热切换零代码）或 Bastion 70M 级联，实测延迟/准确率
+5. **输出侧语义**（DEBT-0020）：代理转发后异步补判 agent_response
 
 ### 版本历史
 
@@ -121,6 +120,7 @@
 - **v1.4.0**（2026-08-03）：REAL-006 + CI 门控修复（194 tests；DEBT-0011/0012 清偿；GATE 1 21→0 + GATE 6 修复；AUDIT-0021；提交 dfaef6b）
 - **v1.5.0**（2026-08-03）：REAL-007 清偿 DEBT-0013/0014/0015（201 tests；FALLBACK_PATH 落盘备份 + MAX_FLUSH_ATTEMPTS 重试上限/退避 + SHUTDOWN_FLUSH_TIMEOUT=8 独立超时；覆盖率 88.71%；AUDIT-0022；提交 f61e5fa + closeout；DEBT-0017 补登 dfaef6b）
 - **v1.6.0**（2026-08-03）：REAL-008 清偿 DEBT-0016 文档诚实性（纯文档零代码；CRITIQUE_V2 修复横幅 + EXPERIMENT_REPORT 第 7 章 + README 铁律 2/fail-closed 6 处；201 tests 回归；AUDIT-0023；提交 e3f575d + closeout；**16/16 债务清零**）
+- **v1.7.0**（2026-08-03）：REAL-009 A 阶段语义旁路 LLM-Judge（judge/llm_judge.py + src/semantic_hook.py + main.py 集成 + 14 测试；215 tests；架构全链路验证 PASS；0.5b 模型边界诚实记录；DEBT-0018/0019/0020 登记；AUDIT-0024）
 
 ---
 
