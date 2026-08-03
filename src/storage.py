@@ -39,6 +39,14 @@ class Storage:
         self.conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_ts ON decisions(timestamp DESC)
         """)
+        # DEBT-0011: persisted circuit-breaker state (single-row KV) so a gateway
+        # restart cannot reset escalate counters and bypass the cooldown window.
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS breaker_state (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """)
         self.conn.commit()
 
     def save(self, decision: Dict) -> str:
@@ -123,6 +131,36 @@ class Storage:
                 "SELECT * FROM decisions WHERE id = ?", (decision_id,)
             ).fetchone()
         return self._row_to_dict(row) if row else None
+
+    def save_breaker_state(self, count: int, last_escalate: float, tripped_until: float) -> None:
+        """DEBT-0011: persist circuit-breaker state across restarts."""
+        state = {"count": count, "last_escalate": last_escalate, "tripped_until": tripped_until}
+        try:
+            with self._lock:
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO breaker_state (key, value) VALUES (?, ?)",
+                    ("breaker", json.dumps(state)),
+                )
+                self.conn.commit()
+        except sqlite3.Error:
+            logger.warning("save_breaker_state failed (degraded): state not persisted")
+
+    def load_breaker_state(self) -> Dict:
+        """DEBT-0011: restore breaker state at startup; defaults if absent."""
+        default = {"count": 0, "last_escalate": 0.0, "tripped_until": 0.0}
+        try:
+            with self._lock:
+                row = self.conn.execute(
+                    "SELECT value FROM breaker_state WHERE key = ?", ("breaker",)
+                ).fetchone()
+        except sqlite3.Error:
+            return default
+        if not row:
+            return default
+        try:
+            return json.loads(row[0])
+        except (json.JSONDecodeError, TypeError):
+            return default
 
     @staticmethod
     def _row_to_dict(row) -> Dict:

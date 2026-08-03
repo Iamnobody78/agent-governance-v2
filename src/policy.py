@@ -70,7 +70,11 @@ class PolicyEngine:
         with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
         if not data:
-            return
+            # DEBT-0012: empty policies.yaml must NOT silently start with zero rules
+            # (all requests would ALLOW). Fail-closed: refuse to load.
+            # reload() catches this and keeps old rules (safe hot-reload); only the
+            # initial __init__ load propagates → gateway refuses to start.
+            raise ValueError("policies.yaml is empty — refusing to load (fail-closed); add at least one rule or fix the YAML")
         new_rules = []
         for rule_data in data.get("rules", []):
             rule = Rule(

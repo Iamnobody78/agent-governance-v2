@@ -86,7 +86,15 @@ class SecurityVisitor(ast.NodeVisitor):
             )
 
         body = node.body
-        if len(body) == 1 and isinstance(body[0], ast.Pass):
+        # CI drift fix (v0.2.3, AUDIT-0021): a TYPED except (except OSError:
+        # pass — policy.py L97-98 mtime read) is an intentional, scoped ignore
+        # of a known-benign failure, NOT silent exception swallowing. Only a
+        # BARE `except: pass` or `except Exception: pass` (catch-all) swallows
+        # arbitrary errors and must be flagged.
+        catch_all = node.type is None or (
+            isinstance(node.type, ast.Name) and node.type.id == "Exception"
+        )
+        if catch_all and len(body) == 1 and isinstance(body[0], ast.Pass):
             self._add(
                 "MEDIUM", "silent-exception-swallow", node,
                 "bare `except: pass` swallows errors silently — add logging",

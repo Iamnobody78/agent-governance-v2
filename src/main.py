@@ -111,6 +111,12 @@ async def intercept_handler(request: web.Request) -> web.Response:
                             # the cooldown prevents immediate re-accumulation.
                             breaker_tripped_until = now + CIRCUIT_COOLDOWN_SECONDS
                             escalate_count_since_resolve = 0
+                            await asyncio.to_thread(
+                                storage.save_breaker_state,
+                                escalate_count_since_resolve,
+                                last_escalate_time,
+                                breaker_tripped_until,
+                            )
                             verdict = Verdict.DENY
                             reason = f"连续 {CIRCUIT_BREAKER_LIMIT} 次升级未获审批，熔断拒绝 (fail-closed)"
                         else:
@@ -124,6 +130,12 @@ async def intercept_handler(request: web.Request) -> web.Response:
                     escalate_count_since_resolve = 0
                     last_escalate_time = 0.0
                     breaker_tripped_until = 0.0
+                await asyncio.to_thread(
+                    storage.save_breaker_state,
+                    escalate_count_since_resolve,
+                    last_escalate_time,
+                    breaker_tripped_until,
+                )
 
     # 3. persist decision (strong-typed model, serialized at DB edge)
     decision = DecisionRecord(
@@ -570,9 +582,11 @@ def create_app() -> web.Application:
     global policy_engine, storage, escalate_count_since_resolve, last_escalate_time, breaker_tripped_until, _escalate_lock
     policy_engine = PolicyEngine()
     storage = Storage()
-    escalate_count_since_resolve = 0
-    last_escalate_time = 0.0
-    breaker_tripped_until = 0.0
+    # DEBT-0011: restore persisted breaker state (restart must not reset counters)
+    breaker_state = storage.load_breaker_state()
+    escalate_count_since_resolve = int(breaker_state.get("count", 0))
+    last_escalate_time = float(breaker_state.get("last_escalate", 0.0))
+    breaker_tripped_until = float(breaker_state.get("tripped_until", 0.0))
     _escalate_lock = asyncio.Lock()
 
     app = web.Application()
