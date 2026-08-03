@@ -3,6 +3,18 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0041 — P12: 自举运行时（确定性调度器 + SQLite 状态持久化）
+
+- PR: N/A（P12——用户裁决：不是独立进程，而是确定性调度器：感知→诊断→修复→验证→部署）
+- 裁决: **P12 作为确定性调度器实现**——理由：①复用 agent_tools/meta_harness.sandbox/codegen.generator，不推翻既有工具；②人类保留 in-the-loop（自动生成候选+commit，但最终 merge/push 需人工确认）；③bootstrap_state.db (SQLite) 做状态持久化，可审计可回放
+- 新增: `src/bootstrap/__init__.py`（包导出 + BOOTSTRAP_VERSION）+ `sensor.py`（感知：git status/codegen 漂移（只读临时文件字节比较）/pytest 缓存/critic 报告/debt 登记表）+ `diagnoser.py`（映射：codegen 漂移→可修复 REGENERATE_CODEGEN；tests/critic/debt/git 变更→需人工，绝不替人类做非确定性决策）+ `deployer.py`（生成→验证（py_compile + pytest 回归）→自动提交（白名单 `src/codegen/_generated_matches.py`）→失败回滚 git checkout；auto_push 默认 False）+ `scheduler.py`（BootstrapScheduler 主循环：run_cycle/run；SQLite `bootstrap_state.db` cycles/cycles_failures 表；dry_run 演练模式；失败安全）+ `tests/test_bootstrap.py`（14 测试：AC1 sensor 漂移检测/AC2 候选生成/AC3 自动提交/AC4 回滚+诊断入库/AC5 人类在环/dry_run 无副作用/AC6 全量回归）
+- 关键实现: ①codegen 漂移判定**只读**——生成到临时目录逐字节比较，不污染工作区；②生成器头路径 CWD 相对 → 测试 fixture chdir 保证字节一致；③真实漂移场景=策略源变更但生成物未同步（篡改生成物会因幂等再生=还原提交字节 → 空提交 NOOP，属正确确定性行为）；④白名单提交仅含生成物，绝不提交他人改动
+- 修复的 bug: ①sensor 曾直接调用 generate() 写工作区（改临时目录比较）；②generate() 需 Path 对象（str 报错）；③测试 subprocess 需 encoding=utf-8（Windows cp950 解码崩溃）；④git 需持久 user.name/email 配置（-c 仅单命令生效）；⑤回滚测试需真实 git 仓库（rollback=git checkout）
+- 全量回归: **502 passed**（488 基线 + 14 bootstrap）零失败
+- GATE 8: PASS 5/5
+- AC 验收: AC1 sensor 检测漂移 ✅ / AC2 codegen 生成候选 ✅ / AC3 验证后自动提交（白名单产物）✅ / AC4 失败回滚+诊断入库 ✅ / AC5 ≥488（实测 502）✅ / AC6 快照 v1.21.0 ✅
+- 版本: 快照 v1.21.0；架构文档同步（README + docs/architecture.md 版本行 + TRIPLE_LOOP_SNAPSHOT）
+
 ## AUDIT-0040 — P11: 元编程声明（自生成补全为 ✅ + 7 项诚实声明）
 
 - PR: N/A（P11——用户裁决：审查现有能力、诚实声明、补全可低成本补齐的缺口）
