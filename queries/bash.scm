@@ -19,3 +19,17 @@
   .
   argument: (word) @flag_danger
   (#match? @flag_danger "^(/|-rf|--recursive|--force|if=/dev/zero|of=/dev/sd)"))
+
+; mkfs 变体: mkfs.ext4 / mkfs.xfs 等带后缀的格式化工具
+; （值表 ^mkfs$ 精确锚定无法匹配带后缀命令名, 此处补前缀匹配 — 阶段0基准实测 MISS）
+(command
+  name: (command_name) @mkfs_variant
+  (#match? @mkfs_variant "^mkfs(\.[a-z0-9]+)?$"))
+
+; 重定向到敏感目标: echo x > /etc/passwd、>> /dev/sda 等
+; （AST 结构: redirected_statement -> file_redirect -> word; 阶段0基准实测 MISS）
+(redirected_statement
+  (file_redirect
+    (word) @redirect_target
+    (#match? @redirect_target
+      "^(/etc/(passwd|shadow|sudoers|group|hosts|hostname)|/dev/(sd|vd|hd|xvd|mapper)|/boot/|/root/|/proc/sysrq-trigger)")))

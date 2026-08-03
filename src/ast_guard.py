@@ -50,6 +50,8 @@ EXPECTED_CAPTURES: Dict[str, Dict[str, str]] = {
     "bash": {
         "cmd_danger": "destructive-command",
         "flag_danger": "destructive-flag",
+        "mkfs_variant": "destructive-filesystem-tool",
+        "redirect_target": "destructive-file-write",
     },
     "sql": {
         "danger": "destructive-sql",
