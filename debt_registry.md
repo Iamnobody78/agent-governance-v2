@@ -10,15 +10,9 @@
 
 | ID | 描述 | 严重度 | 创建日期 | 阻塞? | 来源 |
 |----|------|:---:|------|:---:|------|
-| DEBT-0011 | 熔断状态不持久化（escalate_count/last_escalate/breaker_tripped_until 内存变量，重启清零 → 攻击者重启后可立即发起攻击绕过冷却窗口） | HIGH | 2026-08-03 | 是* | 外部批判 R1.1 / R2 3.1（已源码证实 L37-39） |
-| DEBT-0012 | 空 policies.yaml 静默启动（`_load` 遇空 data 直接 return → rules 空 → 所有请求 ALLOW，违反 fail-closed） | HIGH | 2026-08-03 | 是* | 外部批判 R2 4.1（已源码证实 L72-73） |
-| DEBT-0013 | `_pending` 超限丢弃最旧记录无持久化备份（长期 DB 不可用 → 审计记录永久丢失） | MEDIUM | 2026-08-03 | 否 | 外部批判 R1 3.1 / R2 5.1 |
-| DEBT-0014 | `flush_pending()` 无重试上限与退避（DB 持续不可用 → 每次 save 无限重试循环） | MEDIUM | 2026-08-03 | 否 | 外部批判 R1 3.2 / R2 5.2 |
-| DEBT-0015 | `_flush_pending_on_shutdown` 与 shutdown_timeout=10 未联动（flush 超时 → aiohttp 强制终止，待决记录丢失） | MEDIUM | 2026-08-03 | 否 | 外部批判 R1 1.3 / R2 3.3 |
 | DEBT-0016 | 文档诚实性：CRITIQUE_V2.md 过时（标注"500ms 超时 ALLOW"但已修复 fail-closed）；EXPERIMENT_REPORT.md 未反映 v2 当前已知缺陷 | MEDIUM | 2026-08-03 | 否 | 外部批判 R2 9.1/9.2 |
-| DEBT-0017 | GATE 1 扫描器误判状态验证断言（21 违规中 16 个为历史测试的真实 IO/状态断言，如 flushed==1、resp.status==200；已修复于 dfaef6b） | LOW | 2026-08-03 | 否 | CI 首次全量推送暴露（0a501ec） |
 
-> *阻塞标记：DEBT-0011/0012 已清偿于 `dfaef6b`（TASK-REAL-006）——批判者认定的"部署前必须修复"项已全部完成，无部署阻塞债务。
+> 当前无阻塞债务：DEBT-0011/0012（部署前必修复项）已清偿于 `dfaef6b`；DEBT-0013/0014/0015 已清偿于 `f61e5fa`（TASK-REAL-007）。
 
 ## 已清偿
 
@@ -36,4 +30,8 @@
 | DEBT-0003 | CI job 间无 `needs:` 声明（依赖分支保护） | `bd3f8f1` (TASK-REAL-005) | 2026-08-03 |
 | DEBT-0011 | 熔断状态不持久化（内存变量，重启清零 → 重启绕过冷却窗口） | `dfaef6b` (TASK-REAL-006) | 2026-08-03 |
 | DEBT-0012 | 空 policies.yaml 静默启动（rules 空 → 全 ALLOW，违反 fail-closed） | `dfaef6b` (TASK-REAL-006) | 2026-08-03 |
+| DEBT-0013 | `_pending` 超限丢弃最旧记录无持久化备份（长期 DB 不可用 → 审计记录永久丢失） | `f61e5fa` (TASK-REAL-007) | 2026-08-03 |
+| DEBT-0014 | `flush_pending()` 无重试上限与退避（DB 持续不可用 → 无限重试循环） | `f61e5fa` (TASK-REAL-007) | 2026-08-03 |
+| DEBT-0015 | `_flush_pending_on_shutdown` 与 shutdown_timeout=10 未联动（flush 超时 → aiohttp 强制终止，待决记录丢失） | `f61e5fa` (TASK-REAL-007) | 2026-08-03 |
+| DEBT-0017 | GATE 1 扫描器误判状态验证断言（21 违规中 16 个为历史测试的真实 IO/状态断言；门控豁免逻辑已修复） | `dfaef6b` (TASK-REAL-006) | 2026-08-03 |
 

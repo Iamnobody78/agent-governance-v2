@@ -1,7 +1,7 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.4.0
-> 快照时间: 2026-08-03（TASK-REAL-006 + CI 门控修复后更新）
+> 版本: v1.5.0
+> 快照时间: 2026-08-03（TASK-REAL-007 清偿 DEBT-0013/0014/0015 + DEBT-0017 补登后更新）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -11,13 +11,13 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 194 passed |
-| **债务清偿率** | 12/13 已清偿（DEBT-0001..0012）+ 活跃 5（DEBT-0013~0017，MEDIUM/LOW，无阻塞） |
-| **活跃债务** | DEBT-0013~0015（存储/停机, MEDIUM）、DEBT-0016（文档, MEDIUM）、DEBT-0017（GATE 1 已修复, LOW） |
-| **最近事件** | TASK-REAL-006 ✅（熔断持久化 + 空策略 fail-closed）+ CI 门控漂移修复（GATE 1: 21→0, GATE 6 误报） |
-| **CI 状态** | ✅ GATE 1-7 全绿（首次全量推送 0a501ec 暴露漂移后修复） |
-| **约束体系** | R1-R6 已固化（REAL-003/004/005 三连验证） |
-| **提交链** | …REAL-005: `bd3f8f1` → 债务登记: `48c3453` → B3: `31ec19d`+`3d0bfcf` → REAL-006: `dfaef6b` |
+| **测试全量** | 201 passed |
+| **债务清偿率** | 15/16 已清偿（DEBT-0001..0015 + 0017）+ 活跃 1（DEBT-0016，MEDIUM，无阻塞） |
+| **活跃债务** | DEBT-0016（CRITIQUE_V2/EXPERIMENT_REPORT 文档过时, MEDIUM） |
+| **最近事件** | TASK-REAL-007 ✅（DEBT-0013 落盘备份 + DEBT-0014 重试上限/退避 + DEBT-0015 shutdown 独立超时）+ DEBT-0017 补登已清偿区 |
+| **CI 状态** | ✅ GATE 1-7 全绿（GATE 1: 417 asserts 0 违规；覆盖率 88.71% ≥ 60%） |
+| **约束体系** | R1-R6 已固化（REAL-003/004/005/006/007 五连验证） |
+| **提交链** | …REAL-006: `dfaef6b` → REAL-006 closeout: `ac5eb1f` → REAL-007: `f61e5fa` → closeout: `HEAD` |
 
 ---
 
@@ -91,7 +91,7 @@
 1. **加载此文件**：读取当前快照，理解状态
 2. **加载协议**：读取 `.aionui/protocols/teams_collaboration.md` 获取完整协作流程
 3. **加载债务账本**：读取 `debt_registry.md`（仓库根）获取剩余债务
-4. **验证测试**：运行 `pytest tests/ -q` 确认 173 passed
+4. **验证测试**：运行 `pytest tests/ -q` 确认 201 passed
 5. **继续治理**：运行 `@governance start` 启动下一轮治理循环
 
 ---
@@ -100,12 +100,9 @@
 
 | 债务 | 内容 | 优先级 | 修复方向 |
 |------|------|--------|----------|
-| DEBT-0013 | `_pending` 超限丢弃无备份 | 🟡 MEDIUM | 超限落盘备用（pending_fallback.log） |
-| DEBT-0014 | flush_pending() 无重试上限 | 🟡 MEDIUM | 最大重试次数 + 退避 |
-| DEBT-0015 | shutdown flush 未联动 shutdown_timeout | 🟡 MEDIUM | flush 独立超时控制 |
 | DEBT-0016 | CRITIQUE_V2/EXPERIMENT_REPORT 过时 | 🟡 MEDIUM | 文档更新/标注已修复 |
 
-当前治理循环扫描结论：**无 HIGH 活跃债务，无部署阻塞项**（批判者认定的 2 个部署前置项 DEBT-0011/0012 已清偿）。R4 拆分建议：DEBT-0013+0014+0015（存储/停机组）同批 TASK-REAL-007；DEBT-0016（文档）可并行低风险。
+当前治理循环扫描结论：**无 HIGH/MEDIUM 存储类活跃债务，无部署阻塞项**。DEBT-0013/0014/0015 已同批清偿于 TASK-REAL-007（`f61e5fa`）；DEBT-0017（GATE 1 漂移）已补登已清偿区（`dfaef6b`）。下一候选：DEBT-0016（文档诚实性，低风险可独立执行）。
 
 ### 版本历史
 
@@ -114,6 +111,7 @@
 - **v1.2.0**（2026-08-03）：REAL-005 后更新（181 tests, **10/10 debts 全清偿**；all-gates 单一检查；AUDIT-0019）
 - **v1.3.0**（2026-08-03）：B3 验证 + 批判 SCAN（187 tests；DEBT-0011~0016 登记；AUDIT-0020；提交 48c3453+31ec19d）
 - **v1.4.0**（2026-08-03）：REAL-006 + CI 门控修复（194 tests；DEBT-0011/0012 清偿；GATE 1 21→0 + GATE 6 修复；AUDIT-0021；提交 dfaef6b）
+- **v1.5.0**（2026-08-03）：REAL-007 清偿 DEBT-0013/0014/0015（201 tests；FALLBACK_PATH 落盘备份 + MAX_FLUSH_ATTEMPTS 重试上限/退避 + SHUTDOWN_FLUSH_TIMEOUT=8 独立超时；覆盖率 88.71%；AUDIT-0022；提交 f61e5fa + closeout；DEBT-0017 补登 dfaef6b）
 
 ---
 

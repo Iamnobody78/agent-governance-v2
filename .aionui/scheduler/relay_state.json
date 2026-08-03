@@ -1,13 +1,13 @@
 {
   "schema_version": "1.0",
-  "task_id": "TASK-REAL-006",
-  "title": "DEBT-0011 breaker persistence + DEBT-0012 empty-policy fail-closed + CI drift repair (GATE 1/6)",
-  "created_at": "2026-08-03T18:00:00Z",
+  "task_id": "TASK-REAL-007",
+  "title": "DEBT-0013 pending overflow fallback log + DEBT-0014 flush retry cap/backoff + DEBT-0015 shutdown flush timeout",
+  "created_at": "2026-08-03T18:45:00Z",
   "status": "COMPLETED",
   "current_phase": "CLOSED",
   "round": 1,
   "max_rounds": 3,
-  "work_dir": ".aionui/scheduler/work/B3-VALIDATION",
+  "work_dir": ".aionui/scheduler/work/REAL-007",
   "mcp_channel": {
     "client": "scripts/mcp_client.py",
     "server": "filesystem_mcp_server.py",
@@ -16,35 +16,21 @@
   },
   "validation_scope": {
     "propositions": [
-      "V1: concurrent B1+B2 safe chat → both 200, verdicts identical",
-      "V1b: dangerous tool → 403 for BOTH frameworks, zero upstream leakage",
-      "V2: SSE streaming cross-framework (B2 style stream:true) — delta content intact",
-      "V3: x-agent-id attribution per client; denied call does not poison other client",
-      "R1-5.1 response: chunk ORDER verification (order-sensitive, not byte-exact)"
+      "DEBT-0013: buffer overflow backs evicted record up to JSONL fallback log (never silent loss)",
+      "DEBT-0014: flush_pending caps consecutive failures (MAX_FLUSH_ATTEMPTS=5) with backoff throttle; cap-hit -> fallback dump + buffer clear (no infinite retry)",
+      "DEBT-0015: _flush_pending_on_shutdown bounded by SHUTDOWN_FLUSH_TIMEOUT=8 < shutdown_timeout=10; TimeoutError handled, handler never blocks graceful shutdown",
+      "DEBT-0017: GATE 1 fix (dfaef6b) migrated to settled ledger",
+      "R6: all flush_pending consumers enumerated pre-migration; test fixture isolates fallback path (zero repo pollution)"
     ],
-    "zero_code_change": "Validation-only scope: tests/test_b3_mixed.py + test_chat_streaming.py +1; NO src/ modifications",
-    "evidence": "187/187 tests, GATE 7 PASS, S3 APPROVE-WITH-NOTES (3 learning items)"
-  },
-  "critique_register": {
-    "source": "2 independent external critique reports (post-push, base 0a501ec)",
-    "verified_true": [
-      "DEBT-0011 breaker state not persisted (main.py L37-39 in-memory) HIGH",
-      "DEBT-0012 empty policies.yaml silent fail-open (policy.py L72-73) HIGH",
-      "DEBT-0013 pending cap drops without backup MEDIUM",
-      "DEBT-0014 flush_pending no retry cap MEDIUM",
-      "DEBT-0015 shutdown flush not linked to shutdown_timeout MEDIUM",
-      "DEBT-0016 stale docs (CRITIQUE_V2/EXPERIMENT_REPORT) MEDIUM"
-    ],
-    "verified_false": "claim of try/except fallback in main.py (L30 is clean import — report 2 correct)",
-    "commit": "48c3453 (debt registration)"
+    "evidence": "201/201 tests (194+7), coverage 88.71% (>=60), GATE 1 (417 asserts 0 dataclass) / GATE 2 (188 tests) / GATE 3/4/5/6/7 ALL PASS locally"
   },
   "history": [
     {
       "round": 1,
       "event": "COMPLETED",
-      "ts": "2026-08-03T18:30:00Z",
-      "summary": "DEBT-0011 (breaker_state SQLite persistence + startup restore) + DEBT-0012 (empty YAML -> ValueError fail-closed) repaid. CI drift repair: GATE 1 21->0 violations (bare-Name/HTTP/runtime-root/subscript exemptions), GATE 6 typed-except exemption. All 7 gates green, 194 passed. commit dfaef6b. Active debts: DEBT-0013..0017 (MEDIUM/LOW, none blocking).",
-      "commit": "dfaef6b"
+      "ts": "2026-08-03T19:15:00Z",
+      "summary": "DEBT-0013/0014/0015 repaid in single batch (3 anchors <= R4 cap). Fallback log: JSONL best-effort append, never raises. Flush retry cap + 3600s-window backoff test proves zero DB touch during cooldown. Shutdown flush timeout proven via caplog TimeoutError branch (deterministic, avoids asyncio.run executor wall-clock artifact). 2 self-found test issues fixed (read_fallback missing-file tolerance; caplog-based timeout proof). GATE 1 caught 1 comprehension-compare in new test -> bare-Name style, 0 violations after. All 7 gates green, 201 passed. commit f61e5fa. DEBT-0017 migrated (dfaef6b). Active debts: DEBT-0016 only (MEDIUM docs, non-blocking).",
+      "commit": "f61e5fa"
     }
   ]
 }

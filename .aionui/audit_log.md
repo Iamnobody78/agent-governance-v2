@@ -3,6 +3,28 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0022 — 2026-08-03T19:15:00Z
+
+- PR: N/A（TASK-REAL-007 清偿 + DEBT-0017 迁移，三循环协议执行）
+- 标题: DEBT-0013 降级缓冲落盘备份 + DEBT-0014 flush 重试上限/退避 + DEBT-0015 shutdown flush 独立超时
+- 变更文件: `src/storage.py`（FALLBACK_PATH/MAX_FLUSH_ATTEMPTS/FLUSH_BACKOFF_SECONDS 常量 + `_append_fallback()` + save 溢出→落盘 + flush_pending 重试上限/退避）, `src/main.py`（SHUTDOWN_FLUSH_TIMEOUT=8 + `asyncio.wait_for(to_thread(flush_pending), 8)` + TimeoutError 分支）, `tests/test_pending_fallback.py`（新建 6 测试）, `tests/test_storage_degraded.py`（fixture 隔离 fallback 路径，断言零改动）, `debt_registry.md`（0013/0014/0015 → `f61e5fa`，0017 → `dfaef6b`）
+- 变更行数: +118/-20（src）+ 6 测试
+- 评级: 自验证 A- → GATE 1-7 全绿（本地复跑 7/7）
+- 结论: **PASS**（201/201 测试 + 覆盖率 88.71% ≥ 60% + GATE 1 0 违规/417 asserts + GATE 2 188 测试）
+- 问题数: 执行期自发现 2（read_fallback 缺失文件 FileNotFoundError → 容忍空；asyncio.run executor 等待污染墙钟 → caplog 断言 Timeout 分支），修复后 0
+- Reviewer: N/A（门控即审查者——GATE 1-7 全绿为独立验证）
+- Commit: `f61e5fa`（修复）+ closeout 提交（迁移/审计/快照）
+- 备注:
+  - **DEBT-0013（MEDIUM）**: `_pending` 超限时不再静默丢最旧——`_append_fallback()` 将逐出记录以 JSONL 追加到 `FALLBACK_PATH`（best-effort，OSError 仅记日志绝不抛出）；`test_overflow_writes_fallback_log` 证明恰 3 条逐出记录落盘且完整保留字段
+  - **DEBT-0014（MEDIUM）**: `flush_pending()` 新增 `MAX_FLUSH_ATTEMPTS=5` 连续失败上限 + `FLUSH_BACKOFF_SECONDS=2.0` 冷却节流；触顶后剩余记录全部落盘 fallback 并清空缓冲——永久不可用 DB 无法引发无限重试；成功一次即重置计数器；`test_flush_retry_cap_dumps_to_fallback` / `test_flush_backoff_throttles_retries`（3600s 冷却窗口内零 DB 触碰）/ `test_flush_success_resets_failure_counter`（恢复后无 fallback 残留）
+  - **DEBT-0015（MEDIUM）**: `_flush_pending_on_shutdown` 用 `asyncio.wait_for(asyncio.to_thread(flush_pending), timeout=SHUTDOWN_FLUSH_TIMEOUT=8)`——独立上限，严格低于 `web.run_app(shutdown_timeout=10)`；DB 卡死时 handler 8s 内返回并记 warning，绝不吞掉整个优雅停机预算；`test_shutdown_flush_timeout_bounded` 以 caplog 证明 10ms 预算触发 Timeout 分支（确定性，规避 asyncio.run executor 等待的墙钟污染）
+  - **DEBT-0017 迁移**: GATE 1 门控修复（dfaef6b）本轮补登已清偿区——审计足迹保留；同时清理活跃表中 DEBT-0011/0012 与已清偿区重复行
+  - **R6 应用**: 迁移前枚举 `flush_pending`/`_append_fallback` 全部消费者（tests/test_storage_degraded.py 3 处断言逐一核对兼容：cap 测试保留丢弃语义、失败保留语义、成功清理语义全部不变）；新增 fixture 隔离 fallback 路径防仓库污染
+  - **验证**: 201/201 + GATE 1 (417 asserts, 0 dataclass) + GATE 2 (188 tests) + GATE 3/5/6/7 PASS + 覆盖率 88.71%（storage.py 95%）
+  - 活跃债务: DEBT-0016（文档诚实性，MEDIUM，无阻塞）——下一轮候选
+
+---
+
 ## AUDIT-0021 — 2026-08-03T18:30:00Z
 
 - PR: N/A（TASK-REAL-006 清偿 + CI 门控漂移修复，三循环协议执行）
