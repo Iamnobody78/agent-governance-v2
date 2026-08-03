@@ -19,7 +19,7 @@
 | **最近事件** | **P11 元编程声明完成** ✅（裁决：补全"自生成"为 ✅——`src/codegen/generator.py` YAML→Python 匹配函数编译式生成 + `_generated_matches.py` 生成物入库 + `tests/test_codegen.py` 38 测试（16 项与 PolicyEngine 运行时等价性）+ `policy_sync.py --generate` 漂移自愈；`docs/META_CAPABILITIES.md` 诚实声明 7 项：自审计/自修复/自追踪/自认证/自生成 ✅×5，自修改/自部署 ⚠️×2（人类在环，诚实边界）；488 tests；GATE 8 5/5 PASS；README 元能力徽章 5/7）；P10 开源就绪此前完成 |
 | **CI 状态** | ✅ GATE 1-8 全绿（GATE 8 = Critic Agent 五批判者，450 tests 全量回归 exit 0） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …P10: `CONTRIBUTING+CI+docs/CERTIFICATION` 提交 `fa2f4a8`（v1.19.0）→ P11: `src/codegen+docs/META_CAPABILITIES` 提交（v1.20.0） |
+| **提交链** | …P10: `CONTRIBUTING+CI+docs/CERTIFICATION` 提交 `fa2f4a8`（v1.19.0）→ P11: `src/codegen+docs/META_CAPABILITIES` 提交 `44bab7e`（v1.20.0） |
 
 ---
 
