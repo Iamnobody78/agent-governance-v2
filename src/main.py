@@ -25,6 +25,7 @@ INTERCEPT_TIMEOUT = 0.5       # seconds — if policy eval exceeds this, fail-cl
 CIRCUIT_BREAKER_LIMIT = 10    # consecutive ESCALATE without resolution → DENY (fail-closed)
 CIRCUIT_COOLDOWN_SECONDS = 30.0  # breaker trip cooldown window (DEBT-0001)
 AGENT_BACKEND_URL = "http://localhost:8000"   # upstream Agent (for proxy mode)
+SHUTDOWN_FLUSH_TIMEOUT = 8  # DEBT-0015: independent cap for shutdown flush; must stay < shutdown_timeout=10
 
 # Shared heuristic constants — single source of truth moved to src/danger.py (DEBT-0002)
 from .danger import DANGEROUS_PREFIXES, DANGEROUS_METHODS, is_dangerous as _is_dangerous
@@ -571,9 +572,19 @@ async def _flush_pending_on_shutdown(app: web.Application) -> None:
     if storage is None:
         return
     try:
-        n = storage.flush_pending()
+        # DEBT-0015: independent timeout — the shutdown path must NEVER exceed
+        # web.run_app(shutdown_timeout=10): a stuck DB would otherwise eat the
+        # whole graceful-shutdown budget and block on_cleanup completion.
+        n = await asyncio.wait_for(
+            asyncio.to_thread(storage.flush_pending), timeout=SHUTDOWN_FLUSH_TIMEOUT
+        )
         if n:
             logger.info("shutdown: flushed %d pending decision(s)", n)
+    except asyncio.TimeoutError:
+        logger.warning(
+            "shutdown flush_pending exceeded %ds — records remain in fallback log (DEBT-0014/0015)",
+            SHUTDOWN_FLUSH_TIMEOUT,
+        )
     except Exception as e:  # noqa: BLE001 — shutdown path must never crash the app
         logger.warning("shutdown flush_pending failed: %s", e)
 

@@ -4,22 +4,37 @@ import json
 import logging
 import sqlite3
 import threading
+import time
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
 
 PENDING_MAX = 1000  # DEBT-0009: cap on degraded-mode in-memory buffer (memory safety)
+FALLBACK_PATH = "pending_fallback.log"  # DEBT-0013/0014: JSONL disk fallback for records SQLite cannot accept
+MAX_FLUSH_ATTEMPTS = 5      # DEBT-0014: consecutive-failure cap before disk fallback (no infinite retry)
+FLUSH_BACKOFF_SECONDS = 2.0  # DEBT-0014: min wall-clock gap between flush retries (throttle)
 logger = logging.getLogger(__name__)
 
 
 class Storage:
-    def __init__(self, db_path: str = ":memory:"):
+    def __init__(
+        self,
+        db_path: str = ":memory:",
+        fallback_path: str = FALLBACK_PATH,            # DEBT-0013: overflow/eviction disk log
+        max_flush_attempts: int = MAX_FLUSH_ATTEMPTS,  # DEBT-0014: retry cap before disk fallback
+        flush_backoff: float = FLUSH_BACKOFF_SECONDS,  # DEBT-0014: throttle between retries
+    ):
         self.db_path = db_path
+        self.fallback_path = fallback_path
+        self.max_flush_attempts = max_flush_attempts
+        self.flush_backoff = flush_backoff
         self.conn: Optional[sqlite3.Connection] = None
         # v0.2.2 (external critique #3.1): saves now run via asyncio.to_thread
         # on the event loop; the single shared connection (check_same_thread=False)
         # must be serialized across threads → guard every operation with a lock.
         self._lock = threading.Lock()
         self._pending: List[Dict] = []  # DEBT-0008: degraded-mode in-memory buffer
+        self._flush_failures = 0        # DEBT-0014: consecutive failed flush attempts
+        self._last_flush_attempt = 0.0  # DEBT-0014: monotonic clock of last flush attempt
         self._init()
 
     def _init(self) -> None:
@@ -76,13 +91,33 @@ class Storage:
                 self._pending.append(entry)
                 if len(self._pending) > PENDING_MAX:  # DEBT-0009: drop oldest, keep bounded
                     dropped = self._pending.pop(0)
-                    logger.warning("degraded buffer full (%d): dropping oldest decision %s", PENDING_MAX, dropped.get("id"))
+                    # DEBT-0013: never lose audit records — persist the evicted
+                    # entry to the disk fallback log instead of discarding it.
+                    self._append_fallback(dropped)
+                    logger.warning("degraded buffer full (%d): oldest decision %s backed up to %s",
+                                   PENDING_MAX, dropped.get("id"), self.fallback_path)
         return decision["id"]
 
     def flush_pending(self) -> int:
-        """DEBT-0008: retry writing buffered decisions. Returns number flushed."""
-        flushed = 0
+        """DEBT-0008: retry writing buffered decisions. Returns number flushed.
+
+        DEBT-0014: bounded retries — after max_flush_attempts consecutive failed
+        attempts (throttled by flush_backoff seconds between attempts) the
+        remaining entries are persisted to the disk fallback log and the buffer
+        is cleared, so a permanently-down DB cannot cause an infinite retry loop.
+        """
+        now = time.monotonic()
         with self._lock:
+            if not self._pending:
+                self._flush_failures = 0
+                return 0
+            # DEBT-0014 backoff: inside the cooldown window after the retry cap
+            # was hit, skip DB work entirely (no write amplification).
+            if self._flush_failures >= self.max_flush_attempts and \
+                    now - self._last_flush_attempt < self.flush_backoff:
+                return 0
+            self._last_flush_attempt = now
+            flushed = 0
             remaining = []
             for entry in self._pending:
                 try:
@@ -104,8 +139,34 @@ class Storage:
                     flushed += 1
                 except sqlite3.Error:
                     remaining.append(entry)
+            if remaining:
+                self._flush_failures = min(self._flush_failures + 1, self.max_flush_attempts)
+                if self._flush_failures >= self.max_flush_attempts:
+                    # DEBT-0014: cap reached → durable escape hatch, stop retrying.
+                    for entry in remaining:
+                        self._append_fallback(entry)
+                    logger.warning(
+                        "flush_pending: %d consecutive failures — %d record(s) backed up to %s",
+                        self.max_flush_attempts, len(remaining), self.fallback_path,
+                    )
+                    remaining = []
+            else:
+                self._flush_failures = 0
             self._pending = remaining
         return flushed
+
+    def _append_fallback(self, entry: Dict) -> None:
+        """DEBT-0013/0014: append one record as a JSON line to the fallback log.
+
+        Best-effort by design — if the disk itself is unavailable we cannot do
+        better, but we must NEVER raise here (gateway must not fail).
+        Caller must already hold self._lock.
+        """
+        try:
+            with open(self.fallback_path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except OSError as e:
+            logger.error("fallback log write failed (%s): record %s lost", e, entry.get("id"))
 
     def pending_count(self) -> int:
         """DEBT-0008: number of decisions buffered in degraded mode."""

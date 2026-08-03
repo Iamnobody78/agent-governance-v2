@@ -8,6 +8,7 @@ NOTE: sqlite3.Connection.execute is read-only (cannot be patch.object'd),
 so we substitute a FakeConn whose execute() raises OperationalError.
 """
 
+import os
 import sqlite3
 import tempfile
 
@@ -43,7 +44,12 @@ class FakeCursor:
 
 
 def make_storage() -> Storage:
-    return Storage(db_path=tempfile.mktemp(suffix=".db"))
+    # TASK-REAL-007 (DEBT-0013): isolate the disk fallback log so eviction tests
+    # never write pending_fallback.log into the repo working tree.
+    return Storage(
+        db_path=tempfile.mktemp(suffix=".db"),
+        fallback_path=os.path.join(tempfile.mkdtemp(), "pending_fallback.log"),
+    )
 
 
 def make_decision() -> dict:
