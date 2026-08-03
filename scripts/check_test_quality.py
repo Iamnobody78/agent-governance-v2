@@ -83,6 +83,15 @@ class AssertVisitor(ast.NodeVisitor):
         left = comp.left
         right = comp.comparators[0]
 
+        # Reject: list/set/dict/generator comprehensions on either side —
+        # `[x.name for x in idx.candidates(...)] == [...]` evaluates a
+        # RUNTIME query result (index candidates, pareto points, trace
+        # steps), not dataclass field assignment. (AUDIT-0047, GATE 1
+        # precision fix — 11 of 26 findings were list comprehensions.)
+        for side in (left, right):
+            if isinstance(side, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+                return False
+
         # Reject: runtime function-call results on either side
         # (engine.evaluate(...).action, _extract_tool_names(...)["a"])
         if AssertVisitor._has_call_root(left) or AssertVisitor._has_call_root(right):
@@ -128,9 +137,22 @@ class AssertVisitor(ast.NodeVisitor):
                     return False
                 if root.id.startswith("resp"):
                     return False
-                # Short HTTP-response variable names from request tests:
-                # r1/r2/r_deny/r_ok etc. carrying .status — runtime HTTP verdict.
-                if root.id.startswith("r") and getattr(left, "attr", "") == "status":
+                # Round-trip / algorithm-result roots (AUDIT-0047, GATE 1
+                # precision fix): these variables hold FUNCTION RETURN VALUES
+                # whose fields are verified as runtime behavior:
+                # - t/loaded/trace: trace store save()/load() round-trip results
+                # - cand: proposer candidate parse result
+                # - best/pts: pareto frontier sort result
+                # - cls: unittest setUpClass fixture (cls.guard.loaded_languages)
+                # - r_a/r_b: auth HTTP response records
+                if root.id in ("t", "loaded", "trace", "cand", "best", "pts", "cls",
+                               "r_a", "r_b", "r_ok", "r_deny"):
+                    return False
+                # Short HTTP/JSON-response variable names from request tests:
+                # r1/r2/r_deny/r_ok/r_a/r_b etc. — runtime response records,
+                # any attribute (.status/.name/.verdict/._segments) is a
+                # runtime behavior check, not dataclass assignment.
+                if root.id.startswith("r"):
                     return False
             # Reject: subscript-chained access (eng.rules[0].action, d.__all__)
             # — runtime collection access, not a dataclass field assignment.

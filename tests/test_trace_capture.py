@@ -11,6 +11,7 @@ AC7: 上下文管理器与函数包装两种用法
 """
 
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -114,6 +115,9 @@ class TestRead:
     def test_list_traces_newest_first(self, store):
         with capture(store, "first") as t1:
             pass
+        # started_at 毫秒精度：保证两次 capture 时间戳分离，避免 CI
+        # 快速执行下同一毫秒排序不稳定（AUDIT-0047）
+        time.sleep(0.005)
         with capture(store, "second") as t2:
             pass
         metas = store.list_traces()

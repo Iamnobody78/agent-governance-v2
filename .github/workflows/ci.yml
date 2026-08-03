@@ -31,7 +31,7 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-asyncio pytest-timeout
           pip install "cryptography>=42.0"
-          pip install langchain langchain-openai autogen-agentchat aiohttp
+          pip install langchain langchain-openai autogen-agentchat autogen-ext[openai] aiohttp
       - name: "GATE 1 — syntax/import (compileall)"
         run: python -m compileall -q src tests examples scripts
       - name: "GATE 3 — full regression (baseline >= 450)"
@@ -80,7 +80,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-asyncio pytest-timeout
-          pip install langchain langchain-openai autogen-agentchat aiohttp
+          pip install langchain langchain-openai autogen-agentchat autogen-ext[openai] aiohttp
       - name: "GATE 6a — B1 e2e (LangChain agent via live gateway)"
         run: python scripts/b1_e2e.py
       - name: "GATE 6b — B2 e2e (AutoGen group chat via live gateway)"

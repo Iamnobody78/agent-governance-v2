@@ -16,6 +16,15 @@
   - **GATE 6a (gateway-smoke)**: `b1_e2e.py` 导入 `build_agent`（不存在）→ 真实 API 漂移，改为 `build_governed_agent`（固定 tools 契约）；3a 场景改为纯 HTTP 聊天（无 tools 声明 → ALLOW），3b 真实 agent 声明 delete_file → DENY；`"stub" in body` dict 检查 bug → `json.dumps(body)`
 - **验证**: 本地全量 574 passed + 2 已知 flaky（网络 mock 超时，非本次引入）+ 1 skipped；meta_security_scanner 0 finding（原 11）；check_policy 0 finding（原 9）；b1_e2e PASS（safe→ALLOW/dangerous→DENY）；codegen 幂等测试过
 
+## AUDIT-0048 — CI 全绿第二轮：GATE 1/6b + trace 排序 flaky
+
+- **类型**: CI 修复（第一轮 5f9e53b 后暴露的次生问题）
+- **根因分析**:
+  - **GATE 1 (check_test_quality)**: 26 个 dataclass assert 全部是合法运行时行为断言（round-trip 持久化 t/loaded/trace、索引查询 listcomp、pareto 排序 best/pts、HTTP 响应 r_*）→ 扫描器精确化: ListComp 一律豁免 + root 名单扩展（t/loaded/trace/cand/best/pts/cls/r_*/r 前缀）
+  - **GATE 6b (b2_e2e)**: CI 只装 `autogen-agentchat`，但 `autogen_ext.models.openai` 属于 `autogen-ext` 包 → 安装命令补 `autogen-ext[openai]`
+  - **test_list_traces_newest_first flaky**: `started_at` 毫秒精度，同毫秒两个 trace 排序键相同 → glob 顺序决定 → store 排序加 trace_id tiebreaker + 测试 5ms 时间分离
+- **验证**: GATE 1 0 finding；b1_e2e/b2_e2e import OK；全量 574 passed + 2 已知 flaky + 1 skipped
+
 ## AUDIT-0046 — Tree-sitter AST 硬阻断引擎（Priority 0 前门）
 
 - **类型**: 架构强化 + 依赖锁定（五层架构 L1 内核）

@@ -135,7 +135,10 @@ class TraceStore:
                 metas.append(json.loads(manifest.read_text(encoding="utf-8")))
             except (json.JSONDecodeError, OSError):
                 continue
-        metas.sort(key=lambda m: m.get("started_at", ""), reverse=True)
+        # started_at 毫秒精度：同一毫秒内多个 trace 时用 trace_id 作
+        # tiebreaker，保证排序确定性（AUDIT-0047，CI 快速执行 flaky 修复）
+        metas.sort(key=lambda m: (m.get("started_at", ""), m.get("trace_id", "")),
+                   reverse=True)
         return metas
 
     def load(self, trace_id: str) -> Trace:
