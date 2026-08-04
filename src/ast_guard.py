@@ -46,6 +46,8 @@ EXPECTED_CAPTURES: Dict[str, Dict[str, str]] = {
         "fn_exec": "code-execution",
         "fn_sys": "system-access",
         "imp_dyn": "dynamic-import",
+        "alias_exec": "code-execution-alias",
+        "sub_exec": "code-execution-subscript",
     },
     "bash": {
         "cmd_danger": "destructive-command",
@@ -57,6 +59,7 @@ EXPECTED_CAPTURES: Dict[str, Dict[str, str]] = {
         "danger": "destructive-sql",
         "update_stmt": "update-statement",
         "sensitive_schema": "sensitive-schema-access",
+        "trivial_where": "trivial-where-condition",
     },
 }
 

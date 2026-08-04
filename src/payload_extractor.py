@@ -40,6 +40,12 @@ _KEY_HINTS: Dict[str, str] = {k: "python" for k in _PY_KEYS}
 _KEY_HINTS.update({k: "sql" for k in _SQL_KEYS})
 _KEY_HINTS.update({k: "bash" for k in _BASH_KEYS})
 
+# 工具调用参数容器键：值为 JSON 字符串时先解析再递归（批判审计 2026-08-04
+# HIGH-3 —— function_call.arguments / tool_calls[].function.arguments 曾是
+# 治理盲区，恶意代码以 JSON 字符串形态静默漏提）。
+_JSON_CONTAINER_KEYS = ("arguments", "tool_calls", "function_call",
+                        "parameters", "tool_input", "args")
+
 # 语言名归一化（精确匹配，零正则）
 _LANG_ALIASES = {
     "py": "python",
@@ -75,6 +81,26 @@ def _norm_lang(raw: Any) -> Optional[str]:
     if not isinstance(raw, str):
         return None
     return _LANG_ALIASES.get(raw.strip().lower())
+
+
+def _try_json_container(value: Any) -> Optional[Any]:
+    """若值是 JSON 字符串且解析结果为 dict/list → 返回解析后的容器；否则 None。
+
+    仅用于 _JSON_CONTAINER_KEYS 下的值（工具参数 JSON 串）。解析失败或结果
+    非容器（如裸字符串/数字）返回 None —— 保持原"无提示跳过"语义，零误判。
+    """
+    if not isinstance(value, _STRING_LIKE) or not value:
+        return None
+    text = value.decode("utf-8", "replace") if isinstance(value, bytes) else value
+    stripped = text.lstrip()
+    if not (stripped.startswith("{") or stripped.startswith("[")):
+        return None
+    try:
+        import json
+        parsed = json.loads(text)
+    except (ValueError, TypeError):
+        return None
+    return parsed if isinstance(parsed, (dict, list)) else None
 
 
 def _is_code_container(node: Dict[str, Any]) -> Optional[str]:
@@ -136,9 +162,16 @@ def _collect(node: Any, parent_key: str, path: str, depth: int,
                     if seen >= MAX_FRAGMENTS:
                         break
             return seen
-        # 普通 dict：继续递归
+        # 普通 dict：继续递归（工具参数 JSON 容器键先解析再下钻）
         for k, v in node.items():
             child_path = f"{path}.{k}" if path else k
+            if k in _JSON_CONTAINER_KEYS and isinstance(v, _STRING_LIKE):
+                parsed = _try_json_container(v)
+                if parsed is not None:
+                    seen = _collect(parsed, k, child_path, depth + 1, out, seen)
+                    if seen >= MAX_FRAGMENTS:
+                        break
+                    continue
             seen = _collect(v, k, child_path, depth + 1, out, seen)
             if seen >= MAX_FRAGMENTS:
                 break

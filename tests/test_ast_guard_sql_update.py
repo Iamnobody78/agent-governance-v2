@@ -39,10 +39,13 @@ class TestUpdateWithoutWhere:
         assert "destructive-update" in _kinds(
             guard, {"query": "UPDATE users SET status='disabled';"})
 
-    def test_update_where_constant_true_allowed_by_grammar(self, guard):
-        # WHERE 1=1 在语法层有 where_clause 节点 → AST 层放行（有界语义由
-        # L2 YAML 层兜底）。诚实断言：AST 层不过滤恒真条件。
-        assert not _blocked(guard, {"query": "UPDATE users SET active=0 WHERE 1=1;"})
+    def test_update_where_constant_true_blocked(self, guard):
+        # 批判审计 (2026-08-04): WHERE 1=1 语法层有 where_clause 节点, 旧逻辑
+        # 放行 —— 但 1=1 恒真 = 等效全表更新 (SQL 注入惯用法)。sql.scm 新增
+        # @trivial_where 规则后 AST 层直接阻断。
+        kinds = _kinds(guard, {"query": "UPDATE users SET active=0 WHERE 1=1;"})
+        assert "trivial-where-condition" in kinds, kinds
+        assert _blocked(guard, {"query": "UPDATE users SET active=0 WHERE 1=1;"})
 
     def test_update_multiple_sets_no_where(self, guard):
         assert _blocked(guard, {"query": "UPDATE t SET a=1, b=2, c=3;"})
