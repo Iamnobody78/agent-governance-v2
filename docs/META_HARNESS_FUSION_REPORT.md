@@ -53,6 +53,8 @@ traces: 3 条                       # 每轮完整轨迹落盘（反馈闭环）
 candidates: 3 个                   # candidates/{id}/src/ 完整 harness ✅
 ```
 
+> **⚠️ 状态更正（AUDIT-0059, 2026-08-04, docs/meta_harness_verification.md）**：本段"完整的 Harness 工程自动化系统"为 v1.22.0 时期**旧宣称**，与 2026-08-03 L5 元批判后修正的诚实边界冲突。源码核查结论：本项目实现的是 Meta-Harness 概念的**确定性基础设施**（轨迹库/变异算子/循环引擎/沙箱），**不含斯坦福原版核心的"编码 Agent 提议器"**（无 LLM 调用, propose_fn 外部注入）；"完整 Harness 工程自动化"列为 v2 方向。原文保留作审计轨迹。
+
 证明 L5 已从"策略建议生成器"进化为**完整的 Harness 工程自动化系统**：
 `traces/` 是进化反馈库（唯一真相）、`candidates/` 是变异算子产物库、
 `pareto/` 是决策层（质量 vs 成本）、`loop.py` 是自动化迭代引擎。

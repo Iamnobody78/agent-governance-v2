@@ -20,6 +20,15 @@
 - **裁决**: 否决 SIREN 集成; Phase1' 批准 = 复用本地 judge/llm_judge 资产新增 semantic_code_audit_async（AST 放行代码片段 → LLM-Judge 红线 A/C 复查 → 高风险撤销 trace, fail-soft, 零新增依赖）; Phase2 多模态 / Phase3 RL 推迟
 - **实证**: probe_base64_bypass.py 6/6 BLOCK（Base64+eval/属性链拼接等）→ 用户"Base64 绕过未解决"不成立
 - **交付**: docs/ml_integration_verdict.md; src/semantic_hook.py extract_code_snippets/_code_judge_prompt/semantic_code_audit_async; main.py create_task 分派; 12 新测试; commit e0e2b1a
+## AUDIT-0059 — Meta-Harness 执行状态核查 + 遗留项状态修正 + 文档漂移修复
+
+- **类型**: 架构核查 + 决策记录（v1.38.0-mhverify 快照, 纯文档提交）
+- **触发**: 用户提供斯坦福 Meta-Harness 核查元提示词（强制规则: 源码交叉验证 / 不得模糊 / 区分概念与实现）
+- **核查结论**: ⚠️ 部分执行 — 基础设施真实（src/trace 文件系统唯一真相+增量落盘+10M 预算常量 / src/proposer 整树变异算子+血缘 / src/pareto ≥3 轮非支配集裁决门 / src/meta_harness sandbox pytest 回归）; **编码 Agent 提议器未实现**（meta_harness+pareto 全模块 grep 无 LLM 调用, propose_fn 外部注入, 融合演示为一次性 3 轮）; 概念借用+适配层, 与斯坦福核心（Claude Code 级 Agent 读 10M 轨迹自主重写 harness）差距显著; README/architecture_narrative 诚实边界表述正确, 无需修改
+- **文档-源码漂移修复**（3 处, 横幅式保留原文）: ①docs/META_HARNESS_FUSION_REPORT.md "完整 Harness 工程自动化系统"=v1.22.0 旧宣称, 与 L5 批判后诚实边界冲突; ②docs/wiki/Releases.md "Meta-Scheduler（6 层总线+无锁+心跳）" — src/ 无 meta_scheduler.py（BottleSumo v11.20 污染）; ③docs/wiki/Architecture.md "调度器执行器 28+、meta-layer 14 层"（BottleSumo v11.23 污染）; ④architecture_narrative.md meta_scheduler 措辞修正
+- **遗留项状态修正**（用户裁决: 保留≠废弃）: AC3 审计链=DOCUMENTED（CAVA 映射设计已就绪, v2.0 合规增强, 触发: 合规需求）; AC4 不可绕过边界=PRINCIPLE（单入口架构近似成立, 无第二入口前 YAGNI）; AC5 候选自动 pytest=DOCUMENTED（**sandbox.run_pytest_regression 已存在**, 缺口在 loop.py 接线）; AC6 multi_agent=PRINCIPLE（网关单入口下多 Agent 治理=治理流量, 模板属仪式性代码拒绝）; 设计论证留存 .aionui/design/{ac3_audit_chain,ac4_bypass_boundary,ac5_harness_pytest,ac6_multi_agent}.md
+- **教训**: 核查类任务必须先列证据再下结论（每维度附源码定位）; 元提示词提供的证据目录（src/meta_harness 等）与真实布局一致时仍需 grep 验证"声明 vs 实现"; 文档宣称会滞后于代码（v1.22.0 融合报告 vs v1.24+ 诚实边界）
+- **交付**: docs/meta_harness_verification.md + .aionui/design/×4 + 4 处漂移横幅; 无代码变更, 848+ 测试不受影响
 ## AUDIT-0058 — 外部治理资源整合 + 研究产出审计闭环 + L2 tool_args 规则
 
 - **类型**: 提案核查 + 审计闭环 + 规则引擎扩展（v1.37.0-toolargs 快照）

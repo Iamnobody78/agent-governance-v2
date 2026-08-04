@@ -45,6 +45,8 @@
 
 ## v1.20.0（2026-08-03）— Meta-Harness + 元编程声明
 
+> **⚠️ 更正（AUDIT-0059, 2026-08-04）**：本行"Meta-Scheduler（6 层总线 + 优先级队列 + 无锁 + 心跳）"为 **BottleSumo v11.20 内容污染**——本仓库 src/ 无 `meta_scheduler.py`（仅有 src/task_scheduler.py 与 src/bootstrap/scheduler.py, 后者为 P12 确定性调度器）。"因果 + 晋升"亦非本仓库 adapter 能力（src/meta_harness/adapter.py 为确定性 DENY 扫描 + 3 层门控）。原文保留作审计轨迹。核查见 docs/meta_harness_verification.md §文档-源码漂移。
+
 **AUDIT-0040**。Meta-Harness 适配器（3 层门控 + 帕累托 + 因果 + 晋升）+ Meta-Scheduler（6 层总线 + 优先级队列 + 无锁 + 心跳）；docs/META_CAPABILITIES.md 7 项诚实声明（✅×5 ⚠️×2）；488 tests。
 
 ## v1.13.0 基线（P6 认证层前置）

@@ -14,7 +14,7 @@
 
 > **📐 现行架构权威参考（v1.24.0, 2026-08-03）**：[docs/architecture.md](docs/architecture.md)
 > **🔐 认证授权层（P13）**：[docs/AUTH.md](docs/AUTH.md) — API Key→租户映射 + Bearer/X-API-Key 双格式 + 租户隔离（AC1-AC7 全过）
-> **🧬 Meta-Harness 适配层（L5 策略级自进化，能力边界明确）**：[src/trace/](src/trace/)（决策轨迹）→ [src/meta_harness/](src/meta_harness/)（adapter=策略候选生成器 + meta_scheduler=调度总线）→ [src/pareto/](src/pareto/)（质量vs成本 Pareto 前沿+≥3 轮迭代）；融合报告见 [docs/META_HARNESS_FUSION_REPORT.md](docs/META_HARNESS_FUSION_REPORT.md)。**诚实边界（2026-08-03 元批判核查后明确）**：本层为"策略建议器"——零侵入只读 storage、复用 policy.py、仅生成 YAML 候选，**不**修改 Harness 核心代码；"完整 Harness 工程自动化"（斯坦福 Meta-Harness 级：完整执行轨迹重写+跨领域验证）**不在当前能力内**，列为 v2 方向。
+> **🧬 Meta-Harness 适配层（L5 策略级自进化，能力边界明确）**：[src/trace/](src/trace/)（决策轨迹）→ [src/meta_harness/](src/meta_harness/)（adapter=确定性策略建议器：DENY 扫描→YAML 候选→3 层门控；无 meta_scheduler 模块, 更正见 docs/meta_harness_verification.md）→ [src/pareto/](src/pareto/)（质量vs成本 Pareto 前沿+≥3 轮迭代）；融合报告见 [docs/META_HARNESS_FUSION_REPORT.md](docs/META_HARNESS_FUSION_REPORT.md)。**诚实边界（2026-08-03 元批判核查后明确）**：本层为"策略建议器"——零侵入只读 storage、复用 policy.py、仅生成 YAML 候选，**不**修改 Harness 核心代码；"完整 Harness 工程自动化"（斯坦福 Meta-Harness 级：完整执行轨迹重写+跨领域验证）**不在当前能力内**，列为 v2 方向。
 > **🔄 自举运行时（P12 确定性调度器）**：[src/bootstrap/](src/bootstrap/) — 感知→诊断→修复→验证→部署主循环 + `bootstrap_state.db`（SQLite）状态持久化；codegen 漂移自动修复+白名单提交，失败回滚，人类在环（`auto_push` 默认 False）；`python -c "from src.bootstrap import run_cycle; run_cycle()"` 单轮演练
 > **🧬 元能力自检清单（P11 诚实声明）**：[docs/META_CAPABILITIES.md](docs/META_CAPABILITIES.md) — 自审计/自修复/自追踪/自认证/自生成 ✅ 5/7，自修改/自部署 ⚠️（人类在环，诚实边界）
 > **🛡️ 高可用设计（Phase HA）**：[docs/ha_design.md](docs/ha_design.md)

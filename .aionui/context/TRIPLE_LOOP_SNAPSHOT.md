@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.37.0-toolargs
-> 快照时间: 2026-08-04（外部治理资源整合: 3 提案论文 Anchor/Execution Governance/Chimera ⛔幻觉(arXiv 零命中)→以 6 真实论文替代(SafeAgent 2604.17562/ExecGov 2512.04408/POLARIS 2601.11816/Deontic 2606.19464/CAVA 2607.13716/GAD 2604.19112); repos 复核 omnigent-ai 8085★ 非 Databricks/MSFT 5605★/ruvnet-metaharness 544★/Agent-StrongHold 1★; docs/external_research_integration.md + docs/competitor_analysis.md (AC1/AC2); **研究产出审计闭环** ✅ 首次跑通(GATE 8 PASS + research_outputs/external-governance-resources_critique.md + 2 条 lesson/insight 记忆; AUDIT-0058; D1/D2 MEDIUM 顺带修复); **L2 tool_args YAML 规则** ✅(policy.py: name glob + 参数键值复用 json_path 解析器 + 同调用作用域 + 加载期 fail-closed 校验(非 dict/空值/与 json_path 互斥/非法键); 19 新测试; config/policies.yaml 未动避免 codegen 漂移, codegen tool_args 支持=文档化 P2)
-> 最近审计: AUDIT-0058（研究产出审计闭环: GATE 8 PASS + 6 论文/4 repo 独立复核）+ AUDIT-0057（ML 提案事实核查 + 代码语义预筛）+ AUDIT-0056（落盘协议）+ AUDIT-0055（蒸馏泛化 benchmark）
+> 版本: v1.38.0-mhverify
+> 快照时间: 2026-08-04（**Meta-Harness 执行状态核查** ✅（AUDIT-0059, 元提示词驱动, 4 维度源码交叉验证: 外循环/轨迹访问/Proposer/原版差距; 结论 ⚠️部分执行—基础设施真实(trace 文件系统唯一真相+10M 预算/proposer 整树变异算子+血缘/pareto ≥3轮非支配集/sandbox pytest 回归), **编码 Agent 提议器未实现**(全模块无 LLM 调用, propose_fn 外部注入), 概念借用+适配层, 与斯坦福核心差距显著; **3 处文档-源码漂移修复**(融合报告"完整 Harness 工程自动化"旧宣称加更正横幅 + wiki/Releases meta_scheduler 不存在 + wiki/Architecture 28+执行器 BottleSumo 污染 + architecture_narrative meta_scheduler 措辞)); **遗留项状态修正** ✅(AC3/AC5=DOCUMENTED, AC4/AC6=PRINCIPLE, 设计论证留存 .aionui/design/{ac3_audit_chain,ac4_bypass_boundary,ac5_harness_pytest,ac6_multi_agent}.md, 不消耗迭代资源; AC5 现状: sandbox.run_pytest_regression 已存在, 缺口在 loop.py 接线)）
+> 最近审计: AUDIT-0059（Meta-Harness 执行状态核查 + 3 处文档漂移修复）+ AUDIT-0058（研究产出审计闭环）+ AUDIT-0057（ML 提案事实核查 + 代码语义预筛）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -16,10 +16,10 @@
 | **覆盖率** | 87%（`--source=src` 实测；门槛 ≥ 60%） |
 | **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞） |
 | **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）；已知边界: ① 拼接形态已由 src/taint.py 闭合（函数参数跨界/条件分支/属性链传播仍为边界）；② DROP DATABASE = grammar ERROR 节点（L2 YAML 兜底） |
-| **最近事件** | **L2 tool_args 工具调用规则** ✅（policy.py: YAML 规则新增 tool_args 字段 — name glob + 参数键值复用 json_path 解析器（相对参数路径, 支持嵌套）+ 同一 tool_calls 节点作用域 + OpenAI 字符串/dict 参数双形态 + 加载期 fail-closed（非 dict/空值/与 json_path 互斥/非法键 → 拒绝载入）；19 新测试 test_policy_tool_args.py；config/policies.yaml 未动 — codegen 契约 len(_MATCHERS)==len(rules) 会漂移, codegen tool_args 支持记为 P2）。此前: **研究产出审计闭环** ✅（GATE 8 PASS + critique 落盘 research_outputs/ + lesson/insight 记忆 ×2, AUDIT-0058; D1 openapi 悬空引用/D2 README 版本滞后 顺带修复）。**外部治理资源整合** ✅（AC1/AC2 docs: 3 幻觉论文替换 + 4 repo 复核） |
+| **最近事件** | **Meta-Harness 核查（元提示词驱动）** ✅（docs/meta_harness_verification.md: 4 维度 + 证据链 + 概念vs实现区分; ⚠️部分执行—确定性基础设施有, 编码 Agent 提议器无; 3 处文档漂移横幅修复）。**遗留项状态修正** ✅（AC3/AC5 DOCUMENTED + AC4/AC6 PRINCIPLE → .aionui/design/ 4 文档, 不实现; AC5 发现 sandbox pytest 能力已存在）。此前: **L2 tool_args** ✅ + **审计闭环** ✅ + **外部治理资源整合** ✅ |
 | **CI 状态** | ✅ GATE 1-8 全绿（quality/policy/critic 3 job + all-gates 聚合；GATE 3 junitxml + 真实退出码 + ci_diagnose） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …`e0e2b1a` ML 裁决+代码语义预筛（v1.36.0-ml-prescreen）→ 外部治理整合 + 审计闭环 + L2 tool_args（v1.37.0-toolargs, 待提交） |
+| **提交链** | …`7423348` 外部治理整合+审计闭环+L2 tool_args（v1.37.0-toolargs）→ Meta-Harness 核查 + 遗留项设计留存 + 文档漂移修复（v1.38.0-mhverify, 待提交） |
 
 ---
 
@@ -146,7 +146,8 @@
 - **v1.34.0-benchmark**（2026-08-03）：蒸馏泛化 benchmark（独立语料 5/7 信号 + 2 正式修复交集；benchmark_distill.py + docs/benchmark_report.md + 1 测试；AUDIT-0055；提交 e046453）
 - **v1.35.0-persist**（2026-08-03）：研究产出落盘协议（scripts/p2_research_runner.py persist_report + research_mcp_server + .aionui/protocols/research_output.md + research_outputs/ gitignore；7+30 测试；AUDIT-0056；提交 8ceeed5）
 - **v1.36.0-ml-prescreen**（2026-08-04）：ML/CV/DL 提案事实核查（7 资源验证 1 幻觉剔除 FireRL + SIREN 用途错配否决 + 基线过期纠正 + Base64 绕过探针 6/6 BLOCK 实证）+ 裁决 1' 落地 semantic_code_audit_async 代码片段语义预筛（extract_code_snippets/_code_judge_prompt/async 审计, AST 放行后 LLM-Judge 红线 A/C 复查, fail-soft 零新增依赖）；docs/ml_integration_verdict.md；12 新测试；AUDIT-0057；提交 e0e2b1a
-- **v1.37.0-toolargs**（2026-08-04）：外部治理资源整合（AC1/AC2：3 提案论文幻觉剔除 → 6 真实论文替代 + 4 repo 复核；docs/external_research_integration.md + docs/competitor_analysis.md）+ 研究产出审计闭环首次跑通（GATE 8 PASS + research_outputs/external-governance-resources_critique.md + lesson/insight 记忆 ×2；AUDIT-0058；D1 openapi 悬空引用/D2 README 版本滞后 顺带修复）+ **L2 tool_args YAML 规则**（policy.py：name glob + 参数键值复用 json_path 解析器 + 同调用作用域 + OpenAI 字符串/dict 双形态 + 加载期 fail-closed 校验；19 新测试；config/policies.yaml 未动避免 codegen 漂移，codegen tool_args 支持=文档化 P2）；848+ tests 分批全绿；快照 v1.37.0-toolargs
+- **v1.37.0-toolargs**（2026-08-04）：外部治理资源整合（AC1/AC2：3 提案论文幻觉剔除 → 6 真实论文替代 + 4 repo 复核；docs/external_research_integration.md + docs/competitor_analysis.md）+ 研究产出审计闭环首次跑通（GATE 8 PASS + research_outputs/external-governance-resources_critique.md + lesson/insight 记忆 ×2；AUDIT-0058；D1 openapi 悬空引用/D2 README 版本滞后 顺带修复）+ **L2 tool_args YAML 规则**（policy.py：name glob + 参数键值复用 json_path 解析器 + 同调用作用域 + OpenAI 字符串/dict 双形态 + 加载期 fail-closed 校验；19 新测试；config/policies.yaml 未动避免 codegen 漂移，codegen tool_args 支持=文档化 P2）；848+ tests 分批全绿；提交 7423348
+- **v1.38.0-mhverify**（2026-08-04）：Meta-Harness 执行状态核查（docs/meta_harness_verification.md, AUDIT-0059, 元提示词驱动, 4 维度源码交叉验证；结论 ⚠️部分执行：trace 文件系统唯一真相+10M 预算/proposer 整树变异算子/pareto ≥3 轮非支配集/sandbox pytest 回归 = 真实基础设施；**编码 Agent 提议器未实现**（全模块无 LLM 调用, propose_fn 外部注入, 与斯坦福核心差距显著））+ 遗留项状态修正（AC3/AC5 DOCUMENTED + AC4/AC6 PRINCIPLE → .aionui/design/ 4 文档留存, 不消耗迭代资源；AC5 发现 sandbox.run_pytest_regression 已存在）+ 3 处文档-源码漂移修复（融合报告旧宣称 / wiki meta_scheduler 不存在 / wiki 28+ 执行器 BottleSumo 污染 / architecture_narrative 措辞）；纯文档+设计文档提交, 无代码变更
 
 ---
 

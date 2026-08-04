@@ -66,6 +66,8 @@ Agent ──> [认证门] ──> [AST 前门] ──> [策略引擎] ──> [�
 
 ## 自进化（L5）
 
+> **⚠️ 更正（AUDIT-0059, 2026-08-04）**："调度器执行器 28+，meta-layer 审计 14 层"为 **BottleSumo v11.23 内容污染**——本仓库无此规模（src 共 ~45 模块, 无 28+ 执行器/14 层审计实体）。Meta-Harness 部分仅实现确定性基础设施（见 docs/meta_harness_verification.md）：trace/proposer/pareto/sandbox 存在且测试覆盖, 无编码 Agent 提议器。原文保留作审计轨迹。
+
 Meta-Harness 三循环：Trace（filesystem 决策轨迹）→ Proposer（候选策略生成）→ Pareto（帕累托前沿 + ≥3 轮演化）。调度器执行器 28+，meta-layer 审计 14 层。
 
 ## 持久化
