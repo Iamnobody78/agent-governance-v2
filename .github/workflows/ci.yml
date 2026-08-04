@@ -38,13 +38,21 @@ jobs:
           pip install langchain langchain-openai autogen-agentchat autogen-ext[openai] aiohttp
       - name: "GATE 1 — syntax/import (compileall)"
         run: python -m compileall -q src tests examples scripts
-      - name: "GATE 3 — full regression (baseline >= 450)"
+      - name: "GATE 3 — full regression (baseline >= 450, junitxml)"
         run: |
-          python -m pytest tests -q --timeout=120 > pytest.log 2>&1 || true
+          set +e
+          python -m pytest tests -q --timeout=120 --junitxml=pytest.xml > pytest.log 2>&1
+          PYTEST_EXIT=$?
+          set -e
           tail -5 pytest.log
           PASSED=$(grep -oP '\d+(?= passed)' pytest.log | head -1)
-          echo "passed=$PASSED"
+          echo "passed=$PASSED pytest_exit=$PYTEST_EXIT"
+          # 真实退出码判定（不再吞掉失败——640 passed 曾掩盖 2 个失败，假绿）
+          test "$PYTEST_EXIT" -eq 0 || { echo "GATE 3 FAIL: pytest exit=$PYTEST_EXIT"; exit 1; }
           test -n "$PASSED" && test "$PASSED" -ge 450 || { echo "GATE 3 FAIL: passed=$PASSED < 450"; exit 1; }
+      - name: "GATE 3 diagnose — failure classification (ci_diagnose)"
+        if: always()
+        run: python scripts/ci_diagnose.py --junitxml pytest.xml --no-color
       - name: Test quality gates (no fake asserts, test count)
         run: python scripts/check_test_quality.py
 
