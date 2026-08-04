@@ -79,11 +79,18 @@ def extract_prompt(body) -> str:
     return str(body)
 
 
-async def semantic_hook(user_prompt: str, timeout: float = SEMANTIC_HOOK_TIMEOUT) -> Optional[Dict]:
+async def semantic_hook(user_prompt: str, timeout: Optional[float] = None) -> Optional[Dict]:
     """Ask the LLM-Judge for a risk score. Returns {override, score, flags} or None.
 
     None means 'no semantic signal' — the static verdict stands. Never raises.
+
+    timeout=None 时在调用时读取 SEMANTIC_HOOK_TIMEOUT（而非 import 时冻结 —
+    见 docstring 顶部 "read once at call time so tests can override"；默认参数
+    绑定陷阱: `timeout=SEMANTIC_HOOK_TIMEOUT` 会把值冻结在 import 时刻，测试
+    无法通过改模块全局放大超时）。
     """
+    if timeout is None:
+        timeout = SEMANTIC_HOOK_TIMEOUT
     if not is_enabled():
         return None
     if not user_prompt or not user_prompt.strip():

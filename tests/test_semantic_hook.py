@@ -263,16 +263,21 @@ class TestSemanticHookE2E(AioHTTPTestCase):
         sh.SEMANTIC_JUDGE_URL = f"http://127.0.0.1:{self.judge_port}/v1/judge"
         self._old_threshold = sh.SEMANTIC_HOOK_THRESHOLD
         sh.SEMANTIC_HOOK_THRESHOLD = 0.85
+        # AioHTTPTestCase + pytest 的 loop 混杂使后台审计的 judge 响应跨 loop
+        # 延迟可 >0.15s(生产收紧默认), 放大测试环境超时以消除偶发 degraded。
+        self._old_timeout = sh.SEMANTIC_HOOK_TIMEOUT
+        sh.SEMANTIC_HOOK_TIMEOUT = 2.0
         return create_app()
 
-    async def tearDown(self):
+    async def tearDownAsync(self):
         sh.SEMANTIC_HOOK_ENABLED = self._old_enabled
         sh.SEMANTIC_JUDGE_URL = self._old_url
         sh.SEMANTIC_HOOK_THRESHOLD = self._old_threshold
+        sh.SEMANTIC_HOOK_TIMEOUT = self._old_timeout
         from src.revoke import revoke_registry
         revoke_registry.clear()  # P1: 隔离测试间撤销状态
         await self.judge_runner.cleanup()
-        await super().tearDown()
+        await super().tearDownAsync()
 
     async def _intercept(self, body):
         return await self.client.post(
@@ -355,10 +360,10 @@ class TestSemanticHookDisabled(AioHTTPTestCase):
         sh.SEMANTIC_HOOK_ENABLED = False
         return create_app()
 
-    async def tearDown(self):
+    async def tearDownAsync(self):
         sh.SEMANTIC_HOOK_ENABLED = self._old_enabled
         await self.judge_runner.cleanup()
-        await super().tearDown()
+        await super().tearDownAsync()
 
     @unittest_run_loop
     async def test_disabled_never_calls_judge(self):

@@ -185,10 +185,10 @@ class TestAutogenGateway(AioHTTPTestCase):
         main_module.AGENT_BACKEND_URL = f"http://127.0.0.1:{self.upstream_port}"
         return create_app()
 
-    async def tearDown(self):
+    async def tearDownAsync(self):
         main_module.AGENT_BACKEND_URL = self._old_url
         await self.upstream_runner.cleanup()
-        await super().tearDown()
+        await super().tearDownAsync()
 
     @unittest_run_loop
     async def test_autogen_safe_tool_allowed(self):

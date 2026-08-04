@@ -54,10 +54,10 @@ class TestB3HybridMode(AioHTTPTestCase):
         self._old_url = old_url
         return create_app()
 
-    async def tearDown(self):
+    async def tearDownAsync(self):
         main_module.AGENT_BACKEND_URL = self._old_url
         await self.upstream_runner.cleanup()
-        await super().tearDown()
+        await super().tearDownAsync()
 
     def _chat_body(self, agent_id, content="hello", stream=False, tools=None):
         body = {

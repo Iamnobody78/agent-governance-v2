@@ -160,7 +160,11 @@ class TestSemanticAsyncIntegration(AioHTTPTestCase):
     async def setUpAsync(self):
         self._old_enabled = semantic_hook.SEMANTIC_HOOK_ENABLED
         self._old_url = semantic_hook.SEMANTIC_JUDGE_URL
+        self._old_timeout = semantic_hook.SEMANTIC_HOOK_TIMEOUT
         semantic_hook.SEMANTIC_HOOK_ENABLED = True
+        # AioHTTPTestCase + pytest 的 loop 混杂会使 judge 响应跨 loop 延迟,
+        # 放大测试环境超时(生产默认 0.15s 收紧保持不变)。
+        semantic_hook.SEMANTIC_HOOK_TIMEOUT = 2.0
         self._judge_runner, self._judge_url = await _judge_server(score=0.99)
         semantic_hook.SEMANTIC_JUDGE_URL = self._judge_url
         await super().setUpAsync()
@@ -170,6 +174,7 @@ class TestSemanticAsyncIntegration(AioHTTPTestCase):
         await self._judge_runner.cleanup()
         semantic_hook.SEMANTIC_HOOK_ENABLED = self._old_enabled
         semantic_hook.SEMANTIC_JUDGE_URL = self._old_url
+        semantic_hook.SEMANTIC_HOOK_TIMEOUT = self._old_timeout
         from src.revoke import revoke_registry
         revoke_registry.clear()
 
