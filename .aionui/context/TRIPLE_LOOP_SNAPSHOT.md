@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.27.0-sql
-> 快照时间: 2026-08-03（Phase 1 SQL 规则完成：UPDATE 无 WHERE + 敏感 schema 三语言硬门禁全覆盖；诚实硬化 P0-1/P0-2/P1-1）
-> 最近审计: AUDIT-0049（阶段 0 SQL 硬验证 + 阶段 A 定位 + 真实拦截率基准两缺口修复）+ AUDIT-0050（Phase 1 SQL 规则）
+> 版本: v1.29.0-search
+> 快照时间: 2026-08-04（自主搜索能力完成：学术 arXiv + GitHub 仓库双搜索，CLI 脚本 + 自建 MCP server 双通道；缓存优化协议 v1.0；记忆系统 Phase 0/1/2 收官）
+> 最近审计: AUDIT-0051（自主搜索 P0+P1：academic_search.py / github_search.py / research_mcp_server.py，AC1-AC7 全过，真实网络验证 5 论文 + 5 仓库 <10s）+ AUDIT-0050（Phase 1 SQL 规则）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,14 +12,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 606 passed（基线 573 + 新增 33：SQL Phase1 25 + /metrics 3 + bootstrap 门禁 2 + CI 契约 3；另 2 网络类 flaky 环境性失败记录，stash 对照证明非回归） |
+| **测试全量** | 719 passed + 1 skipped（基线 573；近三轮 +146：记忆 Phase0/1/2 55 + 缓存监控 17 + 自主搜索 24 + SQL/CI/Docker 等 50；环境性失败已 stash 对照消除） |
 | **覆盖率** | 87%（`--source=src` 实测；门槛 ≥ 60%） |
 | **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞） |
 | **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）；新增已知边界: DROP DATABASE = grammar ERROR 节点（tree-sitter-sql 方言边界, L2 YAML 兜底） |
-| **最近事件** | **Phase 1 SQL 规则完成** ✅（S1: from_clause dotted_name 敏感 schema / S2: from_clause 裸名 / S3: update_statement 目标表; update_stmt 无 WHERE → destructive-update 阻断; 新捕获注册 EXPECTED_CAPTURES P1; 基准扩展 20/20 检测 0/15 误报）。此前: **诚实硬化** ✅（P0-1 bootstrap auto_push 门禁式开启 + repair_chain 因果链 / P0-2 CI 8 GATE → 3 核心 job / P1-1 L5 宣称修正为"策略级自进化"）；**阶段 C1 Docker** ✅（/metrics 7 指标 + Dockerfile + compose 三件套实机验证 health 200/prom 200/grafana 11.1.0）；**嵌套容器绕过漏洞修复** ✅（{"sql":{"query":...}} 静默漏提 → 递归修复 → 202 ESCALATE） |
-| **CI 状态** | ✅ GATE 1-8 全绿（合并为 quality/policy/critic 3 job + all-gates 聚合；GATE 7 版本解耦） |
+| **最近事件** | **自主搜索能力** ✅（academic_search.py arXiv 直连零 key / github_search.py Token 三级回退 gh CLI / research_mcp_server.py 自建 MCP 注册 servers.json 暴露 search_papers+search_repos；实测 5 论文+5 仓库 <3s；诚实验证: 本环境网络通、gh 已登录）。此前: **缓存优化协议** ✅（.aionui/protocols/cache_optimization.md v1.0 + cache_monitor.py record/report/diff，成本测算修正 ¥0.87/天 非 ¥28.75）；**记忆系统三优化** ✅（Phase0 结构化查询 + Phase1 bge-m3 向量 RRF 混合 + Phase2 会话持久化 recover 0.47s）；**Phase 1 SQL** ✅（S1/S2/S3 敏感 schema 门禁） |
+| **CI 状态** | ✅ GATE 1-8 全绿（quality/policy/critic 3 job + all-gates 聚合；GATE 3 已接 junitxml + 真实退出码 + ci_diagnose 诊断步） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …v1.25.0 AST 硬阻断 → `9145c91` 文档诚实化（L5 边界/ED25519-Git）→ `a68da51` 嵌套修复+C1 → `0121d22` Phase 1 SQL（S1/S2/S3）→ `be24039` P0-1/P0-2/P1-1 硬化 → `e9ad8ab` 基准扩展 → 快照 v1.27.0-sql |
+| **提交链** | …快照 v1.27.0-sql → `a31b6af` 记忆 Phase0 查询 → `73fcb3b` Phase1 向量检索 → `67ad96f` Phase2 会话持久化 → `9ef7b6d` 缓存监控 → `f8f4f0b` 自主搜索（学术+GitHub+MCP）→ 快照 v1.29.0-search |
 
 ---
 
