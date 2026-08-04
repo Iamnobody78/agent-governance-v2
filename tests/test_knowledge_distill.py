@@ -92,6 +92,29 @@ def test_quoted_list_style_tags(tmp_path):
     assert all('"' not in t and "'" not in t for t in ms[0]["tags"])
 
 
+def test_load_train_patterns_strips_quotes(tmp_path):
+    """patterns.yaml 的值带引号 → load_train_patterns 必须剥离, 否则共现=0。"""
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import benchmark_distill as bd
+    y = tmp_path / "patterns.yaml"
+    y.write_text(
+        "# 注释\nfailure_patterns:\n"
+        "  - pattern: \"keyword:路径\"\n"
+        "    count: 27\n"
+        "    last_occurrence: \"2026-08-04\"\n"
+        "    suggested_fix: \"脚本/测试应使用绝对路径或锚定仓库根, 不依赖 CWD\"\n"
+        "  - pattern: \"keyword:timeout\"\n"
+        "    count: 19\n"
+        "    last_occurrence: \"2026-08-03\"\n"
+        "    suggested_fix: \"涉及外部进程/网络的测试需显式 --timeout 并留足余量\"\n",
+        encoding="utf-8")
+    pats, fixes = bd.load_train_patterns(y)
+    assert pats == ["keyword:路径", "keyword:timeout"]
+    assert fixes == {"脚本/测试应使用绝对路径或锚定仓库根, 不依赖 CWD",
+                     "涉及外部进程/网络的测试需显式 --timeout 并留足余量"}
+    assert all('"' not in f for f in fixes)
+
+
 def test_main_writes_files(mem_root, tmp_path, capsys):
     out = tmp_path / "kout"
     rc = kd.main(["--root", str(mem_root), "--out", str(out)])

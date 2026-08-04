@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.33.0-memory
-> 快照时间: 2026-08-04（记忆持久化协议闭环 — write_memory.py 写入即索引 + knowledge_distill.py 启发式蒸馏（frontmatter 剥离/引号标签/正文日期兜底/全类型关键词加权/中英 hint 别名/tag 专属 fallback）→ 74 条真实记忆蒸馏出 12 条经验模式 + load_lessons.py 注入 [LESSON_CONTEXT]；25 测试全绿；代理提议裁决: 拒绝 agent-memory(Go 二进制供应链) + PLUR(Hermes-only)，自研零依赖 Python 三件套）
-> 最近审计: AUDIT-0054（Ollama 自激活）+ AUDIT-0053（数据流补强）+ AUDIT-0052（记忆协议测试 25 项）
+> 版本: v1.34.0-benchmark
+> 快照时间: 2026-08-04（benchmark 独立语料泛化验证 PASS — 12 条蒸馏模式对 v1 归档 18 独立文件: 通用信号 5/7 复现 + 正式 fix 交集 2, MCP/回归 0 命中=真实缺失非过拟合; 蒸馏泛化成立 → L2 YAML 规则可安全奠基; 新增 scripts/benchmark_distill.py + 1 测试, docs/benchmark_report.md; 另发现 P2 研究报告从未落盘 → 审计无法执行, 登记债务: 研究产出需落盘协议）
+> 最近审计: AUDIT-0055（蒸馏泛化 benchmark）+ AUDIT-0054（Ollama 自激活）+ AUDIT-0052（记忆协议测试 25 项）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -16,10 +16,10 @@
 | **覆盖率** | 87%（`--source=src` 实测；门槛 ≥ 60%） |
 | **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞） |
 | **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）；已知边界: ① 拼接形态已由 src/taint.py 闭合（函数参数跨界/条件分支/属性链传播仍为边界）；② DROP DATABASE = grammar ERROR 节点（L2 YAML 兜底） |
-| **最近事件** | **记忆持久化协议** ✅（三阶段学习保留闭环 P0 捕获→P1 蒸馏→P2 注入：write_memory.py 零依赖写入+自动索引+去重；knowledge_distill.py 74 条真实记忆蒸馏 12 模式（MCP 契约×31/绝对路径×27/timeout×19/回归×16/零误报×14/UTF-8×10/认证×10）；load_lessons.py [LESSON_CONTEXT] 注入；裁决: 拒 agent-memory+PLUR 外部依赖）。此前: **P2 自激活** ✅（本地 Ollama 零-key：真实报告含 APA 引用，来源 truefoundry；gh013 清扫后首个真实推送 bfce10a 经 ls-remote 验证）。**数据流分析** ✅（src/taint.py 拼接盲区闭合）。**路径 B MCP** ✅ |
+| **最近事件** | **benchmark 泛化验证** ✅（蒸馏未过拟合: v1 归档 18 独立文件 5/7 通用模式复现 + fix 交集 2; benchmark_distill.py 双指标; docs/benchmark_report.md）。⚠️ P2 研究报告从未落盘 → Critic 审计对象缺失, 债务登记（研究产出落盘协议）。此前: **记忆持久化协议** ✅（P0 捕获→P1 蒸馏→P2 注入闭环）。**P2 自激活** ✅（本地 Ollama 零-key 真实报告） |
 | **CI 状态** | ✅ GATE 1-8 全绿（quality/policy/critic 3 job + all-gates 聚合；GATE 3 junitxml + 真实退出码 + ci_diagnose） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …`bc815a4` 批判审计修复 → `a8b5bc4` taint + P2 MCP → `bfce10a` Ollama 自激活 → 快照 v1.33.0-memory（记忆协议三件套待提交） |
+| **提交链** | …`bfce10a` Ollama 自激活 → `046a7a6` 记忆协议三件套 → 快照 v1.34.0-benchmark（benchmark_distill 待提交） |
 
 ---
 
