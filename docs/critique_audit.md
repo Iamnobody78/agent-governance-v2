@@ -83,11 +83,19 @@
 
 ## 6. 下一步(按优先级)
 
-1. **数据流分析(L2.5)**: eval/exec 参数来源追踪 —— 变量绑定 + 常量折叠,根治拼接形态。方案: `src/taint.py`,基于 AST 变量表,不引入完整框架。
+1. **~~数据流分析(L2.5)~~ ✅ 已完成 (2026-08-04)**: `src/taint.py` — 字符串常量折叠
+   (`'ev'+'al'`→`'eval'`) + 变量别名表 (`fn = getattr(__builtins__,'ev'+'al')` → fn↦builtins.eval)
+   + 汇点检测 (`fn(payload)` 解析调用目标)。探针实证 3/4(拼接形态)**已由 PASS 翻转为 BLOCK**,
+   探针 6/6 全 BLOCK。集成于 ASTGuard.analyze Python 分支(补强层, 失败静默不影响主判定)。
+   测试: `tests/test_taint.py` 11 例(含良性零误报: 普通 getattr / 非 builtins 拼接 / mapping 下标)。
+   诚实边界: 函数参数跨界流动/条件分支/属性链等复杂传播仍未覆盖(需完整数据流框架)。
 2. **benchmark 独立语料**: 从真实攻击样本库(PoC-in-GitHub 数据集)提取跨仓库变体,切断"规则与样本同源"的相关性。
 3. **L2 YAML 工具参数规则**: 工具名 + 参数结构(如 `run_shell.command`)的声明式策略,与 AST 层互为兜底。
 4. **性能**: ASTGuard LRU 缓存(仅缓存 parse 树,findings 每次生成)。
 5. **GitHub 手工设置 3 项** + Wiki 404 修复 + Docker compose 落地。
+6. **路径 B MCP 封装 ✅ (2026-08-04)**: `run_research` 工具(gpt-researcher 子进程,
+   scripts/p2_research_runner.py + research_mcp_server.py 扩展), 协议级 smoke 通过;
+   待 DEEPSEEK_API_KEY 激活后真实验证。
 
 ## 7. 测试基线
 

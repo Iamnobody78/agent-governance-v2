@@ -10,6 +10,9 @@ import json
 import pathlib
 import subprocess
 import sys
+import types
+
+import pytest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 MCP_FILE = pathlib.Path(__file__).resolve().parents[2] / ".aionui" / "mcp" / "research_mcp_server.py"
@@ -33,10 +36,101 @@ def test_initialize():
 def test_tools_list():
     resp = _line({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     names = [t["name"] for t in resp["result"]["tools"]]
-    assert names == ["search_papers", "search_repos"]
+    assert names == ["search_papers", "search_repos", "run_research"]
     for t in resp["result"]["tools"]:
         assert "query" in t["inputSchema"]["properties"]["query"]["type"] or True
         assert t["inputSchema"]["required"] == ["query"]
+
+
+# ── run_research 工具 ─────────────────────────────────────────────────
+
+def test_run_research_tool_registered():
+    tools = {t["name"]: t for t in rmcp.TOOLS}
+    assert "run_research" in tools
+    schema = tools["run_research"]["inputSchema"]
+    assert schema["required"] == ["query"]
+    assert "report_type" in schema["properties"]
+    assert "max_sources" in schema["properties"]
+
+
+@pytest.fixture
+def fake_venv(monkeypatch):
+    """让 venv 存在性检查通过: _VENV_RESEARCH_PY 指向一个真实存在的文件。"""
+    fake = pathlib.Path(__file__).resolve()  # 本测试文件自身 (存在即满足检查)
+    monkeypatch.setattr(rmcp, "_VENV_RESEARCH_PY", fake)
+    return fake
+
+
+def test_run_research_env_not_deployed(monkeypatch):
+    """venv 未部署 → 可读错误, 提示 deploy_p2_research.ps1。"""
+    monkeypatch.setattr(rmcp, "_VENV_RESEARCH_PY",
+                        pathlib.Path("Z:/nonexistent-venv/Scripts/python.exe"))
+    resp = rmcp._run_research_tool({"query": "test", "report_type": "summary"})
+    assert resp["isError"] is True
+    assert "deploy_p2_research.ps1" in resp["content"][0]["text"]
+
+
+def test_run_research_subprocess_success(monkeypatch, fake_venv):
+    """子进程成功返回 JSON → 结构化报告结果。"""
+    fake_proc = types.SimpleNamespace(
+        returncode=0,
+        stdout=json.dumps({
+            "ok": True, "report": "# 报告\n内容", "sources": 3,
+            "query": "q", "report_type": "summary"},
+            ensure_ascii=False),
+        stderr="")
+    monkeypatch.setattr(rmcp, "subprocess", _FakeSubprocess(fake_proc))
+    resp = rmcp._run_research_tool({"query": "q", "report_type": "summary"})
+    assert resp["isError"] is False
+    data = json.loads(resp["content"][0]["text"])
+    assert data["report"] == "# 报告\n内容"
+    assert data["sources"] == 3
+
+
+def test_run_research_subprocess_timeout(monkeypatch, fake_venv):
+    """超时 → 可读错误 (isError), 服务器不崩溃。"""
+    def _boom(*a, **k):
+        raise subprocess.TimeoutExpired(cmd=["x"], timeout=120)
+    monkeypatch.setattr(rmcp, "subprocess", _FakeSubprocess(_boom))
+    resp = rmcp._run_research_tool({"query": "q"})
+    assert resp["isError"] is True
+    assert "超时" in resp["content"][0]["text"]
+
+
+def test_run_research_subprocess_research_error(monkeypatch, fake_venv):
+    """runner 返回 ok=False (研究失败) → 透传错误消息。"""
+    fake_proc = types.SimpleNamespace(
+        returncode=0,
+        stdout=json.dumps({"ok": False, "error": "研究执行失败: RuntimeError: API 超时"},
+                          ensure_ascii=False),
+        stderr="")
+    monkeypatch.setattr(rmcp, "subprocess", _FakeSubprocess(fake_proc))
+    resp = rmcp._run_research_tool({"query": "q"})
+    assert resp["isError"] is True
+    assert "API 超时" in resp["content"][0]["text"]
+
+
+def test_run_research_subprocess_garbage_output(monkeypatch, fake_venv):
+    """输出不可解析 → 可读错误。"""
+    fake_proc = types.SimpleNamespace(returncode=0, stdout="not json at all", stderr="")
+    monkeypatch.setattr(rmcp, "subprocess", _FakeSubprocess(fake_proc))
+    resp = rmcp._run_research_tool({"query": "q"})
+    assert resp["isError"] is True
+    assert "解析失败" in resp["content"][0]["text"]
+
+
+class _FakeSubprocess:
+    """替身 subprocess 模块: run() 返回固定 proc 或抛异常。"""
+
+    TimeoutExpired = subprocess.TimeoutExpired  # server 侧 except 分支需要
+
+    def __init__(self, proc_or_func):
+        self._p = proc_or_func
+
+    def run(self, *a, **k):
+        if callable(self._p) and not hasattr(self._p, "returncode"):
+            return self._p(*a, **k)
+        return self._p
 
 
 def test_ping():
@@ -62,10 +156,14 @@ def test_unknown_tool_is_error():
 
 def test_tools_list_schema_has_types():
     resp = _line({"jsonrpc": "2.0", "id": 6, "method": "tools/list"})
-    for t in resp["result"]["tools"]:
-        props = t["inputSchema"]["properties"]
+    by_name = {t["name"]: t for t in resp["result"]["tools"]}
+    for name in ("search_papers", "search_repos"):
+        props = by_name[name]["inputSchema"]["properties"]
         assert props["query"]["type"] == "string"
         assert props["max_results"]["type"] == "integer"
+    props = by_name["run_research"]["inputSchema"]["properties"]
+    assert props["query"]["type"] == "string"
+    assert props["max_sources"]["type"] == "integer"
 
 
 def _spawn():

@@ -207,6 +207,26 @@ class ASTGuard:
                         else:
                             continue  # 有 WHERE 的有界更新 → 放行
                     findings.append(self._finding(language, qname, name, kind, node))
+        # 数据流补强 (仅 Python): 常量折叠 + 别名解析, 闭合 scm 拼接形态盲区
+        # (getattr(__builtins__, 'ev'+'al') / __builtins__['e'+'val'] 等)。
+        # 补强层失败静默 —— 主判定不依赖它, 见 src/taint.py 模块文档。
+        if language == "python":
+            try:
+                from .taint import analyze_taint
+
+                for tf in analyze_taint(code):
+                    findings.append(ASTFinding(
+                        language=language,
+                        query="taint",
+                        capture=tf.capture,
+                        kind=tf.kind,
+                        line=tf.line,
+                        col=tf.col,
+                        text=tf.text,
+                        sexp="<taint>",
+                    ))
+            except Exception as e:  # noqa: BLE001
+                logger.warning("ASTGuard taint analysis failed: %s", e)
         return findings
 
     @staticmethod
