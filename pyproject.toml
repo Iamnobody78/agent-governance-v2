@@ -9,6 +9,10 @@ dependencies = [
     "pydantic>=2.0",
     "aiosqlite>=0.20",
     "cryptography>=42.0",
+    # AST 语义门真实依赖 — 之前只在 requirements.txt 声明, pyproject 缺失导致
+    # `pip install .` 后 ast_guard.py 导入即崩 (外部审查 AUDIT-0061 暴露的真实缺陷)
+    "tree-sitter>=0.21.3,<0.22.0",
+    "tree-sitter-languages>=1.5.0",
 ]
 
 [project.optional-dependencies]

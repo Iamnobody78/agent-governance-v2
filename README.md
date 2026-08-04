@@ -96,7 +96,7 @@ curl -X POST http://localhost:8000/v1/chat/completions -H "Content-Type: applica
 
 - **Python ≥ 3.10** / FastAPI / Uvicorn
 - **tree-sitter 0.21.3**(硬锁)+ tree-sitter-languages 1.5.0(硬锁)
-- **PyYAML** 策略引擎 · **pytest** 测试(861 用例通过)· **Ruff** lint 零错误
+- **PyYAML** 策略引擎 · **pytest** 测试(881 用例通过)· **Ruff** lint 零错误
 - **GitHub Actions** CI 3 门(quality/policy/critic)+ all-gates 聚合 + dependabot(忽略破坏性 tree-sitter 升级)
 
 ## 🩺 维护状态
@@ -105,7 +105,7 @@ curl -X POST http://localhost:8000/v1/chat/completions -H "Content-Type: applica
 
 | 维度 | 状态 |
 |------|------|
-| 活跃开发 | ✅ 持续(最近快照 v1.39.0-mhproposer,2026-08-04) |
+| 活跃开发 | ✅ 持续(最近快照 v1.39.1-metaobs,2026-08-04) |
 | 兼容性承诺 | ⚠️ 无 LTS/API 冻结;tree-sitter 锁版为主动决策(见 dependabot ignore) |
 | 已知边界 | 性能上限(见下)、GPG/ED25519 不兼容(见 CERTIFICATION.md)、DROP DATABASE 语法边界(见 stage0 报告) |
 | 商业支持 | ❌ 无 SLA/无企业支持;社区协作经 GitHub Issues/Discussions |

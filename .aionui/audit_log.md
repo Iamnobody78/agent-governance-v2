@@ -38,6 +38,16 @@
 - **D1/D2 MEDIUM 顺带修复**: OPERATIONS_MANUAL openapi.yaml 悬空引用标注待交付; README 版本滞后 v1.27.0-sql → v1.37.0-toolargs
 - **L2 tool_args YAML 规则**（P1）: policy.py 新增 tool_args 字段 — name（glob）+ 参数键值（复用 json_path 解析器, 相对参数路径支持嵌套）+ 同一 tool_calls 节点作用域 + OpenAI 字符串/dict 参数双形态; 加载期 fail-closed（非 dict/空值/与 json_path 互斥/非法键 → 拒绝载入）; 19 新测试 test_policy_tool_args.py; config/policies.yaml 未动避免 codegen 漂移（len(_MATCHERS)==len(rules) 契约）, codegen tool_args 支持=文档化 P2
 - **回归**: 848+ passed 分批全绿（63 文件 0 失败）; 快照 v1.37.0-toolargs
+## AUDIT-0061 — 外部审查幻觉核查 + 元认知观察层 (Meta-Cognition Observer) + pyproject 依赖修复
+
+- **类型**: 事实核查 + 能力扩展 + 缺陷修复（v1.39.1-metaobs 快照）
+- **触发**: 用户转贴第三方 AI 网页版 4 轮"扒皮审计"（指控仓库空壳: src/ha//meta_harness/ 等 404、测试 assert True、认证占位、AST 仅正则、无 CI、无打包、.env.example DUMMY_MODE）+ 元集成提案（阶段 A/B/C）
+- **外部审查核查**: 本地 git ls-files 铁证 8/11 指控全错（10 个 src 子目录全部存在且被跟踪; tests 65 文件 9054 行 881 测试; auth.py 141 行 compare_digest; ast_guard 真 tree-sitter+3 scm; CI+pyproject+compose 3 服务全在; .env.example 被虚构）; ⚠️ 3 项歪打正着（pyproject dependencies 缺 tree-sitter / storage 同步 sqlite3 / benchmark 66 条非正式基准）; 审查自相矛盾（同轮既说 404 又说分析过 fcntl）= 幻觉最强信号
+- **元集成提案资源核查** (GitHub API): learn2learn ✅2891★ / MetaClaw ✅3513★ 但描述夸大（多智能体RL非元学习）/ **ReMA ⛔0结果幻觉** / meta-learning-toolkit ⛔无匹配 / OntoMotoOS 0★ / MCOP 2★; 裁决: 阶段 A 采纳但重设计（自有架构轻量实现） / 阶段 B 拒绝（learn2learn/MAML=重装备债务, 同 OPA-DID 先例） / 阶段 C 推迟（OntoMotoOS 0★ 无实现可参考 + 自动部署违反人类在环硬边界）
+- **Hermes v0.20.0 事实核查**: 用户转述的 v0.20.0 (v2026.8.3) "The Herald Release" **属实**（GitHub API 确认: ~3,650 commits/~1,400 PRs/~5,200 文件; 新特性: 实时语音 barge-in/A2A v1.0/签名出站 webhook/grounded-citations 溯源/工具自恢复）; 我初判"不存在"是**核查盲区**（本地 shallow clone 无 tags, 仅查本地 git 未查 GitHub API）; 更新被 Windows 阻止（当前会话 PID 占用 hermes.exe, 官方 /update 设计=退出会话→relaunch）
+- **交付**: src/metacognition/observer.py（MetacognitionObserver: record→decision_meta 表 / 一致性按 path 分组最近 N=50 / 偏差=当前 verdict 稀有度 1-current_ratio > 阈值 30% 触发 MetaEvent / fail-soft 不阻断 / 无 embedding 不预测不修改策略 / get_events 供 Critic 消费）+ 18 测试 test_metacognition_observer.py + pyproject.toml dependencies 补 tree-sitter>=0.21.3,<0.22.0 + tree-sitter-languages>=1.5.0（外部审查歪打正着暴露的真实缺陷）
+- **调试修复的 3 个实现 bug**: deviation 公式方向反了（1-majority_ratio 改为 1-current_ratio）/ trim 钳制下限 100 让小窗口测试失效（改 10）/ DELETE...OFFSET ? 参数化在 SQLite 静默不生效（改内联字面量）
+- **回归**: 881 passed 分批全绿（+18）; 快照 v1.39.1-metaobs; commit 待记录
 ## AUDIT-0060 — 阶段 2′ LLM 提议器（Proposer as LLM 会话）+ 三社区实现事实核查
 
 - **类型**: 能力扩展 + 事实核查（v1.39.0-mhproposer 快照）
