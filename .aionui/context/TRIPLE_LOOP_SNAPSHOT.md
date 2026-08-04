@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.38.0-mhverify
-> 快照时间: 2026-08-04（**Meta-Harness 执行状态核查** ✅（AUDIT-0059, 元提示词驱动, 4 维度源码交叉验证: 外循环/轨迹访问/Proposer/原版差距; 结论 ⚠️部分执行—基础设施真实(trace 文件系统唯一真相+10M 预算/proposer 整树变异算子+血缘/pareto ≥3轮非支配集/sandbox pytest 回归), **编码 Agent 提议器未实现**(全模块无 LLM 调用, propose_fn 外部注入), 概念借用+适配层, 与斯坦福核心差距显著; **3 处文档-源码漂移修复**(融合报告"完整 Harness 工程自动化"旧宣称加更正横幅 + wiki/Releases meta_scheduler 不存在 + wiki/Architecture 28+执行器 BottleSumo 污染 + architecture_narrative meta_scheduler 措辞)); **遗留项状态修正** ✅(AC3/AC5=DOCUMENTED, AC4/AC6=PRINCIPLE, 设计论证留存 .aionui/design/{ac3_audit_chain,ac4_bypass_boundary,ac5_harness_pytest,ac6_multi_agent}.md, 不消耗迭代资源; AC5 现状: sandbox.run_pytest_regression 已存在, 缺口在 loop.py 接线)）
-> 最近审计: AUDIT-0059（Meta-Harness 执行状态核查 + 3 处文档漂移修复）+ AUDIT-0058（研究产出审计闭环）+ AUDIT-0057（ML 提案事实核查 + 代码语义预筛）
+> 版本: v1.39.0-mhproposer
+> 快照时间: 2026-08-04（**阶段 2′ LLM 提议器落地** ✅（AUDIT-0060, 用户提供 Stanford Meta-Harness 全貌 + 3 社区实现 + 三阶段接入路径; 事实核查: harness-forge ✅73★/SuperagenticAI-metaharness ✅149★/dkhanal ⛔404 幻觉剔除; 裁决: 阶段 1 Forge 风格 75 行重写=拒绝（适配层已是 mini-forge, 重构无收益）, 阶段 2′ 采纳（LLM 会话接 EvolutionLoop 作 Proposer, 候选域=策略规则 YAML, 不变异核心引擎）, 阶段 3=v2.0 推迟; src/meta_harness/proposer_llm.py + scripts/mh_evolve.py + 12 测试; fail-closed: 不可达/超时/空响应/坏 YAML → 0 候选绝不编造; 实时演示 qwen2.5:0.5b 78.2s 6 规则候选 → Pareto=IN; config/policies.yaml 零改动=人类在环硬边界; 弱信号标注: 重放未命中时 quality=0.5 基线显式注明））
+> 最近审计: AUDIT-0060（阶段 2′ LLM 提议器 + 三社区实现事实核查）+ AUDIT-0059（Meta-Harness 执行状态核查 + 3 处文档漂移修复）+ AUDIT-0058（研究产出审计闭环）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,14 +12,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 848+ passed（分批全绿 63 文件 0 失败；本轮 +19 tool_args；环境级慢非回归） |
+| **测试全量** | 861 passed（分批全绿 0 失败；本轮 +12 阶段 2′ LLM 提议器；环境级慢非回归） |
 | **覆盖率** | 87%（`--source=src` 实测；门槛 ≥ 60%） |
 | **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞） |
 | **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）；已知边界: ① 拼接形态已由 src/taint.py 闭合（函数参数跨界/条件分支/属性链传播仍为边界）；② DROP DATABASE = grammar ERROR 节点（L2 YAML 兜底） |
-| **最近事件** | **Meta-Harness 核查（元提示词驱动）** ✅（docs/meta_harness_verification.md: 4 维度 + 证据链 + 概念vs实现区分; ⚠️部分执行—确定性基础设施有, 编码 Agent 提议器无; 3 处文档漂移横幅修复）。**遗留项状态修正** ✅（AC3/AC5 DOCUMENTED + AC4/AC6 PRINCIPLE → .aionui/design/ 4 文档, 不实现; AC5 发现 sandbox pytest 能力已存在）。此前: **L2 tool_args** ✅ + **审计闭环** ✅ + **外部治理资源整合** ✅ |
+| **最近事件** | **阶段 2′ LLM 提议器** ✅（用户提供 Stanford Meta-Harness 全貌 + 3 社区实现 + 三阶段路径; 事实核查 2✅/1⛔幻觉; 裁决: 阶段 1 拒绝 / 阶段 2′ 采纳 / 阶段 3 推迟 v2.0; src/meta_harness/proposer_llm.py + scripts/mh_evolve.py + 12 测试; 实时演示 qwen2.5:0.5b 78.2s 6 候选 → Pareto=IN; config/policies.yaml 零改动; 弱信号诚实标注）。此前: **Meta-Harness 核查** ✅（⚠️部分执行）+ **L2 tool_args** ✅ + **审计闭环** ✅ |
 | **CI 状态** | ✅ GATE 1-8 全绿（quality/policy/critic 3 job + all-gates 聚合；GATE 3 junitxml + 真实退出码 + ci_diagnose） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …`7423348` 外部治理整合+审计闭环+L2 tool_args（v1.37.0-toolargs）→ Meta-Harness 核查 + 遗留项设计留存 + 文档漂移修复（v1.38.0-mhverify, 待提交） |
+| **提交链** | …`7423348` 外部治理整合+审计闭环+L2 tool_args（v1.37.0-toolargs）→ `1796c5b` Meta-Harness 核查+遗留项设计留存+文档漂移修复（v1.38.0-mhverify）→ 阶段 2′ LLM 提议器（v1.39.0-mhproposer, 待提交） |
 
 ---
 
@@ -148,6 +148,7 @@
 - **v1.36.0-ml-prescreen**（2026-08-04）：ML/CV/DL 提案事实核查（7 资源验证 1 幻觉剔除 FireRL + SIREN 用途错配否决 + 基线过期纠正 + Base64 绕过探针 6/6 BLOCK 实证）+ 裁决 1' 落地 semantic_code_audit_async 代码片段语义预筛（extract_code_snippets/_code_judge_prompt/async 审计, AST 放行后 LLM-Judge 红线 A/C 复查, fail-soft 零新增依赖）；docs/ml_integration_verdict.md；12 新测试；AUDIT-0057；提交 e0e2b1a
 - **v1.37.0-toolargs**（2026-08-04）：外部治理资源整合（AC1/AC2：3 提案论文幻觉剔除 → 6 真实论文替代 + 4 repo 复核；docs/external_research_integration.md + docs/competitor_analysis.md）+ 研究产出审计闭环首次跑通（GATE 8 PASS + research_outputs/external-governance-resources_critique.md + lesson/insight 记忆 ×2；AUDIT-0058；D1 openapi 悬空引用/D2 README 版本滞后 顺带修复）+ **L2 tool_args YAML 规则**（policy.py：name glob + 参数键值复用 json_path 解析器 + 同调用作用域 + OpenAI 字符串/dict 双形态 + 加载期 fail-closed 校验；19 新测试；config/policies.yaml 未动避免 codegen 漂移，codegen tool_args 支持=文档化 P2）；848+ tests 分批全绿；提交 7423348
 - **v1.38.0-mhverify**（2026-08-04）：Meta-Harness 执行状态核查（docs/meta_harness_verification.md, AUDIT-0059, 元提示词驱动, 4 维度源码交叉验证；结论 ⚠️部分执行：trace 文件系统唯一真相+10M 预算/proposer 整树变异算子/pareto ≥3 轮非支配集/sandbox pytest 回归 = 真实基础设施；**编码 Agent 提议器未实现**（全模块无 LLM 调用, propose_fn 外部注入, 与斯坦福核心差距显著））+ 遗留项状态修正（AC3/AC5 DOCUMENTED + AC4/AC6 PRINCIPLE → .aionui/design/ 4 文档留存, 不消耗迭代资源；AC5 发现 sandbox.run_pytest_regression 已存在）+ 3 处文档-源码漂移修复（融合报告旧宣称 / wiki meta_scheduler 不存在 / wiki 28+ 执行器 BottleSumo 污染 / architecture_narrative 措辞）；纯文档+设计文档提交, 无代码变更
+- **v1.39.0-mhproposer**（2026-08-04）：阶段 2′ LLM 提议器（src/meta_harness/proposer_llm.py: LLMProposer + build_proposer_prompt + _extract_yaml_blocks + _urllib_client fail-closed + scripts/mh_evolve.py 驱动: incumbent → 诊断 → propose → validate_candidate → ParetoFrontier → 人工在环报告 + 12 新测试 test_proposer_llm.py; 候选域=策略规则 YAML（PolicyEngine 可加载）, 不变异核心引擎; 弱信号标注: 重放未命中/未检查 → quality=0.5 基线显式注明"不代表真实治理效果"; 事实核查: harness-forge ✅73★ + SuperagenticAI/metaharness ✅149★ + dkhanal ⛔404 幻觉剔除; 裁决: 阶段 1 拒绝 / 阶段 2′ 采纳 / 阶段 3=v2.0 推迟; 实时演示 qwen2.5:0.5b 78.2s 6 规则候选 → Pareto=IN; .aionui/context/mh_evolve_report.md 人工在环报告; config/policies.yaml 零改动; 861 tests 分批全绿; AUDIT-0060）
 
 ---
 

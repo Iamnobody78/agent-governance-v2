@@ -38,6 +38,15 @@
 - **D1/D2 MEDIUM 顺带修复**: OPERATIONS_MANUAL openapi.yaml 悬空引用标注待交付; README 版本滞后 v1.27.0-sql → v1.37.0-toolargs
 - **L2 tool_args YAML 规则**（P1）: policy.py 新增 tool_args 字段 — name（glob）+ 参数键值（复用 json_path 解析器, 相对参数路径支持嵌套）+ 同一 tool_calls 节点作用域 + OpenAI 字符串/dict 参数双形态; 加载期 fail-closed（非 dict/空值/与 json_path 互斥/非法键 → 拒绝载入）; 19 新测试 test_policy_tool_args.py; config/policies.yaml 未动避免 codegen 漂移（len(_MATCHERS)==len(rules) 契约）, codegen tool_args 支持=文档化 P2
 - **回归**: 848+ passed 分批全绿（63 文件 0 失败）; 快照 v1.37.0-toolargs
+## AUDIT-0060 — 阶段 2′ LLM 提议器（Proposer as LLM 会话）+ 三社区实现事实核查
+
+- **类型**: 能力扩展 + 事实核查（v1.39.0-mhproposer 快照）
+- **触发**: 用户提供 Stanford Meta-Harness 全貌 + 3 个新社区实现 + 三阶段接入路径; 隐含请求=事实核查 → 裁决 → 实施已批准阶段
+- **事实核查**: harness-forge（001TMF/harness-forge, 73★, "75 行核心循环"=真 · 装饰器+迭代式多阶段进化的极简演示）✅; SuperagenticAI/metaharness（149★）✅; dkhanal/meta-harness（PyTorch 版）⛔ GitHub API 404 = 幻觉, 已剔除。累计: 17 仓库核查, ~6 幻觉识别（FireRL/Anchor/ExecGov/Chimera/dkhanal/…）
+- **裁决**（三阶段路径）: 阶段 1（Forge 风格 75 行循环重写）= 拒绝 — src/proposer+pareto+sandbox 已封装为适配层, 重写=重构复杂且无收益（适配层本就是"mini-forge"）; **阶段 2′ 采纳**（缩小版）: LLM 会话接入 EvolutionLoop 作为 Proposer, 但候选域限定=策略规则 YAML（PolicyEngine 可加载验证）, 不变异核心引擎代码; 阶段 3（trace/store.py 接入 + meta_harness 重写）= v2.0 推迟
+- **交付**: src/meta_harness/proposer_llm.py（LLMProposer + build_proposer_prompt + _extract_yaml_blocks + _urllib_client fail-closed; env: MH_PROPOSER_URL/MODEL/TIMEOUT）+ scripts/mh_evolve.py（驱动: load_incumbent → collect_diagnosis → propose → validate_candidate → ParetoFrontier → 人工在环报告）+ tests/test_proposer_llm.py（12 测试: FakeLLM 注入 / 坏 YAML 丢弃 / 不可达·超时·空响应 fail-closed / max_candidates 上限 / 端到端驱动集 + policies.yaml 未修改安全断言 / 零候选诚实失败）; 弱信号标注: 重放未命中/未检查时 quality=0.5 基线并显式注明"不代表真实治理效果"
+- **演示**: 实时 qwen2.5:0.5b（Ollama）端到端 78.2s, 6 条规则候选 → 验证 → frontier（Pareto=IN）; .aionui/context/mh_evolve_report.md 留档人工在环警告; config/policies.yaml 零改动（人类在环硬边界）
+- **回归**: 861 passed 分批全绿; 快照 v1.39.0-mhproposer; commit 待记录
 ## AUDIT-0050 — Phase 1 SQL 规则(S1/S2/S3)+ 诚实硬化 + 嵌套容器绕过修复 + C1 容器化
 
 - **类型**: 规则交付 + 安全修复 + 容器化(v1.27.0-sql 快照)
