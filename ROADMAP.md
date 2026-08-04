@@ -34,13 +34,13 @@
 
 ## 阶段 C — 交付形态
 
-### C1:容器化一键启动 🎯
+### C1:容器化一键启动 ✅
 
 | 项目 | 状态 | 说明 |
 |------|:----:|------|
-| `/metrics` 端点 | 🎯 | Prometheus 暴露(先于 Docker) |
-| `Dockerfile` | 🎯 | 多阶段构建,python:3.11-slim |
-| `docker-compose.yml` | 🎯 | 网关 + Prometheus + Grafana |
+| `/metrics` 端点 | ✅ | 7 Prometheus gauge(uptime/decisions/escalations/breaker×2/ast_languages/pending_flush),`tests/test_metrics.py` |
+| `Dockerfile` | ✅ | 多阶段构建,python:3.11-slim,tree-sitter 锁版,非 root,healthcheck |
+| `docker-compose.yml` | ✅ | 网关 + Prometheus + Grafana 11.1.0,实机验证(health 200 / prom 200 / 容器内拦截生效) |
 
 ### C2:MCP 协议支持 🎯(MCP 平台化后置,独立里程碑)
 
@@ -49,11 +49,11 @@
 | MCP 服务注册 | 🎯 | 作为 MCP server 注册到 .aionui/mcp |
 | 工具级治理 | 🎯 | MCP 工具调用纳入五层裁决 |
 
-## 阶段 D — 工程完备性 🎯
+## 阶段 D — 工程完备性
 
 | 项目 | 状态 | 说明 |
 |------|:----:|------|
-| Phase 1 SQL 规则 | 🎯 | `update_stmt`(无 WHERE 拦截)+ `sensitive_schema`(S1/S2 修正设计),须注册 EXPECTED_CAPTURES |
+| Phase 1 SQL 规则 | ✅ | 已交付(AUDIT-0050,v1.27.0-sql):`update_stmt` 无 WHERE→DENY / 有 WHERE→ALLOW;`sensitive_schema` S1/S2/S3 三规则(信息_schema/pg_catalog/sqlite_master 等 8 库名);DROP DATABASE 语法边界诚实记录(YAML L2 兜底);AC1-AC5 全过,606 tests |
 | Phase 2 Bash 深度规则 | 🎯 | 管道/命令替换/变量间接寻址等语义层 |
 | Phase 3 Python 深度规则 | 🎯 | 类重绑定/装饰器逃逸/二进制协议等 |
 | 许可证 | 🎯 | 选定 MIT/APACHE 并落实 LICENSE 文件 |
@@ -66,12 +66,12 @@
 |------|------|
 | 文档诚实化:L5 宣称修正 | ✅ architecture_narrative "完整 Harness 工程自动化" → "策略建议器 + 能力边界明确"(adapter 源码自证只读/仅 YAML) |
 | 认证边界说明 | ✅ CERTIFICATION.md 补 ED25519 与 Git GPG 不兼容声明(项目内闭环,无 GitHub 徽章) |
+| GATE 合并评估 → 执行 | ✅ 8 GATE → 3 核心 job(quality/policy/critic)+ all-gates;GATE 7 版本无关化;Semgrep 列为 backlog 候选 |
+| bootstrap 因果链 → 执行 | ✅ Cycles 表新增 `repair_chain` JSON 列(problem→diagnosis→fix→verification);`auto_push=True` + 双环境变量门禁 |
 
 ### 已采纳-backlog(评估中)
 | 项目 | 说明 |
 |------|------|
-| GATE 合并评估 | 8 GATE → 3-4 核心门控;评估 Semgrep 替代自研扫描器(批判: 补丁式增长属实) |
-| bootstrap 因果链记录 | state.db 补"修复因果链"字段(批判: 仅记循环次数属实) |
 | tree-sitter 迁移路径 | 文档化 0.22+/1.6+ 升级路径评估(批判: 锁死属实但为主动决策) |
 | OTel 可观测性 | 从 /metrics 演进为 span 级决策链绑定(v2 候选) |
 
@@ -98,4 +98,5 @@
 
 | 日期 | 变更 |
 |------|------|
+| 2026-08-04 | v1.27.0-sql:Phase 1 SQL 规则交付(S1/S2/S3,AC1-AC5 ✅,606 tests)+ 嵌套容器绕过修复 + C1 容器化完成 + P0-1/P0-2/P1-1 诚实硬化 |
 | 2026-08-03 | 基线:阶段 0 完成;阶段 A 完成(README/ROADMAP/数据/迁移);阶段 B 完成(自愈 + 浏览器防护双 demo);阶段 C1/C2/D 规划中 |

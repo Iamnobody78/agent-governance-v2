@@ -3,6 +3,27 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0050 — Phase 1 SQL 规则(S1/S2/S3)+ 诚实硬化 + 嵌套容器绕过修复 + C1 容器化
+
+- **类型**: 规则交付 + 安全修复 + 容器化(v1.27.0-sql 快照)
+- **裁决依据**: 用户裁决 ② "推进 Phase 1 SQL 规则" + 硬核缺陷修复协议 P0-1/P0-2/P1-1
+- **Phase 1 SQL 规则**(`queries/sql.scm` + `src/ast_guard.py`):
+  - **S1/S2**: `from_clause` 下 dotted_name/裸 identifier `@sensitive_schema`,正则 `^(information_schema|pg_catalog|sqlite_master|mysql|sys|performance_schema|pg_toast)$`
+  - **S3**: `update_statement` 目标名敏感 schema(无通配符子节点匹配,零误报于 SET 子句)
+  - **update_stmt 语义**: 无 WHERE → 提升 `destructive-update` DENY;有 WHERE → ALLOW(与 `1=1` 恒真判别,测试真断言)
+  - **DROP DATABASE 诚实边界**: tree-sitter-sql 解析为 ERROR 节点(方言边界)→ AST 不拦截,YAML L2 兜底,`test_drop_database_grammar_boundary` 记录非伪造
+  - **AC 验收**: AC1 无 WHERE UPDATE→DENY ✅ / AC2 有 WHERE→ALLOW ✅ / AC3 information_schema→DENY ✅ / AC4 user_information→ALLOW ✅ / AC5 606 ≥ 574 ✅
+  - **基准扩展**: 20 恶意 + 15 良性 → 20/20 检测,0/15 误报,100% precision
+- **嵌套容器绕过修复**(`src/payload_extractor.py`): `{"sql":{"query":"DELETE..."}}` 此前静默丢弃 → 绕过 AST 门(502);修复为递归进入语言键容器 → 202 ESCALATE。教训: **202 = ESCALATE 拦截,≠ 放行**(此前 502 漏拦截对照)
+- **诚实硬化(P0-1/P0-2/P1-1)**:
+  - Bootstrap 真实化: `auto_push=True` 默认 + 双环境变量门禁(`CONTEXT_HMAC_KEY`+`GATE_8_SKIP`)+ Cycles 表 `repair_chain` JSON 列
+  - CI 8→3 job 合并(quality/policy/critic)+ all-gates 聚合;GATE 7 版本无关化
+  - L5 命名诚实化: "完整 Harness 工程自动化" → "策略建议器(适配层)",README/architecture_narrative 同步
+- **C1 容器化**: `/metrics` 端点(7 gauge)+ Dockerfile 多阶段 + compose 三件套,实机验证(health 200 / prometheus 200 / grafana 11.1.0 / 容器内拦截生效)
+- **全量回归**: 606 passed + 2 环境性失败(mock :8000 超时,stash 对照证明非回归)
+- **Commit 链**: `0121d22`(Phase 1 SQL)→ `be24039`(P0/P1 硬化)→ `e9ad8ab`(bench 扩展)→ snapshot v1.27.0-sql
+- **下一轮**: Phase 2 Bash 深度规则 / P1-2 GPG / P2-1 AST 迁移(backlog)
+
 ## AUDIT-0049 — 阶段 0 SQL 硬验证 + 阶段 A 定位 + 真实拦截率基准(两缺口修复)
 
 - **类型**: 事实核查 + 项目定位 + 真实数据基准(meta-harness 内环闭环)

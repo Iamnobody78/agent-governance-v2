@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.25.0
-> 快照时间: 2026-08-03（Tree-sitter AST 硬阻断引擎——Priority 0 前门，五层架构 L1 内核强化；零正则 S-expression 查询）
-> 最近审计: AUDIT-0046（AST 硬阻断引擎）+ AUDIT-0045（社区标准合规补全）+ AUDIT-0044（Meta-Binding）
+> 版本: v1.27.0-sql
+> 快照时间: 2026-08-03（Phase 1 SQL 规则完成：UPDATE 无 WHERE + 敏感 schema 三语言硬门禁全覆盖；诚实硬化 P0-1/P0-2/P1-1）
+> 最近审计: AUDIT-0049（阶段 0 SQL 硬验证 + 阶段 A 定位 + 真实拦截率基准两缺口修复）+ AUDIT-0050（Phase 1 SQL 规则）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,14 +12,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 574 passed（基线 542 + 新增 32：ASTGuard 18 + PayloadExtractor 9 + policy 集成 5；另 2 网络类 flaky 环境性失败记录） |
-| **覆盖率** | 87%（`--source=src` 实测 2026-08-03；门槛 ≥ 60%；较 90.12% 旧口径降低系 scope 含 meta_harness 68-70%，非回归） |
-| **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞）；DEBT-0027（P6 认证缺失）已清偿 |
-| **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受） |
-| **最近事件** | **Tree-sitter AST 硬阻断引擎完成** ✅（裁决：修复+优先集成 policy.py → AST 前门 Priority 0，先于一切 YAML 规则匹配；`src/ast_guard.py`(P1 Capture 校验/P2 payload_extractor 提取/P3 命令表仅存 .scm 零硬编码/fail-closed 启动) + `src/payload_extractor.py` + `queries/{python,bash,sql}.scm`(S-expression 零正则) + policy.py `_ast_gate` 集成 + main.py 注入(AG_AST_DISABLE=1 逃生舱)；依赖锁定 tree-sitter==0.21.3+tree-sitter-languages==1.5.0（0.25+ 移除 Query 匹配 API、#any-of? 谓词在 0.21.3 失效已改 #match?）；574 tests；GATE 8 5/5 PASS。此前：**社区标准合规补全** ✅（v1.24.0：CODE_OF_CONDUCT/SECURITY/Issue+PR 模板/Dependabot/codeql.yml/README 3 社区徽章；542 tests） |
-| **CI 状态** | ✅ GATE 1-8 全绿（GATE 8 = Critic Agent 五批判者，全量回归 exit 0） |
+| **测试全量** | 606 passed（基线 573 + 新增 33：SQL Phase1 25 + /metrics 3 + bootstrap 门禁 2 + CI 契约 3；另 2 网络类 flaky 环境性失败记录，stash 对照证明非回归） |
+| **覆盖率** | 87%（`--source=src` 实测；门槛 ≥ 60%） |
+| **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞） |
+| **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）；新增已知边界: DROP DATABASE = grammar ERROR 节点（tree-sitter-sql 方言边界, L2 YAML 兜底） |
+| **最近事件** | **Phase 1 SQL 规则完成** ✅（S1: from_clause dotted_name 敏感 schema / S2: from_clause 裸名 / S3: update_statement 目标表; update_stmt 无 WHERE → destructive-update 阻断; 新捕获注册 EXPECTED_CAPTURES P1; 基准扩展 20/20 检测 0/15 误报）。此前: **诚实硬化** ✅（P0-1 bootstrap auto_push 门禁式开启 + repair_chain 因果链 / P0-2 CI 8 GATE → 3 核心 job / P1-1 L5 宣称修正为"策略级自进化"）；**阶段 C1 Docker** ✅（/metrics 7 指标 + Dockerfile + compose 三件套实机验证 health 200/prom 200/grafana 11.1.0）；**嵌套容器绕过漏洞修复** ✅（{"sql":{"query":...}} 静默漏提 → 递归修复 → 202 ESCALATE） |
+| **CI 状态** | ✅ GATE 1-8 全绿（合并为 quality/policy/critic 3 job + all-gates 聚合；GATE 7 版本解耦） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …P13: `docs/AUTH.md + 快照` 提交 `c5687db`（v1.23.0）→ META-BINDING 提交 `0e157d4`/`5520b7d` → 社区标准: `CODE_OF_CONDUCT+SECURITY+模板+Dependabot+codeql` 提交 `（v1.24.0）` → AST 硬阻断: `ast_guard+payload_extractor+queries+policy 集成` 提交 `（v1.25.0）` |
+| **提交链** | …v1.25.0 AST 硬阻断 → `9145c91` 文档诚实化（L5 边界/ED25519-Git）→ `a68da51` 嵌套修复+C1 → `0121d22` Phase 1 SQL（S1/S2/S3）→ `be24039` P0-1/P0-2/P1-1 硬化 → `e9ad8ab` 基准扩展 → 快照 v1.27.0-sql |
 
 ---
 
