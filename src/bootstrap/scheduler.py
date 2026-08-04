@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS cycles (
     summary TEXT,
     diagnoses TEXT,                   -- JSON 列表
     actions TEXT,                     -- JSON 列表（执行的自动修复）
-    human_review TEXT                 -- JSON 列表（需人工项）
+    human_review TEXT,                -- JSON 列表（需人工项）
+    repair_chain TEXT                 -- JSON: 完整修复因果链 (问题→诊断→修复→验证)
 );
 CREATE TABLE IF NOT EXISTS cycles_failures (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,6 +47,16 @@ CREATE TABLE IF NOT EXISTS cycles_failures (
 );
 """
 
+# 门禁式自动推送: 默认 auto_push=True（非演示），但真正执行 push 必须同时存在
+# 两个环境变量（CI 专用），防止本地/误配置环境自动推送错误补丁到主分支。
+# 不满足门禁时: 提交照常，push 降级为"生成补丁待人工确认"。
+PUSH_GATE_ENV = ("CONTEXT_HMAC_KEY", "GATE_8_SKIP")
+
+
+def _push_gate_open() -> bool:
+    import os
+    return all(os.environ.get(k) for k in PUSH_GATE_ENV)
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -53,8 +64,12 @@ def _now() -> str:
 
 @dataclass
 class SchedulerConfig:
-    """确定性调度配置（默认值即人类 in-the-loop 安全默认）。"""
-    auto_push: bool = False          # 推送需人工确认（默认关）
+    """确定性调度配置。
+
+    auto_push 默认 True（非演示模式），但实际 push 受 _push_gate_open() 双环境
+    变量门禁保护——门禁关闭时提交照常、推送降级为人工确认（fail-safe）。
+    """
+    auto_push: bool = True           # 默认开启; 实际推送需环境变量门禁 (P0-1)
     run_tests: bool = True           # 修复后跑 pytest 回归
     tests_dir: str = "tests"
     max_fixes_per_cycle: int = 3     # 单轮最多自动修复数
@@ -90,14 +105,28 @@ class BootstrapScheduler:
             conn.executescript(_SCHEMA)
 
     def _persist_cycle(self, report: CycleReport) -> int:
+        # repair_chain: 从 actions 提取每条修复的完整因果链 (问题→诊断→修复→验证)
+        chains = []
+        for a in report.actions:
+            if isinstance(a, dict) and "repair_chain" in a:
+                chains.append({"action": a.get("action"),
+                               "status": a.get("status"),
+                               "chain": a["repair_chain"]})
+            elif isinstance(a, dict):
+                chains.append({"action": a.get("action"),
+                               "status": a.get("status"),
+                               "chain": {"problem": a.get("action"),
+                                         "detail": a.get("detail", "")}})
         with sqlite3.connect(str(self.db_path)) as conn:
             cur = conn.execute(
                 "INSERT INTO cycles (started_at, ended_at, status, summary,"
-                " diagnoses, actions, human_review) VALUES (?,?,?,?,?,?,?)",
+                " diagnoses, actions, human_review, repair_chain)"
+                " VALUES (?,?,?,?,?,?,?,?)",
                 (_now(), _now(), report.status, report.summary,
                  json.dumps(report.diagnoses, ensure_ascii=False),
                  json.dumps(report.actions, ensure_ascii=False),
-                 json.dumps(report.human_review, ensure_ascii=False)))
+                 json.dumps(report.human_review, ensure_ascii=False),
+                 json.dumps(chains, ensure_ascii=False)))
             return int(cur.lastrowid)
 
     def _persist_failure(self, cycle_id: int, detail: str) -> None:

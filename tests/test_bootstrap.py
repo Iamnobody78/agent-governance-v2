@@ -211,11 +211,12 @@ class TestScheduler:
                              errors="replace")
         assert "scratch.txt" in out.stdout
 
-    def test_auto_push_default_off(self):
-        """AC5: 人类 in-the-loop — auto_push 默认 False。"""
+    def test_auto_push_gated(self):
+        """P0-1: auto_push 默认 True（非演示），但实际推送受双环境变量门禁。"""
+        from src.bootstrap.scheduler import _push_gate_open
         cfg = SchedulerConfig()
-        assert cfg.auto_push is False
-
+        assert cfg.auto_push is True  # 非演示模式（旧默认 False 已废弃）
+        assert not _push_gate_open()  # 门禁未开 → push 降级为人工确认
     def test_cycle_rolls_back_on_failure(self, git_repo, tmp_path,
                                          monkeypatch):
         """AC4 调度层: 单轮失败 → ROLLED_BACK + 失败记录入库。"""

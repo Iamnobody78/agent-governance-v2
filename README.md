@@ -1,6 +1,6 @@
 # governance-gateway
 
-**非侵入式 Sidecar/Proxy 智能体治理网关** — 在 Agent 与 LLM 之间建立可审计的策略裁决层,以 AST 级语义分析拦截危险请求,并基于 Meta-Harness 双环架构持续自进化。
+**非侵入式 Sidecar/Proxy 智能体治理网关** — 在 Agent 与 LLM 之间建立可审计的策略裁决层,以 AST 级语义分析拦截危险请求,并基于 Meta-Harness 适配层做**策略级**持续优化(诚实边界:生成策略候选,不修改核心引擎代码)。
 
 > 架构叙事与演进史见 [`docs/architecture_narrative.md`](docs/architecture_narrative.md)
 > 现行架构权威参考见 [`docs/architecture.md`](docs/architecture.md)
@@ -15,7 +15,7 @@
 | 🔬 **AST 语义门** | 基于 tree-sitter 的代码级分析(锁定 `0.21.3` + `1.5.0`),非字符串匹配 |
 | 🌐 **三语言覆盖** | Python(`eval`/`exec`/动态导入)、Bash(破坏性命令/标志/重定向)、SQL(危险 DDL/敏感 Schema) |
 | 🧠 **治理大脑** | YAML 声明式策略引擎 + 值表正则内嵌 .scm(零 Python 硬编码) |
-| 🔄 **自进化** | Meta-Harness 双环:内环自动调度器演化 + 外环多 Agent 治理 |
+| 🔄 **策略级自进化** | Meta-Harness 适配层:内环生成策略候选 + Pareto 前沿裁决(只读 storage、不改核心引擎——诚实边界) |
 | 📊 **全链路审计** | 每次请求的裁决轨迹落盘,`/v1/traces` 可回溯 |
 | 🧪 **CI 质量门** | 8 道 GATE(单测 / lint / 扫描器 / E2E / HIL)全绿 |
 
@@ -73,7 +73,7 @@ curl -X POST http://localhost:8000/v1/chat/completions -H "Content-Type: applica
 │  Agent / LLM │ ──▶ │        governance-gateway (sidecar)      │ ──▶ │  Upstream │
 └─────────────┘     │                                         │     └──────────┘
                     │  L1 基础设施 │ L2 核心网关 │ L3 治理大脑  │
-                    │  L4 批判智能体 │ L5 Meta-Harness 自进化   │
+                    │  L4 批判智能体 │ L5 策略级自进化(适配层) │
                     └─────────────────────────────────────────┘
 ```
 

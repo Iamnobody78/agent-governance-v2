@@ -119,7 +119,16 @@ def commit_fix(repo_root: str | Path, changed: list[Path], action: str,
 
 
 def push_fix(repo_root: str | Path) -> dict:
-    """推送（需显式 auto_push=True）。返回 {"pushed": bool, "detail": str}。"""
+    """推送（需显式 auto_push=True 且环境变量门禁打开）。
+
+    P0-1: 门禁 (CONTEXT_HMAC_KEY + GATE_8_SKIP 同时存在) 未开时不推送,
+    返回 pushed=False + 原因 —— 提交已完成, 推送降级为人工确认。
+    """
+    from .scheduler import _push_gate_open
+    if not _push_gate_open():
+        return {"pushed": False,
+                "detail": "门禁未开: 需 CONTEXT_HMAC_KEY 与 GATE_8_SKIP 同时存在"
+                          "(CI 专用); 提交已完成, 推送待人工确认"}
     root = Path(repo_root)
     proc = _git(root, ["push"])
     if proc.returncode != 0:
@@ -143,28 +152,37 @@ def run_fix(action: str, repo_root: str | Path, *,
             tests_dir: str = "tests") -> dict:
     """执行单个动作的完整闭环（生成→验证→提交/回滚）。
 
-    返回统一结果字典（含 diagnosis 记录）:
+    返回统一结果字典（含 diagnosis 记录与 repair_chain 因果链）:
       {"action", "status": "DEPLOYED|ROLLED_BACK|NOOP|FAILED",
-       "detail", "commit", "tests"}
+       "detail", "commit", "tests", "repair_chain"}
     """
+    chain = {"problem": action, "diagnosis": "codegen 漂移检测",
+             "fix": "", "verification": ""}
     try:
         result = generate_fix(action, repo_root)
     except Exception as exc:  # noqa: BLE001 — 确定性失败也须入诊断
+        chain.update(fix=f"生成失败: {exc}", verification="未验证")
         return {"action": action, "status": "FAILED",
-                "detail": f"生成失败: {exc}", "commit": None, "tests": None}
+                "detail": f"生成失败: {exc}", "commit": None, "tests": None,
+                "repair_chain": chain}
+    chain["fix"] = result["detail"]
 
     if not result["changed"]:
+        chain.update(verification="幂等: 无变更")
         return {"action": action, "status": "NOOP",
-                "detail": result["detail"], "commit": None, "tests": None}
+                "detail": result["detail"], "commit": None, "tests": None,
+                "repair_chain": chain}
 
     verify = verify_fix(repo_root, result["changed"],
                         tests_dir=tests_dir, run_tests=run_tests)
+    chain["verification"] = verify["detail"]
     if not verify["verified"]:
         rb = rollback(repo_root, result["changed"])
+        chain.update(verification=f"{verify['detail']} → 已回滚")
         return {
             "action": action, "status": "ROLLED_BACK",
             "detail": f"验证失败→回滚: {verify['detail']} | {rb['detail']}",
-            "commit": None, "tests": verify["tests"],
+            "commit": None, "tests": verify["tests"], "repair_chain": chain,
         }
 
     commit = commit_fix(repo_root, result["changed"], action, verify["detail"])
@@ -179,4 +197,5 @@ def run_fix(action: str, repo_root: str | Path, *,
                    + (f" | {pushed['detail']}" if pushed else " | push 跳过(需人工确认)")),
         "commit": commit,
         "tests": verify["tests"],
+        "repair_chain": chain,
     }

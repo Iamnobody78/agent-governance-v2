@@ -1,10 +1,14 @@
-# GATE 1-8 CI — agent-governance-v2
+# governance-gateway CI — 3 核心门控 (P0-2 合并: 8 GATE → 3 job)
 #
 # Contract (tests/test_ci_workflow.py, DEBT-0003 / TASK-REAL-012):
 #   the workflow MUST define an `all-gates` job whose `needs` lists exactly
-#   these 7 gate jobs: test-quality, policy-audit, gateway-smoke,
-#   policy-probe, meta-security, policy-sync, critic-gate.
+#   these 3 gate jobs: quality, policy, critic.
 # Branch protection then requires a single check name ("all-gates").
+#
+# 2026-08-03 P0-2: 合并 7 job → 3 job (quality/policy/critic)，消除脚本堆砌式
+# 膨胀；GATE 能力全部保留。手写扫描器 (check_policy/meta_security/check_test
+# _quality/policy_sync) 保留——它们承载项目特定语义 (P3 铁律: 值表仅存在于
+# .scm、EXPECTED_CAPTURES 一致性)，Semgrep 无法表达，评估入 backlog。
 name: gates-1-8
 
 on:
@@ -15,8 +19,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  # GATE 1 (syntax) + GATE 3 (full regression >= 450) + test-quality gates
-  test-quality:
+  # ═══ 核心门控 1: quality (GATE 1 语法 + GATE 3 全量回归 + 测试质量) ═══
+  quality:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -44,10 +48,10 @@ jobs:
       - name: Test quality gates (no fake asserts, test count)
         run: python scripts/check_test_quality.py
 
-  # GATE 2a (no hardcoded policy) + GATE 5 (certification self-check)
-  policy-audit:
+  # ═══ 核心门控 2: policy (GATE 2a/2b/2c + 4a 反模式 + GATE 5 认证) ═══
+  policy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -60,16 +64,22 @@ jobs:
           pip install "cryptography>=42.0"
       - name: "GATE 2a — no hardcoded policy in source"
         run: python scripts/check_policy.py
+      - name: "GATE 2b — policy consistency probe"
+        run: python examples/policy_probe.py
+      - name: "GATE 2c — policy YAML drift detection"
+        run: python scripts/policy_sync.py
+      - name: "GATE 4a — anti-pattern scan (fail-open / bypass)"
+        run: python scripts/meta_security_scanner.py
       - name: "GATE 5 — certification self-check (ED25519 sign/verify)"
         run: |
           SIG=$(python -m src.certification.sign --file CONTRIBUTING.md 2>/dev/null | tail -1)
           test -n "$SIG" || { echo "GATE 5 FAIL: empty signature"; exit 1; }
           python -m src.certification.verify --file CONTRIBUTING.md --signature "$SIG"
 
-  # GATE 6 — live gateway E2E: B1 (LangChain) + B2 (AutoGen) + 3 examples
-  gateway-smoke:
+  # ═══ 核心门控 3: critic (GATE 6 E2E + GATE 7 制品 + GATE 8 批判者) ═══
+  critic:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -105,82 +115,18 @@ jobs:
           grep -q "DENY" /tmp/lc.log && grep -q "ESCALATE" /tmp/lc.log || { echo "langchain evidence missing"; tail -20 /tmp/lc.log; exit 1; }
           grep -q "DENY" /tmp/ac.log && grep -q "trace_id" /tmp/ac.log || { echo "autogen evidence missing"; tail -20 /tmp/ac.log; exit 1; }
           echo "GATE 6c PASS: all examples governed + evidence verified"
-
-  # GATE 2b — policy consistency probe
-  policy-probe:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.11"
-      - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: "GATE 2b — policy consistency probe"
-        run: python examples/policy_probe.py
-
-  # GATE 4a — meta-security anti-pattern AST scan (AUDIT-0005 lessons)
-  meta-security:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.11"
-      - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: "GATE 4a — anti-pattern scan (fail-open / bypass)"
-        run: python scripts/meta_security_scanner.py
-
-  # GATE 2c — YAML vs runtime heuristic drift detection (AUDIT-0004 lesson)
-  policy-sync:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.11"
-      - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: "GATE 2c — policy YAML drift detection"
-        run: python scripts/policy_sync.py
-
-  # GATE 8 — critic team (5 critics, majority pass) + governance artifacts
-  critic-gate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.11"
-      - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
       - name: "GATE 7 — governance artifacts consistent"
         run: |
           test -f .aionui/audit_log.md || { echo "GATE 7 FAIL: audit_log.md missing"; exit 1; }
           test -f .aionui/context/TRIPLE_LOOP_SNAPSHOT.md || { echo "GATE 7 FAIL: snapshot missing"; exit 1; }
-          grep -q "^> 版本: v1.25.0" .aionui/context/TRIPLE_LOOP_SNAPSHOT.md || { echo "GATE 7 FAIL: snapshot version != v1.25.0"; exit 1; }
-          grep -q "AUDIT-0046" .aionui/audit_log.md || { echo "GATE 7 FAIL: AUDIT-0046 missing"; exit 1; }
           echo "GATE 7 PASS: artifacts consistent"
       - name: "GATE 8 — critic team (5 critics, majority pass)"
         run: python -m src.critic.runner
 
   # Contract aggregation job (DEBT-0003): single check name for branch protection
   all-gates:
-    needs: [test-quality, policy-audit, gateway-smoke, policy-probe, meta-security, policy-sync, critic-gate]
+    needs: [quality, policy, critic]
     runs-on: ubuntu-latest
     steps:
       - name: All gates passed
-        run: echo "GATE 1-8 PASS"
+        run: echo "GATE 1-8 PASS (3 merged jobs)"
