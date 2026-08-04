@@ -147,6 +147,67 @@ def _json_extract(body, json_path: str, segments=None) -> List[str]:
     return strings
 
 
+# ── L2 (2026-08-04): tool_args 工具调用规则 ─────────────────────────────
+# 匹配 OpenAI 规范工具调用: body.messages[].tool_calls[].function.{name,
+# arguments} 与扁平 body.tool_calls[].function。'arguments' 为 JSON 字符串
+# (OpenAI 规范) 或 dict (部分网关直传); 解析失败 → {} (该调用无法验证,
+# 规则不匹配 — 安全回退)。参数键值提取复用 json_path 解析器 (相对参数
+# 的路径, 支持嵌套, 如 "args.files[0]")。
+
+_TOOL_CALL_PATHS = (
+    "$.messages[*].tool_calls[*].function",
+    "$.tool_calls[*].function",
+)
+
+
+def _tool_call_functions(body):
+    """提取请求体中的工具调用函数节点 → [{"name": str, "args": dict}]。"""
+    if isinstance(body, str) and body.strip():
+        try:
+            body = json.loads(body)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(body, dict):
+        return []
+    out = []
+    for path in _TOOL_CALL_PATHS:
+        try:
+            segs = _parse_json_path(path)
+        except ValueError:
+            continue
+        found = []
+        _extract_at(body, segs, 0, found)
+        for node in found:
+            if not isinstance(node, dict):
+                continue
+            fn_name = node.get("name")
+            if not isinstance(fn_name, str):
+                fn_name = ""
+            raw_args = node.get("arguments")
+            if isinstance(raw_args, dict):
+                args = raw_args
+            elif isinstance(raw_args, str) and raw_args.strip():
+                try:
+                    args = json.loads(raw_args)
+                except json.JSONDecodeError:
+                    args = {}
+                if not isinstance(args, dict):
+                    args = {}
+            else:
+                args = {}
+            out.append({"name": fn_name, "args": args})
+    return out
+
+
+def _glob_match(value: str, pattern: str) -> bool:
+    """Glob 语义匹配 ('*' 通配任意序列), 用于 tool_args 值。
+    '/etc/*' 命中 '/etc/passwd'; 注意非正则 (正则需写 '/etc/.*')。"""
+    if pattern == "*":
+        return True
+    rx = "^" + re.escape(pattern).replace(r"\*", ".*") + "$"
+    return bool(re.match(rx, value))
+
+
 # ── P3 (DEBT-0026): json_path 前缀索引树 ─────────────────────────────
 # 规则多时 evaluate() 对每条 json_path 规则都 _json_extract 全量走树
 # (O(R×N))。索引按规则 json_path 首段键桶化; 请求体顶层键集合单次 O(N)
@@ -221,6 +282,11 @@ class Rule:
     # P6 (外部评审缺口 #1): 租户作用域 — None=全局规则 (所有租户生效);
     # 指定 tenant_id 的规则仅对该租户的请求生效 (跨租户隔离, 见 evaluate)。
     tenant_id: Optional[str] = None
+    # L2 (2026-08-04): tool_args 规则 — 匹配工具调用 (name + 参数键值)。
+    # 与 json_path/json_pattern 互斥 (fail-closed); 值语义为 glob ('*' 通配)。
+    tool_args: Optional[dict] = None
+    # __post_init__ 预解析: tool_args 非 name 键 → json_path segments 缓存
+    _tool_arg_segments: dict = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
         normalized = str(self.action).upper()
@@ -257,22 +323,56 @@ class Rule:
                 f"rule '{self.name}': tenant_id must be a non-empty string or "
                 f"omitted (None = global rule) — got {self.tenant_id!r} (fail-closed)"
             )
+        # L2 (2026-08-04): tool_args 加载期校验 (fail-closed) — 非 dict / 空 /
+        # 空键 / 空值 / 与 json_path 共存 / 非法 json_path 键 → 拒绝载入。
+        if self.tool_args is not None:
+            if not isinstance(self.tool_args, dict) or not self.tool_args:
+                raise ValueError(
+                    f"rule '{self.name}': tool_args must be a non-empty dict (fail-closed)"
+                )
+            if self.json_path is not None or self.json_pattern is not None:
+                raise ValueError(
+                    f"rule '{self.name}': tool_args is mutually exclusive with "
+                    f"json_path/json_pattern (fail-closed)"
+                )
+            segs: dict = {}
+            for key, val in self.tool_args.items():
+                if not isinstance(key, str) or not key.strip():
+                    raise ValueError(
+                        f"rule '{self.name}': tool_args keys must be non-empty strings"
+                    )
+                if not isinstance(val, str) or not val.strip():
+                    raise ValueError(
+                        f"rule '{self.name}': tool_args value for {key!r} must be "
+                        f"a non-empty string (fail-closed)"
+                    )
+                if key != "name":
+                    try:
+                        segs[key] = _parse_json_path(key)
+                    except ValueError as e:
+                        raise ValueError(
+                            f"rule '{self.name}': tool_args key {key!r} is not a "
+                            f"valid json_path — {e} (fail-closed)"
+                        ) from e
+            self._tool_arg_segments = segs
 
     def matches(self, path: str, method: str, body=None) -> bool:
         method_ok = self.method is None or self.method.upper() == method.upper()
         path_ok = self._path_matches(path)
         if not (method_ok and path_ok):
             return False
-        if self.json_path is None:
+        if self.json_path is None and self.tool_args is None:
             return True
-        # 条件规则: 请求体 JSON 中 json_path 提取值需匹配 json_pattern。
-        # 非 JSON 体/无法提取 → 条件不满足 → 规则不匹配 (安全回退)。
-        values = _json_extract(body, self.json_path, segments=self._segments)
-        if not values:
-            return False
-        if self.json_pattern is None:
-            return True  # 仅要求路径存在 (调用方自行保证该语义的合理性)
-        return any(re.search(self.json_pattern, v) for v in values)
+        if self.json_path is not None:
+            # 条件规则: 请求体 JSON 中 json_path 提取值需匹配 json_pattern。
+            # 非 JSON 体/无法提取 → 条件不满足 → 规则不匹配 (安全回退)。
+            values = _json_extract(body, self.json_path, segments=self._segments)
+            if not values:
+                return False
+            if self.json_pattern is None:
+                return True  # 仅要求路径存在 (调用方自行保证该语义的合理性)
+            return any(re.search(self.json_pattern, v) for v in values)
+        return self._tool_args_match(body)
 
     def _path_matches(self, path: str) -> bool:
         normalized = posixpath.normpath(path.split("?", 1)[0])
@@ -283,6 +383,37 @@ class Rule:
             return bool(re.match(pattern, normalized))
         if self.path_pattern.endswith("/") and normalized.startswith(self.path_pattern):
             return True
+        return False
+
+    def _tool_args_match(self, body) -> bool:
+        """L2: 工具调用规则 — 同一 tool_calls 节点内 name 与参数键值同时命中。
+
+        body 中任一工具调用满足全部条件 → 规则命中。'name' 值为 glob;
+        其余键为相对参数的 json_path, 提取值中任意标量匹配 glob 即满足该键。
+        arguments 为 JSON 字符串 (OpenAI 规范) 或 dict; 解析失败 → 不匹配
+        (安全回退 — 无法验证的声明不放行)。
+        """
+        name_glob = self.tool_args.get("name")
+        arg_conds = [(k, v) for k, v in self.tool_args.items() if k != "name"]
+        for fn in _tool_call_functions(body):
+            if name_glob is not None and not _glob_match(fn["name"], name_glob):
+                continue
+            if not arg_conds:
+                return True
+            args = fn["args"]
+            ok = True
+            for key, pattern in arg_conds:
+                found = []
+                _extract_at(args, self._tool_arg_segments[key], 0, found)
+                if not any(
+                    isinstance(v, (str, int, float, bool))
+                    and _glob_match(str(v), pattern)
+                    for v in found
+                ):
+                    ok = False
+                    break
+            if ok:
+                return True
         return False
 
 
@@ -332,6 +463,7 @@ class PolicyEngine:
                 escalation_channel=rule_data.get("escalation_channel", "slack"),
                 json_path=rule_data.get("json_path"),
                 json_pattern=rule_data.get("json_pattern"),
+                tool_args=rule_data.get("tool_args"),
                 tenant_id=rule_data.get("tenant_id"),
             )
             new_rules.append(rule)

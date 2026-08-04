@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.36.0-ml-prescreen
-> 快照时间: 2026-08-04（ML/CV/DL 集成提案事实核查 + 裁决 1' 落地 — 提案资源逐项验证: SIREN✅(用途错配: LLM内容有害性检测非代码安全, HF路径应为UofTCSSLab)/CodeAstra✅(极冷门 26 downloads)/SingGuard✅/wolf-defender✅/verl-agent✅/MicroSafe-RL✅/**FireRL⛔幻觉资源剔除**/GiGPO⚠️无法确认; 提案基线 606/v1.27.0-sql 过期(实际 809+/v1.35.0-persist); "Base64绕过未解决"不成立(探针实证 6/6 BLOCK 含拼接形态); 裁决: Phase1' 批准=复用 judge/llm_judge 资产新增 semantic_code_audit_async 代码片段语义预筛(AST放行的工具参数送 LLM-Judge 红线A/C 复查, 高风险撤销 trace, fail-soft, 零新增依赖), Phase2 多模态推迟(无输入面), Phase3 RL 推迟(FireRL幻觉+确定性治理原则); 新测试 12 (test_semantic_code_hook.py), 语义钩子 26 + 治理大脑 20 全绿; 依据 docs/ml_integration_verdict.md）
-> 最近审计: AUDIT-0057（ML 提案事实核查 + 代码语义预筛）+ AUDIT-0056（落盘协议）+ AUDIT-0055（蒸馏泛化 benchmark）
+> 版本: v1.37.0-toolargs
+> 快照时间: 2026-08-04（外部治理资源整合: 3 提案论文 Anchor/Execution Governance/Chimera ⛔幻觉(arXiv 零命中)→以 6 真实论文替代(SafeAgent 2604.17562/ExecGov 2512.04408/POLARIS 2601.11816/Deontic 2606.19464/CAVA 2607.13716/GAD 2604.19112); repos 复核 omnigent-ai 8085★ 非 Databricks/MSFT 5605★/ruvnet-metaharness 544★/Agent-StrongHold 1★; docs/external_research_integration.md + docs/competitor_analysis.md (AC1/AC2); **研究产出审计闭环** ✅ 首次跑通(GATE 8 PASS + research_outputs/external-governance-resources_critique.md + 2 条 lesson/insight 记忆; AUDIT-0058; D1/D2 MEDIUM 顺带修复); **L2 tool_args YAML 规则** ✅(policy.py: name glob + 参数键值复用 json_path 解析器 + 同调用作用域 + 加载期 fail-closed 校验(非 dict/空值/与 json_path 互斥/非法键); 19 新测试; config/policies.yaml 未动避免 codegen 漂移, codegen tool_args 支持=文档化 P2)
+> 最近审计: AUDIT-0058（研究产出审计闭环: GATE 8 PASS + 6 论文/4 repo 独立复核）+ AUDIT-0057（ML 提案事实核查 + 代码语义预筛）+ AUDIT-0056（落盘协议）+ AUDIT-0055（蒸馏泛化 benchmark）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,14 +12,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | ~880+ passed（分批全绿；记忆协议三件套 +25：write_memory 9 + knowledge_distill 9 + load_lessons 7；test_p2_env 17、test_p2_research_runner 13、test_taint 11、test_research_mcp 5；环境级慢非回归） |
+| **测试全量** | 848+ passed（分批全绿 63 文件 0 失败；本轮 +19 tool_args；环境级慢非回归） |
 | **覆盖率** | 87%（`--source=src` 实测；门槛 ≥ 60%） |
 | **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞） |
 | **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）；已知边界: ① 拼接形态已由 src/taint.py 闭合（函数参数跨界/条件分支/属性链传播仍为边界）；② DROP DATABASE = grammar ERROR 节点（L2 YAML 兜底） |
-| **最近事件** | **ML 集成提案核查+裁决** ✅（docs/ml_integration_verdict.md: 7 资源验证 1 幻觉剔除; 裁决 1' 落地 = semantic_code_audit_async 代码片段语义预筛 (AST 放行的工具参数 → LLM-Judge 红线 A/C 复查 → 高风险撤销 trace, fail-soft, 零新增依赖, 12 新测试); Phase2 多模态/Phase3 RL 推迟）。此前: **研究产出落盘协议** ✅（P0）。**benchmark 泛化验证** ✅ |
+| **最近事件** | **L2 tool_args 工具调用规则** ✅（policy.py: YAML 规则新增 tool_args 字段 — name glob + 参数键值复用 json_path 解析器（相对参数路径, 支持嵌套）+ 同一 tool_calls 节点作用域 + OpenAI 字符串/dict 参数双形态 + 加载期 fail-closed（非 dict/空值/与 json_path 互斥/非法键 → 拒绝载入）；19 新测试 test_policy_tool_args.py；config/policies.yaml 未动 — codegen 契约 len(_MATCHERS)==len(rules) 会漂移, codegen tool_args 支持记为 P2）。此前: **研究产出审计闭环** ✅（GATE 8 PASS + critique 落盘 research_outputs/ + lesson/insight 记忆 ×2, AUDIT-0058; D1 openapi 悬空引用/D2 README 版本滞后 顺带修复）。**外部治理资源整合** ✅（AC1/AC2 docs: 3 幻觉论文替换 + 4 repo 复核） |
 | **CI 状态** | ✅ GATE 1-8 全绿（quality/policy/critic 3 job + all-gates 聚合；GATE 3 junitxml + 真实退出码 + ci_diagnose） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …`8ceeed5` 落盘协议 → 快照 v1.36.0-ml-prescreen（ML 裁决 + 代码语义预筛待提交） |
+| **提交链** | …`e0e2b1a` ML 裁决+代码语义预筛（v1.36.0-ml-prescreen）→ 外部治理整合 + 审计闭环 + L2 tool_args（v1.37.0-toolargs, 待提交） |
 
 ---
 
@@ -143,6 +143,10 @@
 - **v1.20.0**（2026-08-03）：P11 元编程声明（裁决：补全"自生成"为 ✅——src/codegen/generator.py 编译式生成 + _generated_matches.py 入库 + tests/test_codegen.py 38 测试含 16 项运行时等价性 + policy_sync.py --generate 漂移自愈；docs/META_CAPABILITIES.md 7 项诚实声明（✅×5 ⚠️×2 人类在环）；README 元能力徽章；488 tests；AUDIT-0040）
 - **v1.24.0**（2026-08-03）：社区标准合规补全（CODE_OF_CONDUCT.md + SECURITY.md + Issue/PR 模板 + dependabot.yml + codeql.yml + README 3 社区徽章；13 项开源社区标准核查全闭合；542 tests；AUDIT-0045）
 - **v1.25.0**（2026-08-03）：Tree-sitter AST 硬阻断引擎（src/ast_guard.py + payload_extractor.py + queries/{python,bash,sql}.scm + policy.py Priority 0 前门 + main.py fail-closed 注入；三约束验收：P1 Capture 校验/P2 Payload 提取/P3 Bash 零硬编码；依赖锁定 tree-sitter==0.21.3+tree-sitter-languages==1.5.0；574 tests；GATE 8 5/5 PASS；AUDIT-0046）
+- **v1.34.0-benchmark**（2026-08-03）：蒸馏泛化 benchmark（独立语料 5/7 信号 + 2 正式修复交集；benchmark_distill.py + docs/benchmark_report.md + 1 测试；AUDIT-0055；提交 e046453）
+- **v1.35.0-persist**（2026-08-03）：研究产出落盘协议（scripts/p2_research_runner.py persist_report + research_mcp_server + .aionui/protocols/research_output.md + research_outputs/ gitignore；7+30 测试；AUDIT-0056；提交 8ceeed5）
+- **v1.36.0-ml-prescreen**（2026-08-04）：ML/CV/DL 提案事实核查（7 资源验证 1 幻觉剔除 FireRL + SIREN 用途错配否决 + 基线过期纠正 + Base64 绕过探针 6/6 BLOCK 实证）+ 裁决 1' 落地 semantic_code_audit_async 代码片段语义预筛（extract_code_snippets/_code_judge_prompt/async 审计, AST 放行后 LLM-Judge 红线 A/C 复查, fail-soft 零新增依赖）；docs/ml_integration_verdict.md；12 新测试；AUDIT-0057；提交 e0e2b1a
+- **v1.37.0-toolargs**（2026-08-04）：外部治理资源整合（AC1/AC2：3 提案论文幻觉剔除 → 6 真实论文替代 + 4 repo 复核；docs/external_research_integration.md + docs/competitor_analysis.md）+ 研究产出审计闭环首次跑通（GATE 8 PASS + research_outputs/external-governance-resources_critique.md + lesson/insight 记忆 ×2；AUDIT-0058；D1 openapi 悬空引用/D2 README 版本滞后 顺带修复）+ **L2 tool_args YAML 规则**（policy.py：name glob + 参数键值复用 json_path 解析器 + 同调用作用域 + OpenAI 字符串/dict 双形态 + 加载期 fail-closed 校验；19 新测试；config/policies.yaml 未动避免 codegen 漂移，codegen tool_args 支持=文档化 P2）；848+ tests 分批全绿；快照 v1.37.0-toolargs
 
 ---
 

@@ -3,6 +3,32 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0055 — 蒸馏泛化 benchmark（独立语料验证）
+
+- **类型**: 验证交付（v1.34.0-benchmark 快照）
+- **内容**: benchmark_distill.py 独立语料（archive 构建, 非训练语料）5/7 信号复现 + 2 条逐字节模式正式修复交集; docs/benchmark_report.md; +1 测试; commit e046453
+- **教训**: 特征体系建立后泛化性必须以独立语料验证, 不能以训练语料自证
+## AUDIT-0056 — 研究产出落盘协议
+
+- **类型**: 协议交付（v1.35.0-persist 快照）
+- **内容**: scripts/p2_research_runner.py persist_report（best-effort 写 research_outputs/{query_slug}.md）+ research_mcp_server + .aionui/protocols/research_output.md + research_outputs/ gitignore; 7+30 测试; commit 8ceeed5
+- **意义**: 补上"研究→落盘"环节, 使研究产出可被后续审计（审计闭环的前置）
+## AUDIT-0057 — ML/CV/DL 提案事实核查 + 裁决 1' 落地（代码语义预筛）
+
+- **类型**: 提案核查 + 功能交付（v1.36.0-ml-prescreen 快照）
+- **事实核查**: 提案 7 资源逐项验证 — SIREN✅用途错配（LLM 内容有害性检测非代码安全, HF 路径 UofTCSSLab）; CodeAstra✅极冷门 26 downloads; **FireRL⛔幻觉**（arXiv+GitHub 零命中）剔除; GiGPO⚠️无法确认; 提案基线 606/v1.27.0-sql 过期（实际 809+/v1.35.0）
+- **裁决**: 否决 SIREN 集成; Phase1' 批准 = 复用本地 judge/llm_judge 资产新增 semantic_code_audit_async（AST 放行代码片段 → LLM-Judge 红线 A/C 复查 → 高风险撤销 trace, fail-soft, 零新增依赖）; Phase2 多模态 / Phase3 RL 推迟
+- **实证**: probe_base64_bypass.py 6/6 BLOCK（Base64+eval/属性链拼接等）→ 用户"Base64 绕过未解决"不成立
+- **交付**: docs/ml_integration_verdict.md; src/semantic_hook.py extract_code_snippets/_code_judge_prompt/semantic_code_audit_async; main.py create_task 分派; 12 新测试; commit e0e2b1a
+## AUDIT-0058 — 外部治理资源整合 + 研究产出审计闭环 + L2 tool_args 规则
+
+- **类型**: 提案核查 + 审计闭环 + 规则引擎扩展（v1.37.0-toolargs 快照）
+- **提案核查**（第二次元提示, 3 任务/6 AC）: 提案 3 论文 Anchor/Execution Governance/Chimera ⛔全部幻觉（arXiv API 零命中）→ 以 6 真实论文替代（SafeAgent 2604.17562 / ExecGov 2512.04408 / POLARIS 2601.11816 / Deontic 2606.19464 / CAVA 2607.13716 / GAD 2604.19112）; repos 复核: omnigent-ai 8085★（非 Databricks）/ MSFT 5605★ / ruvnet-metaharness 544★ / Agent-StrongHold 1★ / agent-governance-research 名称不实
+- **AC1/AC2 交付**: docs/external_research_integration.md + docs/competitor_analysis.md（含差距表与诚实边界）
+- **审计闭环首次跑通**（DEBT 剩余: P2 报告在落盘协议前不存在）: GATE 8 五批判者 PASS（4/5 干净, docs WARN）; research_outputs/external-governance-resources_critique.md（独立 arXiv+GitHub 复核 2026-08-04）; lesson/insight 记忆 ×2 写入 memory/
+- **D1/D2 MEDIUM 顺带修复**: OPERATIONS_MANUAL openapi.yaml 悬空引用标注待交付; README 版本滞后 v1.27.0-sql → v1.37.0-toolargs
+- **L2 tool_args YAML 规则**（P1）: policy.py 新增 tool_args 字段 — name（glob）+ 参数键值（复用 json_path 解析器, 相对参数路径支持嵌套）+ 同一 tool_calls 节点作用域 + OpenAI 字符串/dict 参数双形态; 加载期 fail-closed（非 dict/空值/与 json_path 互斥/非法键 → 拒绝载入）; 19 新测试 test_policy_tool_args.py; config/policies.yaml 未动避免 codegen 漂移（len(_MATCHERS)==len(rules) 契约）, codegen tool_args 支持=文档化 P2
+- **回归**: 848+ passed 分批全绿（63 文件 0 失败）; 快照 v1.37.0-toolargs
 ## AUDIT-0050 — Phase 1 SQL 规则(S1/S2/S3)+ 诚实硬化 + 嵌套容器绕过修复 + C1 容器化
 
 - **类型**: 规则交付 + 安全修复 + 容器化(v1.27.0-sql 快照)

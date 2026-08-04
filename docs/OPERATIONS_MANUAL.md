@@ -112,7 +112,7 @@
 为 agent-governance-v2 的 API 端点生成 OpenAPI/Swagger 文档。
 
 ## 预期产出
-- docs/openapi.yaml 或 docs/swagger.json
+- docs/openapi.yaml 或 docs/swagger.json <!-- 状态: 任务模板 — OpenAPI 文档尚未生成,文件不存在;阶段 D 待交付 (AUDIT-0058 D1) -->
 - 覆盖所有端点：/v1/intercept、/v1/health、/v1/decisions、/v1/trace/{id}、/v1/chat/completions、/v1/bench/intercept
 - 包含请求/响应 schema（五级判定：ALLOW/ALLOW_WITH_WARNING/ESCALATE/DENY/SUSPEND）
 
