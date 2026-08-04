@@ -19,6 +19,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import p2_research_runner as runner  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _redirect_output_dir(tmp_path, monkeypatch):
+    """落盘协议 (P0) 引入后, main() 会真实写 research_outputs/ —
+    autouse 重定向到临时目录, 防测试污染仓库。"""
+    monkeypatch.setattr(runner, "_OUTPUT_DIR", tmp_path)
+    yield
+
+
 class _FakeResearcher:
     """模拟 gpt_researcher.GPTResearcher。"""
 

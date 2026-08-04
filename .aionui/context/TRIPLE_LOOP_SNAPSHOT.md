@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.34.0-benchmark
-> 快照时间: 2026-08-04（benchmark 独立语料泛化验证 PASS — 12 条蒸馏模式对 v1 归档 18 独立文件: 通用信号 5/7 复现 + 正式 fix 交集 2, MCP/回归 0 命中=真实缺失非过拟合; 蒸馏泛化成立 → L2 YAML 规则可安全奠基; 新增 scripts/benchmark_distill.py + 1 测试, docs/benchmark_report.md; 另发现 P2 研究报告从未落盘 → 审计无法执行, 登记债务: 研究产出需落盘协议）
-> 最近审计: AUDIT-0055（蒸馏泛化 benchmark）+ AUDIT-0054（Ollama 自激活）+ AUDIT-0052（记忆协议测试 25 项）
+> 版本: v1.35.0-persist
+> 快照时间: 2026-08-04（研究产出落盘协议 P0 修复 — P2 报告不再丢失: runner 成功研究后写 research_outputs/{slug}.md (slug 小写/连字符/60截断/序号防覆盖), stdout JSON 新增 report_path+persist_error 不破坏旧契约, MCP 透传, 协议 research_output.md; 20 测试 (persistence 7+runner 13) + MCP 30 全绿, 端到端冒烟验证; 审计/蒸馏/记忆上游依赖打通）
+> 最近审计: AUDIT-0056（落盘协议）+ AUDIT-0055（蒸馏泛化 benchmark）+ AUDIT-0054（Ollama 自激活）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -16,10 +16,10 @@
 | **覆盖率** | 87%（`--source=src` 实测；门槛 ≥ 60%） |
 | **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞） |
 | **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）；已知边界: ① 拼接形态已由 src/taint.py 闭合（函数参数跨界/条件分支/属性链传播仍为边界）；② DROP DATABASE = grammar ERROR 节点（L2 YAML 兜底） |
-| **最近事件** | **benchmark 泛化验证** ✅（蒸馏未过拟合: v1 归档 18 独立文件 5/7 通用模式复现 + fix 交集 2; benchmark_distill.py 双指标; docs/benchmark_report.md）。⚠️ P2 研究报告从未落盘 → Critic 审计对象缺失, 债务登记（研究产出落盘协议）。此前: **记忆持久化协议** ✅（P0 捕获→P1 蒸馏→P2 注入闭环）。**P2 自激活** ✅（本地 Ollama 零-key 真实报告） |
+| **最近事件** | **研究产出落盘协议** ✅（P0: runner 落盘 research_outputs/{slug}.md + JSON 新增 report_path/persist_error + MCP 透传 + research_output.md 协议 + 7 测试; 端到端冒烟: report_path 指向真实文件; 审计/蒸馏/记忆上游打通）。此前: **benchmark 泛化验证** ✅（蒸馏未过拟合）。⚠️ 活跃债务 DEBT-0026（P2 首份报告已丢失不可审计 — 落盘协议防止未来复发） |
 | **CI 状态** | ✅ GATE 1-8 全绿（quality/policy/critic 3 job + all-gates 聚合；GATE 3 junitxml + 真实退出码 + ci_diagnose） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …`bfce10a` Ollama 自激活 → `046a7a6` 记忆协议三件套 → 快照 v1.34.0-benchmark（benchmark_distill 待提交） |
+| **提交链** | …`046a7a6` 记忆协议 → `e046453` benchmark → 快照 v1.35.0-persist（落盘协议待提交） |
 
 ---
 

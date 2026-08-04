@@ -5,9 +5,16 @@
       --query "..." [--report-type research_report] [--max-sources 10]
 
 输出: 单行 JSON (stdout):
-  {"ok": true,  "report": "<markdown 报告>", "sources": N}
+  {"ok": true,  "report": "<markdown 报告>", "sources": N,
+   "report_path": "<绝对路径|空>", "persist_error": "<错误|空>"}
   {"ok": false, "error": "<可读错误>"}
 失败时同样 exit 0 (JSON 携带 ok 字段); 进程级异常 (超时被杀) 由调用方处理。
+
+落盘协议 (research_output.md): 成功研究后, 报告 Markdown 同时写入
+  <repo-root>/research_outputs/{query_slug}.md (query_slug: 小写 + 非
+  [a-z0-9]→连字符, 截断 60 字符)。持久化失败不阻断 stdout JSON —
+  report_path="" + persist_error=<原因> 如实上报, 由调用方决定处置。
+  这是 P0 修复: 研究产出必须落盘才能进 Critic 审计/知识蒸馏/记忆回路。
 
 环境: 读取 <repo-root>/.env (DEEPSEEK_API_KEY 等, 手工解析零依赖);
       gpt-researcher 的模型配置经环境变量注入 (见 deploy_p2_research.ps1
@@ -22,6 +29,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -33,6 +41,37 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _ENV_PATH = _REPO_ROOT / ".env"
+_OUTPUT_DIR = Path(os.environ.get("RESEARCH_OUTPUT_DIR", _REPO_ROOT / "research_outputs"))
+
+
+def _query_slug(query: str, max_len: int = 60) -> str:
+    """查询词 → 文件名 slug: 小写 + 非 [a-z0-9]→连字符, 压缩连续连字符, 截断。"""
+    slug = re.sub(r"[^a-z0-9]+", "-", query.lower()).strip("-")
+    return slug[:max_len].rstrip("-") or "research"
+
+
+def persist_report(report: str, query: str, output_dir: Path | None = None) -> tuple[str, str]:
+    """报告落盘 → (report_path, persist_error)。best-effort: 失败返回错误不抛异常。
+
+    命名: {query_slug}.md; 同 slug 已存在时追加 -2/-3 序号防覆盖。
+    output_dir=None → 模块级 _OUTPUT_DIR (默认 <repo-root>/research_outputs,
+    可用环境变量 RESEARCH_OUTPUT_DIR 覆盖)。注意默认参数不能在 import 时
+    绑定目录 (测试需 monkeypatch), 故在函数体内解析。
+    """
+    output_dir = Path(output_dir or _OUTPUT_DIR)
+    if not report.strip():
+        return "", "报告为空, 跳过落盘"
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        path = output_dir / f"{_query_slug(query)}.md"
+        n = 2
+        while path.exists():
+            path = output_dir / f"{_query_slug(query)}-{n}.md"
+            n += 1
+        path.write_text(report, encoding="utf-8")
+        return str(path), ""
+    except OSError as e:
+        return "", f"落盘失败: {e}"
 
 
 def load_env(path: Path = _ENV_PATH) -> None:
@@ -132,9 +171,12 @@ def main(argv: list[str] | None = None) -> int:
             ensure_ascii=False))
         return 0
 
+    # 落盘协议: 研究产出必须持久化 (P0 — 审计/蒸馏/记忆的上游依赖)
+    report_path, persist_error = persist_report(report, args.query)
     print(json.dumps(
         {"ok": True, "report": report, "sources": sources,
-         "query": args.query, "report_type": args.report_type},
+         "query": args.query, "report_type": args.report_type,
+         "report_path": report_path, "persist_error": persist_error},
         ensure_ascii=False))
     return 0
 

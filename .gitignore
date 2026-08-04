@@ -23,3 +23,6 @@ candidates/
 
 # 生成物: 向量索引 (记忆在仓库外, 但防误拷贝入仓)
 memory_index.pkl
+
+# 研究产出落盘 (research_output.md 协议 — 运行时产物)
+research_outputs/
