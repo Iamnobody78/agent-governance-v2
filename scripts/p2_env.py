@@ -15,12 +15,23 @@ import argparse
 import pathlib
 import sys
 
-TEMPLATE = """# P2 gpt-researcher 配置 (DeepSeek) — 由 scripts/p2_env.py 生成, 勿提交
-# 官方文档: https://docs.gptr.dev (DeepSeek provider 已验证支持)
-FAST_LLM="deepseek:deepseek-chat"
-SMART_LLM="deepseek:deepseek-chat"
-STRATEGIC_LLM="deepseek:deepseek-reasoner"
-DEEPSEEK_API_KEY="sk-REPLACE_ME"
+TEMPLATE = """# P2 gpt-researcher 配置 — 由 scripts/p2_env.py 生成, 勿提交
+# 官方文档: https://docs.gptr.dev (DeepSeek / Ollama provider 均已验证)
+#
+# ── 模式 A: 本地 Ollama (零 API Key, 默认) ──
+# 前置: ollama serve 已运行; 已拉取模型: ollama pull qwen2.5:7b
+FAST_LLM="ollama:qwen2.5:7b"
+SMART_LLM="ollama:qwen2.5:7b"
+STRATEGIC_LLM="ollama:qwen2.5:7b"
+OLLAMA_BASE_URL="http://localhost:11434"
+EMBEDDING="ollama:bge-m3"
+#
+# ── 模式 B: DeepSeek API (需 key; 使用前注释掉模式 A 三行 LLM) ──
+# FAST_LLM="deepseek:deepseek-chat"
+# SMART_LLM="deepseek:deepseek-chat"
+# STRATEGIC_LLM="deepseek:deepseek-reasoner"
+# DEEPSEEK_API_KEY="sk-REPLACE_ME"
+#
 # 搜索后端: duckduckgo (免费无 key, 包名 ddgs) | searxng (自托管) | tavily (需 key)
 RETRIEVER="duckduckgo"
 """
@@ -28,6 +39,7 @@ RETRIEVER="duckduckgo"
 PLACEHOLDERS = ("sk-REPLACE_ME", "sk-你的DeepSeek密钥", "", "sk-")
 KNOWN_RETRIEVERS = {"duckduckgo", "searxng", "tavily", "you", "google", "bing", "ddgs"}
 KNOWN_MODELS = {"deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash", "deepseek-v4-pro"}
+KNOWN_OLLAMA_MODELS = {"qwen2.5:7b", "qwen2.5:0.5b", "llama3.1:8b", "llama3.2:3b", "gemma2:9b", "qwen2.5"}
 
 
 def _reconfigure():
@@ -56,7 +68,8 @@ def write_template(env_path: pathlib.Path, force: bool = False) -> int:
         return 1
     env_path.write_text(TEMPLATE, encoding="utf-8")
     print(f"✅ 已生成 .env 模板: {env_path}")
-    print("   下一步: 编辑 DEEPSEEK_API_KEY 填入真实 key, 然后 validate")
+    print("   默认 Ollama 零-key 模式: 确认 ollama serve 运行中即可 validate")
+    print("   如需 DeepSeek: 注释模式A三行, 取消模式B注释并填 DEEPSEEK_API_KEY")
     return 0
 
 
@@ -67,20 +80,50 @@ def validate(env_path: pathlib.Path) -> int:
     env = _parse_env(env_path)
     issues = []
 
-    key = env.get("DEEPSEEK_API_KEY", "")
-    if not key or key in PLACEHOLDERS or key.startswith("sk-REPLACE_ME"):
-        issues.append("DEEPSEEK_API_KEY 未填写 (占位符)")
-    elif not key.startswith("sk-") or len(key) < 20:
-        issues.append(f"DEEPSEEK_API_KEY 格式可疑 (len={len(key)}, 期望 sk- 开头 ≥20 字符)")
+    # 判断模式: 任一 LLM 为 deepseek: → 必须填 key; 全 ollama: → 零 key 可过
+    llm_fields = ("FAST_LLM", "SMART_LLM", "STRATEGIC_LLM")
+    has_deepseek = any(str(env.get(f, "")).startswith("deepseek:") for f in llm_fields)
+    has_ollama = any(str(env.get(f, "")).startswith("ollama:") for f in llm_fields)
 
-    for field in ("FAST_LLM", "SMART_LLM", "STRATEGIC_LLM"):
+    embed = env.get("EMBEDDING", "")
+    embed_ollama = embed.startswith("ollama:")
+    if embed and ":" not in embed:
+        issues.append(f"EMBEDDING 应形如 <provider>:<model> (当前: {embed!r})")
+    elif embed:
+        prov = embed.split(":", 1)[0]
+        if prov not in ("ollama", "openai", "cohere", "google"):
+            issues.append(f"EMBEDDING provider {prov!r} 不受支持 (ollama/openai/cohere/google)")
+    has_ollama = has_ollama or embed_ollama
+
+    if has_deepseek:
+        key = env.get("DEEPSEEK_API_KEY", "")
+        if not key or key in PLACEHOLDERS or key.startswith("sk-REPLACE_ME"):
+            issues.append("DEEPSEEK_API_KEY 未填写 (占位符) — 使用 DeepSeek 模式必需")
+        elif not key.startswith("sk-") or len(key) < 20:
+            issues.append(f"DEEPSEEK_API_KEY 格式可疑 (len={len(key)}, 期望 sk- 开头 ≥20 字符)")
+
+    for field in llm_fields:
         val = env.get(field, "")
-        if not val.startswith("deepseek:"):
-            issues.append(f"{field} 应形如 deepseek:<model> (当前: {val!r})")
-        else:
+        if val.startswith("deepseek:"):
             model = val.split(":", 1)[1]
             if model not in KNOWN_MODELS:
                 issues.append(f"{field} 模型 {model!r} 不在已知列表 {sorted(KNOWN_MODELS)}")
+        elif val.startswith("ollama:"):
+            model = val.split(":", 1)[1]
+            if not model:
+                issues.append(f"{field} ollama 模型为空 (应如 ollama:qwen2.5:7b)")
+            elif model not in KNOWN_OLLAMA_MODELS:
+                issues.append(f"{field} ollama 模型 {model!r} 不在已知列表 {sorted(KNOWN_OLLAMA_MODELS)}"
+                              f" — 如已本地拉取, 请加入 KNOWN_OLLAMA_MODELS")
+        else:
+            issues.append(f"{field} 应形如 deepseek:<model> 或 ollama:<model> (当前: {val!r})")
+
+    if has_ollama:
+        base_url = env.get("OLLAMA_BASE_URL", "")
+        if not base_url:
+            issues.append("OLLAMA_BASE_URL 未填写 (ollama 模式必需, 如 http://localhost:11434)")
+        elif not base_url.startswith(("http://", "https://")):
+            issues.append(f"OLLAMA_BASE_URL 格式可疑 (当前: {base_url!r}, 期望 http(s)://...)")
 
     retriever = env.get("RETRIEVER", "").lower()
     if retriever not in KNOWN_RETRIEVERS:
@@ -93,7 +136,8 @@ def validate(env_path: pathlib.Path) -> int:
         for i in issues:
             print(f"  - {i}")
         return 1
-    print("✅ .env 校验通过 (key/模型/检索器均就绪)")
+    mode = "ollama(零key)" if (has_ollama and not has_deepseek) else "deepseek"
+    print(f"✅ .env 校验通过 ({mode} 模式, key/模型/检索器均就绪)")
     return 0
 
 

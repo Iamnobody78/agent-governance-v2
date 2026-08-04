@@ -25,6 +25,12 @@ import os
 import sys
 from pathlib import Path
 
+# Windows cp950 控制台无法编码中文 help/错误 — 强制 UTF-8 (MCP 子进程亦按 UTF-8 解析)
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _ENV_PATH = _REPO_ROOT / ".env"
 
@@ -63,17 +69,26 @@ def _gpt_researcher_cls():
 
 async def _run_research(query: str, report_type: str) -> tuple[str, int]:
     GPTResearcher = _gpt_researcher_cls()
-    researcher = GPTResearcher(query=query, report_type=report_type)
+    # verbose=False: gpt-researcher 无 websocket 时会把整份报告 print 到 stdout,
+    # 会污染 MCP 的单行 JSON 契约 — 必须静默 (2026-08-04 实证踩坑)
+    researcher = GPTResearcher(query=query, report_type=report_type, verbose=False)
     await researcher.conduct_research()
     report = await researcher.write_report()
-    # 来源数量尽力统计 (gpt-researcher 无稳定公共计数接口, 缺失时返回 0)
+    # 来源数量: 优先 source_urls (gpt-researcher 实际引用集合), 退化 context 列表长度
     sources = 0
     try:
-        ctx = getattr(researcher, "context", None)
-        if isinstance(ctx, list):
-            sources = len(ctx)
+        urls = getattr(researcher, "source_urls", None)
+        if isinstance(urls, (list, set)):
+            sources = len(urls)
     except Exception:  # noqa: BLE001 — 统计失败不阻断
         sources = 0
+    if not sources:
+        try:
+            ctx = getattr(researcher, "context", None)
+            if isinstance(ctx, list):
+                sources = len(ctx)
+        except Exception:  # noqa: BLE001
+            sources = 0
     return report, sources
 
 
@@ -81,13 +96,29 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="gpt-researcher 独立 runner")
     ap.add_argument("--query", required=True, help="研究问题或主题")
     ap.add_argument("--report-type", default="research_report",
-                    choices=["research_report", "summary", "deep_analysis"],
-                    help="报告类型 (默认 research_report)")
+                    choices=["research_report", "resource_report", "outline_report",
+                             "custom_report", "subtopic_report", "deep", "summary"],
+                    help="报告类型 (summary 已废弃别名→research_report; 0.16.0 合法: research_report/resource_report/outline_report/custom_report/subtopic_report/deep)")
     ap.add_argument("--max-sources", type=int, default=10,
                     help="最大来源数 (由 gpt-researcher 自行消费, 默认 10)")
     args = ap.parse_args(argv)
+    # summary 是 0.16.0 废弃类型 (会回退 research_report) — 显式归一化
+    if args.report_type == "summary":
+        args.report_type = "research_report"
 
     load_env()
+
+    # CONFIG_PATH 若为相对路径, 锚定到仓库根 — 与 CWD 无关 (MCP 子进程亦可靠)
+    cfg_path = os.environ.get("CONFIG_PATH", "")
+    if cfg_path and not os.path.isabs(cfg_path):
+        resolved = _REPO_ROOT / cfg_path
+        if resolved.exists():
+            os.environ["CONFIG_PATH"] = str(resolved)
+        else:
+            print(json.dumps(
+                {"ok": False, "error": f"CONFIG_PATH 不存在: {cfg_path} (锚定 {resolved})"},
+                ensure_ascii=False))
+            return 0
 
     # stdout 必须干净: 研究输出只走结果 JSON (log 消息不影响协议)
     try:

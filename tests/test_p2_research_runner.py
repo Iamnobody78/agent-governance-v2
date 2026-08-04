@@ -22,10 +22,12 @@ import p2_research_runner as runner  # noqa: E402
 class _FakeResearcher:
     """模拟 gpt_researcher.GPTResearcher。"""
 
-    def __init__(self, query, report_type="research_report"):
+    def __init__(self, query, report_type="research_report", verbose=True):
         self.query = query
         self.report_type = report_type
+        self.verbose = verbose
         self.context = [{"url": "https://example.com/1"}, {"url": "https://example.com/2"}]
+        self.source_urls = {"https://example.com/1", "https://example.com/2"}
 
     async def conduct_research(self):
         self._done = True
@@ -91,7 +93,7 @@ def test_main_success_json_output(monkeypatch, capsys):
     assert data["ok"] is True
     assert "AI governance" in data["report"]
     assert data["sources"] == 2  # context 列表长度
-    assert data["report_type"] == "summary"
+    assert data["report_type"] == "research_report"  # summary 已归一化
 
 
 def test_main_default_report_type(monkeypatch, capsys):
@@ -110,6 +112,24 @@ def test_main_max_sources_accepted(monkeypatch, capsys):
     assert data["ok"] is True
 
 
+def test_main_agent_created_verbose_false(monkeypatch, capsys):
+    """gpt-researcher 必须 verbose=False — 否则无 websocket 时把整份报告
+    print 到 stdout, 污染 MCP 单行 JSON 契约 (2026-08-04 实证踩坑)。"""
+    _install_fake_gpt(monkeypatch)
+    captured = {}
+
+    class _Recording(_FakeResearcher):
+        def __init__(self, query, report_type="research_report", verbose=True):
+            super().__init__(query, report_type, verbose)
+            captured["verbose"] = verbose
+
+    mod = _FakeModule("gpt_researcher")
+    mod.GPTResearcher = _Recording
+    monkeypatch.setitem(sys.modules, "gpt_researcher", mod)
+    runner.main(["--query", "x"])
+    assert captured.get("verbose") is False
+
+
 # ── 错误路径 ──────────────────────────────────────────────────────────
 
 def test_main_gpt_missing_readable_error(monkeypatch, capsys):
@@ -126,7 +146,7 @@ def test_main_gpt_missing_readable_error(monkeypatch, capsys):
 def test_main_research_failure_readable(monkeypatch, capsys):
     """conduct_research 抛异常 → 可读错误 JSON, 非 traceback。"""
     class _Boom:
-        def __init__(self, query, report_type="research_report"):
+        def __init__(self, query, report_type="research_report", verbose=True):
             self.query = query
 
         async def conduct_research(self):
@@ -144,6 +164,36 @@ def test_main_research_failure_readable(monkeypatch, capsys):
     assert data["ok"] is False
     assert "研究执行失败" in data["error"]
     assert "RuntimeError" in data["error"]
+
+
+# ── CONFIG_PATH 锚定 ──────────────────────────────────────────────────
+
+def test_main_config_path_relative_resolved(monkeypatch, capsys, tmp_path):
+    """相对 CONFIG_PATH 应锚定到仓库根 (不依赖 CWD)。"""
+    import os
+    _install_fake_gpt(monkeypatch)
+    # 指向仓库内真实存在的 config/gptr_local.json
+    runner.load_env = lambda _p=None: None  # 禁用真实 .env, 隔离
+    os.environ.pop("CONFIG_PATH", None)
+    monkeypatch.setenv("CONFIG_PATH", "config/gptr_local.json")
+    runner.main(["--query", "x"])
+    resolved = os.environ.get("CONFIG_PATH", "")
+    assert resolved.startswith(str(runner._REPO_ROOT))
+    assert resolved.endswith("gptr_local.json")
+    assert os.path.isabs(resolved)
+
+def test_main_config_path_missing_readable(monkeypatch, capsys):
+    """CONFIG_PATH 指向不存在的文件 → 可读错误 JSON。"""
+    import os
+    _install_fake_gpt(monkeypatch)
+    runner.load_env = lambda _p=None: None
+    os.environ.pop("CONFIG_PATH", None)
+    monkeypatch.setenv("CONFIG_PATH", "config/definitely_missing.json")
+    rc = runner.main(["--query", "x"])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out.strip())
+    assert data["ok"] is False
+    assert "CONFIG_PATH 不存在" in data["error"]
 
 
 # ── CLI 参数校验 ──────────────────────────────────────────────────────

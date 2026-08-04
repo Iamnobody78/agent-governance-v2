@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.31.0-taint-p2mcp
-> 快照时间: 2026-08-04（数据流分析 src/taint.py 闭合拼接盲区 — 探针实证 6/6 全 BLOCK；路径 B MCP run_research 封装完成 — 35 测试；131 AST+P2 回归全绿）
-> 最近审计: AUDIT-0053（数据流补强 + MCP 封装验证）+ AUDIT-0052（批判审计：3 HIGH 修复，实证 6 形态）
+> 版本: v1.32.0-ollama-selfactivate
+> 快照时间: 2026-08-04（P2 研究代理自激活 — 本地 Ollama 零-key 端到端跑通：qwen2.5:7b 规划/推理 + bge-m3 嵌入 + DuckDuckGo 检索真实来源；p2_env.py 支持 ollama: 前缀 + EMBEDDING + 零-key 校验；runner UTF-8 修复 + CONFIG_PATH 锚定；MCP 超时 120s→1800s）
+> 最近审计: AUDIT-0054（Ollama 自激活 + 零-key 模式验证）+ AUDIT-0053（数据流补强 + MCP 封装验证）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,14 +12,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | ~800+ passed（分批全绿；新增 test_taint 11 + test_p2_research_runner 10 + test_research_mcp +5 = 35，AST 相关 93 全绿；环境级慢非回归） |
+| **测试全量** | ~830+ passed（分批全绿；test_p2_env +6（ollama 模式）→ 16、test_p2_research_runner +2（CONFIG_PATH 锚定）→ 12、test_taint 11、test_research_mcp +5 = 46 新增；环境级慢非回归） |
 | **覆盖率** | 87%（`--source=src` 实测；门槛 ≥ 60%） |
 | **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞） |
-| **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）；已知边界: ① ~~拼接形态 documented bypass~~ → **已由 src/taint.py 闭合**（函数参数跨界/条件分支/属性链传播仍为边界）；② DROP DATABASE = grammar ERROR 节点（L2 YAML 兜底） |
-| **最近事件** | **数据流分析** ✅（a8b5bc4：src/taint.py 常量折叠+别名表+汇点检测；探针实证 3/4 拼接 PASS→BLOCK，6/6 全阻断；11 测试）。**路径 B MCP** ✅（p2_research_runner.py + research_mcp_server.py run_research 工具，120s 超时+错误分层；14 测试含协议 smoke；待 DEEPSEEK_API_KEY 激活真实验证）。此前: **批判审计修复** ✅（bc815a4：3 HIGH）|
+| **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）；已知边界: ① 拼接形态已由 src/taint.py 闭合（函数参数跨界/条件分支/属性链传播仍为边界）；② DROP DATABASE = grammar ERROR 节点（L2 YAML 兜底） |
+| **最近事件** | **P2 自激活** ✅（本地 Ollama 零-key：ollama pull qwen2.5:7b + bge-m3；.env ollama 模式；p2_env.py 双 provider 校验 16 测试；runner UTF-8 修复 cp950 --help 崩溃 + CONFIG_PATH 相对路径锚定仓库根；config/gptr_local.json 深研限幅 breadth2/depth1；MCP run_research 超时 120s→1800s；真实冒烟: 规划→DuckDuckGo→抓取→嵌入全链路跑通，真实来源 IBM/OECD/DataCamp）。此前: **数据流分析** ✅（a8b5bc4：src/taint.py 拼接盲区闭合）。**路径 B MCP** ✅（a8b5bc4） |
 | **CI 状态** | ✅ GATE 1-8 全绿（quality/policy/critic 3 job + all-gates 聚合；GATE 3 junitxml + 真实退出码 + ci_diagnose） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …`bc815a4` 批判审计修复 → `a8b5bc4` taint 数据流 + P2 MCP 封装 → 快照 v1.31.0-taint-p2mcp |
+| **提交链** | …`bc815a4` 批判审计修复 → `a8b5bc4` taint + P2 MCP → 快照 v1.32.0-ollama-selfactivate |
 
 ---
 
