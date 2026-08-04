@@ -59,6 +59,16 @@ MALICIOUS = [
      "body": {"query": "DELETE FROM users;"}},
     {"lang": "sql", "label": "TRUNCATE",
      "body": {"query": "TRUNCATE TABLE audit_log;"}},
+    {"lang": "sql", "label": "UPDATE no where",          # Phase 1 S2: update_stmt
+     "body": {"query": "UPDATE users SET status='disabled';"}},
+    {"lang": "sql", "label": "UPDATE sensitive target",  # Phase 1 S3
+     "body": {"query": "UPDATE sqlite_master SET sql='x' WHERE type='table';"}},
+    {"lang": "sql", "label": "info_schema dotted",       # Phase 1 S1
+     "body": {"query": "SELECT * FROM information_schema.tables;"}},
+    {"lang": "sql", "label": "pg_catalog dotted",        # Phase 1 S1
+     "body": {"query": "SELECT * FROM pg_catalog.pg_tables;"}},
+    {"lang": "sql", "label": "sqlite_master bare",       # Phase 1 S2
+     "body": {"query": "SELECT * FROM sqlite_master;"}},
 ]
 
 # ---------------------------------------------------------------------------
@@ -91,6 +101,10 @@ BENIGN = [
      "body": {"query": "INSERT INTO users (name) VALUES ('alice');"}},
     {"lang": "sql", "label": "UPDATE with where",
      "body": {"query": "UPDATE users SET active = 0 WHERE last_login < '2024-01-01';"}},
+    {"lang": "sql", "label": "user_information select",  # Phase 1: 非敏感词根
+     "body": {"query": "SELECT * FROM user_information;"}},
+    {"lang": "sql", "label": "my_schema qualified",     # Phase 1: 非系统 schema
+     "body": {"query": "SELECT * FROM my_schema.users;"}},
 ]
 
 # ---------------------------------------------------------------------------
