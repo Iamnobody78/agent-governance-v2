@@ -79,6 +79,117 @@ def extract_prompt(body) -> str:
     return str(body)
 
 
+# ── ML 集成 Phase 1' (Meta-Harness 裁决 2026-08-04): 代码片段语义预筛 ──────
+# 提案原意是"用 SIREN 检测 Base64 恶意代码" — 事实核查否决 (SIREN 是 LLM 内容
+# 有害性检测器, 非代码安全; HF 路径 CSSLab/ 应为 UofTCSSLab/; 依赖 torch≥2.0)。
+# 改为复用现有 judge/llm_judge.py (Ollama, 零-key, 零新增依赖): AST 放行的
+# 代码片段 (工具调用参数) 送 LLM-Judge 按红线 A(编码混淆)/C(工具滥用) 复查,
+# 高风险 → 撤销 trace (与 semantic_audit_async 同构, 只升不降, fail-soft)。
+# 依据: docs/ml_integration_verdict.md 裁决 1'。
+
+CODE_SNIPPET_MAX_CHARS = 3000  # 全部片段拼接上限 (DEBT-0018 有界输入延伸)
+
+
+def extract_code_snippets(body, max_total: int = CODE_SNIPPET_MAX_CHARS) -> str:
+    """从请求 body 提取工具调用参数中的代码片段 (拼接为单个字符串)。
+
+    覆盖 OpenAI 格式 (messages[].tool_calls[].function.arguments 的字符串字段)
+    与工具声明 (tools[].function 描述)。用于 AST 放行后的语义复查 —
+    AST 语法安全但意图危险 (跨函数数据流/编码混淆) 的片段在此被语义判定。
+    返回值有界 (max_total), 超长截断 — 与 DEBT-0018 同原则: judge 只见前缀。
+    """
+    if body is None:
+        return ""
+    if isinstance(body, str):
+        try:
+            body = json.loads(body)
+        except json.JSONDecodeError:
+            return ""
+    if not isinstance(body, dict):
+        return ""
+    snippets = []
+    messages = body.get("messages")
+    if isinstance(messages, list):
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            tc = msg.get("tool_calls")
+            if not isinstance(tc, list):
+                continue
+            for call in tc:
+                if not isinstance(call, dict):
+                    continue
+                fn = call.get("function")
+                if not isinstance(fn, dict):
+                    continue
+                args = fn.get("arguments")
+                if isinstance(args, str) and args.strip():
+                    snippets.append(args)
+                elif isinstance(args, dict):
+                    # 参数对象 → 取所有字符串值 (命令/路径/SQL 等)
+                    for v in args.values():
+                        if isinstance(v, str) and v.strip():
+                            snippets.append(v)
+    # 工具声明兜底 (非 OpenAI 格式)
+    tools = body.get("tools")
+    if isinstance(tools, list):
+        for tool in tools:
+            if not isinstance(tool, dict):
+                continue
+            fn = tool.get("function")
+            if isinstance(fn, dict):
+                desc = fn.get("description")
+                if isinstance(desc, str) and desc.strip():
+                    snippets.append(desc)
+    if not snippets:
+        return ""
+    joined = "\n".join(snippets)
+    if len(joined) <= max_total:
+        return joined
+    sep = "\n...[truncated]...\n"
+    budget = max_total - len(sep)
+    head = budget // 2
+    tail = budget - head
+    return joined[:head] + sep + joined[-tail:]
+
+
+def _code_judge_prompt(code_snippets: str) -> str:
+    """把代码片段包装成 judge 可判定的 prompt (标记为代码审计, 非用户消息)。"""
+    return (f"[代码片段语义审计] 以下为 Agent 工具调用参数中的代码片段, "
+            f"请按红线 A(编码混淆/Base64/动态拼接) 与红线 C(工具滥用) 判定:\n"
+            f"{code_snippets}")
+
+
+async def semantic_code_audit_async(trace_id: str, code_snippets: str,
+                                    base_reason: str = "") -> Optional[Dict]:
+    """后台代码片段语义审计 (fire-and-forget, 供 asyncio.create_task 调度)。
+
+    与 semantic_audit_async 完全同构: 只升不降 / fail-soft / 永不抛异常。
+    差异: 输入是 AST 放行的代码片段 (而非用户 prompt), judge prompt 加
+    "[代码片段语义审计]" 标记避免与用户消息混淆。
+    副作用: score >= 阈值 → revoke_registry.revoke(trace_id) (后续短路 SUSPEND)。
+    """
+    from .revoke import revoke_registry
+    if not is_enabled():
+        return None
+    if not code_snippets or not code_snippets.strip():
+        return None
+    try:
+        result = await semantic_hook(_code_judge_prompt(code_snippets))
+    except Exception as e:  # noqa: BLE001 — background task must never crash loop
+        logger.warning("semantic code audit crashed (%.80s) — trace=%s", e, trace_id)
+        return None
+    if result and result.get("override") == "ESCALATE":
+        score = result.get("score", 0.0)
+        flags = result.get("flags", [])
+        reason = (f"代码语义审计撤销 (score={score}, flags={flags})"
+                  f"{' | ' + base_reason if base_reason else ''}")
+        revoke_registry.revoke(trace_id, reason, score)
+        logger.warning("semantic CODE audit REVOKED trace=%s score=%s flags=%s",
+                       trace_id, score, flags)
+    return result
+
+
 async def semantic_hook(user_prompt: str, timeout: Optional[float] = None) -> Optional[Dict]:
     """Ask the LLM-Judge for a risk score. Returns {override, score, flags} or None.
 

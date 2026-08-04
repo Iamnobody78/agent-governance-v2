@@ -50,7 +50,8 @@ from .danger import DANGEROUS_PREFIXES, DANGEROUS_METHODS, is_dangerous as _is_d
 
 # TASK-REAL-009 (A-phase): semantic bypass hook — external LLM-Judge, opt-in.
 from .semantic_hook import (extract_prompt, is_enabled as semantic_hook_enabled,
-                            semantic_hook, semantic_audit_async)
+                            semantic_hook, semantic_audit_async,
+                            extract_code_snippets, semantic_code_audit_async)
 
 # Only these headers are forwarded to the upstream backend (never Authorization)
 FORWARD_HEADER_WHITELIST = ("content-type", "accept", "user-agent", "x-agent-id")
@@ -255,6 +256,13 @@ async def intercept_handler(request: web.Request) -> web.Response:
         _prompt = extract_prompt(req.body)
         asyncio.create_task(semantic_audit_async(
             trace_id=trace_id, user_prompt=_prompt, base_reason=reason))
+        # ML 集成 Phase 1' (裁决 2026-08-04): AST 放行的代码片段也过语义复查 —
+        # AST 语法安全但意图危险 (编码混淆/跨函数数据流) 的片段由 LLM-Judge
+        # 按红线 A/C 判定, 高风险撤销 trace。与 prompt 审计并发, 互不阻塞。
+        _code = extract_code_snippets(req.body)
+        if _code:
+            asyncio.create_task(semantic_code_audit_async(
+                trace_id=trace_id, code_snippets=_code, base_reason=reason))
 
     # 3. persist decision (strong-typed model, serialized at DB edge)
     _tname, _tleth = _audit_tool_fields(req)
