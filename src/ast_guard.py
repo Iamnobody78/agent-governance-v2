@@ -55,12 +55,27 @@ EXPECTED_CAPTURES: Dict[str, Dict[str, str]] = {
     },
     "sql": {
         "danger": "destructive-sql",
+        "update_stmt": "update-statement",
+        "sensitive_schema": "sensitive-schema-access",
     },
 }
 
 # S-expression 截断上限（防日志膨胀）
 _MAX_SEXP = 160
 _MAX_TEXT = 100
+
+
+def _has_where_clause(node: Node) -> bool:
+    """SQL UPDATE 后处理: 判断 update_statement 子节点是否含 where_clause。
+
+    阶段 0 PART A 实证: UPDATE 语句 AST 为
+      update_statement -> [UPDATE, identifier, set_clause, (where_clause)]
+    无 where_clause = 全表覆盖（数据丢失风险）→ 阻断级。
+    """
+    for child in node.children:
+        if child.type == "where_clause":
+            return True
+    return False
 
 
 @dataclass
@@ -182,6 +197,12 @@ class ASTGuard:
             for name, nodes in by_name.items():
                 kind = self._semantics[language][name]
                 for node in nodes:
+                    # SQL UPDATE 后处理: 无 WHERE 子句 = 全表覆盖 → 升级阻断级
+                    if language == "sql" and name == "update_stmt":
+                        if not _has_where_clause(node):
+                            kind = "destructive-update"
+                        else:
+                            continue  # 有 WHERE 的有界更新 → 放行
                     findings.append(self._finding(language, qname, name, kind, node))
         return findings
 
