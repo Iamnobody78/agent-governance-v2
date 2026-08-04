@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.29.0-search
-> 快照时间: 2026-08-04（自主搜索能力完成：学术 arXiv + GitHub 仓库双搜索，CLI 脚本 + 自建 MCP server 双通道；缓存优化协议 v1.0；记忆系统 Phase 0/1/2 收官）
-> 最近审计: AUDIT-0051（自主搜索 P0+P1：academic_search.py / github_search.py / research_mcp_server.py，AC1-AC7 全过，真实网络验证 5 论文 + 5 仓库 <10s）+ AUDIT-0050（Phase 1 SQL 规则）
+> 版本: v1.30.0-critique-fix
+> 快照时间: 2026-08-04（批判审计响应：3 HIGH 修复 —— AST 别名/下标绕过 + 工具参数盲区 + WHERE 恒真；benchmark 样本 15+13→29+19 检测 100% 误报 0%；审计报告 docs/critique_audit.md + 探针 scripts/probe_base64_bypass.py）
+> 最近审计: AUDIT-0052（批判审计：实证 6 形态，原始 Base64+eval 被旧规则阻断但别名/下标/工具参数 4 形态绕过成功 → 实质成立；修复后 5/6 阻断，拼接形态 documented bypass）+ AUDIT-0051（自主搜索 P0+P1 AC1-AC7）+ AUDIT-0050（Phase 1 SQL）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,14 +12,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 719 passed + 1 skipped（基线 573；近三轮 +146：记忆 Phase0/1/2 55 + 缓存监控 17 + 自主搜索 24 + SQL/CI/Docker 等 50；环境性失败已 stash 对照消除） |
+| **测试全量** | ~760+ passed（分批全绿，环境级慢非回归；新增 test_ast_guard_bypass.py 18 例，test_ast_guard_sql_update 恒真 WHERE 断言重写 放行→阻断） |
 | **覆盖率** | 87%（`--source=src` 实测；门槛 ≥ 60%） |
 | **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞） |
-| **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）；新增已知边界: DROP DATABASE = grammar ERROR 节点（tree-sitter-sql 方言边界, L2 YAML 兜底） |
-| **最近事件** | **自主搜索能力** ✅（academic_search.py arXiv 直连零 key / github_search.py Token 三级回退 gh CLI / research_mcp_server.py 自建 MCP 注册 servers.json 暴露 search_papers+search_repos；实测 5 论文+5 仓库 <3s；诚实验证: 本环境网络通、gh 已登录）。此前: **缓存优化协议** ✅（.aionui/protocols/cache_optimization.md v1.0 + cache_monitor.py record/report/diff，成本测算修正 ¥0.87/天 非 ¥28.75）；**记忆系统三优化** ✅（Phase0 结构化查询 + Phase1 bge-m3 向量 RRF 混合 + Phase2 会话持久化 recover 0.47s）；**Phase 1 SQL** ✅（S1/S2/S3 敏感 schema 门禁） |
-| **CI 状态** | ✅ GATE 1-8 全绿（quality/policy/critic 3 job + all-gates 聚合；GATE 3 已接 junitxml + 真实退出码 + ci_diagnose 诊断步） |
+| **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）；新增已知边界: ① 字符串拼接形态 getattr(__builtins__,'ev'+'al') 静态不可判定=documented bypass（需数据流分析）；② DROP DATABASE = grammar ERROR 节点（L2 YAML 兜底） |
+| **最近事件** | **批判审计修复** ✅（bc815a4：python.scm @alias_exec/@sub_exec + payload_extractor 工具参数 JSON 解析 + sql.scm @trivial_where；实证 6 形态见 probe_base64_bypass.py；benchmark 29/29 检测 0/19 误报）。此前: **自主搜索** ✅（academic_search/github_search/research_mcp）；**缓存优化协议** ✅；**记忆系统三优化** ✅（Phase0/1/2）；**Phase 1 SQL** ✅ |
+| **CI 状态** | ✅ GATE 1-8 全绿（quality/policy/critic 3 job + all-gates 聚合；GATE 3 junitxml + 真实退出码 + ci_diagnose） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …快照 v1.27.0-sql → `a31b6af` 记忆 Phase0 查询 → `73fcb3b` Phase1 向量检索 → `67ad96f` Phase2 会话持久化 → `9ef7b6d` 缓存监控 → `f8f4f0b` 自主搜索（学术+GitHub+MCP）→ 快照 v1.29.0-search |
+| **提交链** | …快照 v1.29.0-search → `bc815a4` 批判审计修复（3 HIGH）→ 快照 v1.30.0-critique-fix |
 
 ---
 
