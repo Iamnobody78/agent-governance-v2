@@ -3,6 +3,23 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0068 — 可解释主控 Step 2b: Ls 权重表迁移 YAML（"策略是数据"铁律兑现）
+
+- **类型**: 治理能力演进（v1.42.4-step2b 快照）; 用户确认优先于 OpenCV MCP; 兑现 v1.42.3 模块 docstring 承诺的 Step 2+ 计划
+- **架构事实核查修正（第 4 次, 同 Step 2/3/4 模式）**:
+  1. 用户计划名 `LETHALITY_SCORES` 不存在 — 实际常量 `TOOL_LETHALITY`（67 项非 55）
+  2. 用户称"权重被 danger.py 和 policy.py 使用"**不成立** — 全仓 grep 仅 2 消费者: `main.py:20`（`lethality_for_tool`）+ `test_json_path_policy.py:30`（直接导入 `TOOL_LETHALITY`）→ 必须保留模块级名字向后兼容
+  3. "支持热加载"与验收"重启后生效"矛盾 — 镜像 policy.py DEBT-0005 模式: import 时加载 + `maybe_reload_lethality()` mtime 门控热重载（内联请求路径, 无后台线程）, 两处接线 (intercept + chat)
+- **交付**:
+  1. `config/lethality.yaml`: 67 项权重精确转录 + 语义分档注释（read-only/light/write/system/deletion/privilege）+ 安全约束文档; 加载校验: 缺 lethality 键 / 非数字 / bool（int 子类陷阱）/ 越界 / 空表 → ValueError fail-closed
+  2. `src/lethality.py`: `load_lethality_table(path)`（显式路径可测）+ `_validate_table` + `reload_lethality_table`（失败保留旧表 fail-safe）+ `maybe_reload_lethality`（mtime 门控）; 默认路径锚定仓库绝对路径（与 CWD 无关, 优于 policy.py 相对路径）; `GOV_LETHALITY_CONFIG` 环境变量覆盖; bootstrap 失败 → RuntimeError 拒绝启动（不静默回退硬编码 — 双源真相是迁移要消灭的）；`lethality_for_tool` 行为完全不变
+  3. `src/main.py`: 导入 `maybe_reload_lethality`, 两处 `await asyncio.to_thread(maybe_reload_lethality)` 接在 policy_engine.maybe_reload 后
+  4. `tests/conftest.py`: autouse `_restore_lethality_state`（快照/恢复 TOOL_LETHALITY + 热重载状态 — 防 reload 测试污染跨文件断言, 镜像漂移窗口模式）
+  5. `tests/test_lethality_yaml.py` +14: 迁移合同（内嵌 67 项基线精确比对）/ 查询行为不变（归一化折叠 + 未知 0.6）/ tmp 覆盖 / env 覆盖（reload 模块验证）/ 7 参数化非法表拒绝 / 重载失败保留旧表 / mtime 门控（os.utime 显式推进, 防 Windows 时间戳巧合）/ bootstrap 缺失拒绝启动
+- **回归**: 948 passed + 1 skipped 全绿（934 基线 + 14 新增, 227s）
+- **激活**: 热重载默认生效（路径内联）; `GOV_LETHALITY_CONFIG` 部署覆盖; 权重调整流程 = 改 YAML → 下次请求自动生效（mtime）或重启
+- **遗留/后续**: OpenCV MCP（机器人项目有用）仍为 backlog; Step 2b 验收三项全部达成（YAML==硬编码 / 重启生效 / ≥934 全绿 → 948）
+
 ## AUDIT-0067 — 可解释主控 Step 4: Judge 裁决接入 Explainable Master 输出（semantic_judge → CoT）
 
 - **类型**: 治理能力演进（v1.42.3-step4 快照）; 用户确认优先于 Step 2b/OpenCV（裁决分数/旗标是"静态规则→语义评估→上下文漂移→最终裁决"闭环的最后一块）

@@ -17,7 +17,8 @@ from typing import Optional
 from aiohttp import web, ClientSession, ClientTimeout
 
 from .models import InterceptRequest, InterceptResponse, DecisionRecord, Verdict
-from .lethality import lethality_for_tool
+# v1.42.4-step2b (AUDIT-0068): Ls 权重表迁移 YAML — 热重载与 policy 同模式
+from .lethality import lethality_for_tool, maybe_reload_lethality
 from .policy import PolicyEngine, Rule, _json_extract
 from .storage import Storage
 from .revoke import revoke_registry  # P1 (暗雷区): 异步弱监督撤销注册表
@@ -241,6 +242,8 @@ async def intercept_handler(request: web.Request) -> web.Response:
 
     # 0. hot-reload policies if YAML changed (DEBT-0005)
     await asyncio.to_thread(policy_engine.maybe_reload)
+    # 0a. v1.42.4-step2b: Ls 权重表热重载 (mtime 门控, 失败保留旧表 fail-safe)
+    await asyncio.to_thread(maybe_reload_lethality)
     # 1. evaluate policy with timeout guard
     #    TASK-REAL-010 (B): req.body 传入 — json_path 条件规则检查请求体 JSON
     try:
@@ -874,6 +877,8 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
     else:
         # ordinary chat → consult policy engine (allow-chat rule)
         await asyncio.to_thread(policy_engine.maybe_reload)
+        # v1.42.4-step2b: Ls 权重表热重载 (与 policy 同模式)
+        await asyncio.to_thread(maybe_reload_lethality)
         rule = await asyncio.to_thread(
             policy_engine.evaluate, req.path, req.method, body, tenant_id
         )
