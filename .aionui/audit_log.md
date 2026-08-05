@@ -38,6 +38,15 @@
 - **D1/D2 MEDIUM 顺带修复**: OPERATIONS_MANUAL openapi.yaml 悬空引用标注待交付; README 版本滞后 v1.27.0-sql → v1.37.0-toolargs
 - **L2 tool_args YAML 规则**（P1）: policy.py 新增 tool_args 字段 — name（glob）+ 参数键值（复用 json_path 解析器, 相对参数路径支持嵌套）+ 同一 tool_calls 节点作用域 + OpenAI 字符串/dict 参数双形态; 加载期 fail-closed（非 dict/空值/与 json_path 互斥/非法键 → 拒绝载入）; 19 新测试 test_policy_tool_args.py; config/policies.yaml 未动避免 codegen 漂移（len(_MATCHERS)==len(rules) 契约）, codegen tool_args 支持=文档化 P2
 - **回归**: 848+ passed 分批全绿（63 文件 0 失败）; 快照 v1.37.0-toolargs
+## AUDIT-0063 — 输出侧语义异步补判 (DEBT-0020)
+
+- **类型**: 缺陷修复（v1.41.0-outputaudit 快照）
+- **触发**: 治理循环第二轮 — DEBT-0020（LOW, DEBT-0018 的对称缺口）: 输入侧已评估 user_prompt+代码片段, 输出侧 agent_response 无任何语义评估
+- **修复** (src/semantic_hook.py + src/main.py): `semantic_output_audit_async` 与输入侧严格同构（fire-and-forget/fail-soft/永不抛异常/只升不降 — 高风险 ESCALATE → revoke_registry.revoke(trace_id) 令后续请求短路 SUSPEND, 与输入侧同一机制）; `extract_agent_response` 提取 choices[0].message.content（非 JSON 回退原文）; 有界截断 AGENT_RESPONSE_MAX_CHARS=3000（DEBT-0018 有界原则延伸）; `_output_judge_prompt` 四条输出侧红线（敏感泄露/恶意代码/越权指令/输出注入）; 三路触发: chat 非流式返回前、流式边转发边有界累积（bytearray 上限 3000, 不破"流式不缓冲"原则、TTFT 不受影响）、_proxy_forward 响应后（trace_id 传入, 空则跳过）
+- **兼容性**: _proxy_forward 签名加 trace_id 可选参数（默认 None, 既有测试/调用零破坏）; 函数内 `from .revoke import revoke_registry` 动态解析, monkeypatch 打 src.revoke 模块级全局生效
+- **交付**: tests/test_semantic_output_audit.py（12 测试: 提取 5 + 审计单元 5 + 集成 2 — chat 非流式转发撤销 trace 断言 + _proxy_forward 触发断言, 均验证响应流不受阻断）
+- **回归**: 900 passed + 1 skipped 全绿（888 基线 + 12 新增, 既有语义测试 16 个零破坏）; 快照 v1.41.0-outputaudit
+- **外部核查**: agent-governance-toolkit 4.1.0 真实存在（PyPI 16 版本, 非 Microsoft 官方, 与项目无关不装）; governance-toolkit 不存在; visionpower-mcp 不存在（空头注册, 建议标记 unavailable）
 ## AUDIT-0062 — 网关层请求/响应 body 大小上限 (DEBT-0018)
 
 - **类型**: 缺陷修复（v1.40.0-bodylimit 快照）

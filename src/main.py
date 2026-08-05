@@ -60,7 +60,9 @@ from .danger import DANGEROUS_PREFIXES, DANGEROUS_METHODS, is_dangerous as _is_d
 # TASK-REAL-009 (A-phase): semantic bypass hook — external LLM-Judge, opt-in.
 from .semantic_hook import (extract_prompt, is_enabled as semantic_hook_enabled,
                             semantic_hook, semantic_audit_async,
-                            extract_code_snippets, semantic_code_audit_async)
+                            extract_code_snippets, semantic_code_audit_async,
+                            extract_agent_response, semantic_output_audit_async,
+                            AGENT_RESPONSE_MAX_CHARS)
 
 # Only these headers are forwarded to the upstream backend (never Authorization)
 FORWARD_HEADER_WHITELIST = ("content-type", "accept", "user-agent", "x-agent-id")
@@ -310,7 +312,7 @@ async def intercept_handler(request: web.Request) -> web.Response:
     # 4. if ALLOW(-family) and proxy mode → forward to upstream Agent
     response_body = None
     if verdict in (Verdict.ALLOW, Verdict.ALLOW_WITH_WARNING) and AGENT_BACKEND_URL:
-        response_body = await _proxy_forward(req)
+        response_body = await _proxy_forward(req, trace_id)
 
     # 5. build response — TASK-REAL-011: 回传 trace 上下文供下游链接
     #    (span_id == decision.id; 下游用 X-Parent-Span-ID 指向它)
@@ -341,7 +343,7 @@ async def intercept_handler(request: web.Request) -> web.Response:
         return web.json_response(result, status=200, headers=_resp_headers)
 
 
-async def _proxy_forward(req: InterceptRequest) -> Optional[dict]:
+async def _proxy_forward(req: InterceptRequest, trace_id: Optional[str] = None) -> Optional[dict]:
     """Forward the request to the upstream Agent backend.
 
     v0.2.0 (AUDIT-0005): only whitelisted headers are forwarded.
@@ -370,6 +372,10 @@ async def _proxy_forward(req: InterceptRequest) -> Optional[dict]:
                 if _truncated:
                     _raw = _raw[:_limit]
                 text = _raw.decode("utf-8", errors="replace")
+                # DEBT-0020: 代理转发响应同样异步补判 (与 chat 路径同构)
+                if semantic_hook_enabled() and trace_id:
+                    asyncio.create_task(semantic_output_audit_async(
+                        trace_id, text, base_reason="proxy-forward"))
                 try:
                     return json.loads(text)
                 except json.JSONDecodeError:
@@ -860,9 +866,16 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
                         _raw = _raw[:_limit]
                     text = _raw.decode("utf-8", errors="replace")
                     try:
+                        # DEBT-0020: 输出侧异步补判 — fire-and-forget, 不阻塞返回
+                        if semantic_hook_enabled():
+                            asyncio.create_task(semantic_output_audit_async(
+                                trace_id, text, base_reason="chat non-streaming"))
                         return web.json_response(json.loads(text), status=resp.status,
                                                  headers=_trace_headers)
                     except json.JSONDecodeError:
+                        if semantic_hook_enabled():
+                            asyncio.create_task(semantic_output_audit_async(
+                                trace_id, text, base_reason="chat non-streaming"))
                         return web.Response(text=text, status=resp.status,
                                             headers=_trace_headers)
                 # DEBT-0004: SSE streaming pass-through — forward upstream
@@ -880,9 +893,21 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
                 # 本次决策的决策记录。
                 sse.headers["X-Trace-ID"] = trace_id
                 sse.headers["X-Span-ID"] = decision.id
+                # DEBT-0020: 流式转发边转发边有界累积 (上限 AGENT_RESPONSE_MAX_CHARS,
+                # 不破"流式不缓冲"原则 — 累积有界, TTFT 不受影响), 转发完成后
+                # fire-and-forget 补判 agent_response。
+                _out_buf = bytearray()
                 async for chunk in resp.content.iter_chunked(1024):
                     await sse.write(chunk)
+                    if len(_out_buf) < AGENT_RESPONSE_MAX_CHARS:
+                        _out_buf += chunk[: AGENT_RESPONSE_MAX_CHARS - len(_out_buf)]
                 await sse.write_eof()
+                if semantic_hook_enabled() and _out_buf:
+                    asyncio.create_task(semantic_output_audit_async(
+                        trace_id,
+                        _out_buf.decode("utf-8", errors="replace"),
+                        base_reason="chat streaming",
+                    ))
                 return sse
     except Exception as e:
         logger.warning("chat forward failed: %s", e)
