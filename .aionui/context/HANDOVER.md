@@ -73,10 +73,14 @@ SQLite（decisions / decision_meta / traces 表）。
 
 ## 6. Backlog（下一轮候选）
 
-1. **OpenCV MCP**（visionpower 替代，BottleSumo 机器人视觉用）— 已调研：
-   OpenCV 5.0（2026-06）+ 社区 `opencv-mcp-server` 为真实路径；接入点：
-   输入侧多模态审核 / 输出侧图像验证 / 机械臂监控与环境哨兵。**建议**：
-   等 BottleSumo 实际需要时单独开评估链（与本项目问题域不同）。
+1. **OpenCV MCP**（visionpower 替代）— **评估已完成**（`OPENCV_MCP_EVALUATION.md`，2026-08-05）：
+   结论 = **暂缓（方案 C）+ 自建 audit-only MCP 预案入册（方案 B）**。社区包
+   `opencv-mcp-server` 真实存在（PyPI 0.1.2）但 11 个月未推送、依赖 contrib
+   全家桶（~90MB）、通用工具面大（含相机控制）——不入治理栈。治理侧当前
+   **无图像入口**（intercept 只处理文本 JSON）→ 视觉 MCP 无调用方。
+   **触发条件**：①治理流量出现多模态输入 → 自建 load_image/analyze MCP 接
+   入语义审计链；②BottleSumo 视觉立项 → 机器人侧另用社区包。自建先例：
+   本工作区已有 5 个自建 Python MCP 服务器（`.aionui/mcp/`）。
 2. DEBT-0021（已接受，无需处理）
 
 ## 7. 工程惯例（新会话必读）
