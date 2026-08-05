@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.41.0-outputaudit
-> 快照时间: 2026-08-05（**输出侧语义异步补判** ✅（AUDIT-0063: DEBT-0020 清偿 — semantic_output_audit_async 与输入侧同构 fire-and-forget/fail-soft/只升不降; extract_agent_response 有界截断 3000; 三路触发 chat 非流式/流式有界累积/_proxy_forward; +12 测试, 900 全绿; 活跃债务降至 1 项 DEBT-0021 已文档化接受））
-> 最近审计: AUDIT-0063（输出侧语义补判, DEBT-0020 清偿）+ AUDIT-0062（网关层 body 大小上限, DEBT-0018 清偿）+ AUDIT-0061（外部审查幻觉核查 + 元认知观察层 + pyproject 修复）+ AUDIT-0060（阶段 2′ LLM 提议器 + 三社区实现事实核查）
+> 版本: v1.42.0-stagea
+> 快照时间: 2026-08-05（**阶段 A 生产化** ✅（AUDIT-0064: LLM-Judge 服务切 qwen2.5:7b + main() argparse 全局同步 bug 修复 + --timeout; 端到端实测良性 0.0/NORMAL vs 越狱 0.5/SUSPICIOUS+Jailbreak flag; +4 测试, 904 全绿; 服务常驻 127.0.0.1:8765, SEMANTIC_HOOK_ENABLED=1 可激活端到端））
+> 最近审计: AUDIT-0064（阶段 A 生产化, qwen2.5:7b）+ AUDIT-0063（输出侧语义补判, DEBT-0020 清偿）+ AUDIT-0062（网关层 body 大小上限, DEBT-0018 清偿）+ AUDIT-0061（外部审查幻觉核查 + 元认知观察层 + pyproject 修复）+ AUDIT-0060（阶段 2′ LLM 提议器 + 三社区实现事实核查）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,14 +12,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 900 passed + 1 skipped（分批全绿 0 失败；本轮 +12 输出侧语义补判；环境级慢非回归） |
+| **测试全量** | 904 passed + 1 skipped（分批全绿 0 失败；本轮 +4 LLM-Judge 参数同步回归；环境级慢非回归） |
 | **覆盖率** | 87%（`--source=src` 实测；门槛 ≥ 60%） |
 | **债务清偿率** | 活跃 1（DEBT-0021 已文档化接受，无阻塞） |
 | **活跃债务** | DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）；已清偿: DEBT-0020（输出侧语义评估, LOW）@v1.41.0 + DEBT-0018（body 大小上限, MEDIUM）@v1.40.0; 已知边界: ① 拼接形态已由 src/taint.py 闭合（函数参数跨界/条件分支/属性链传播仍为边界）；② DROP DATABASE = grammar ERROR 节点（L2 YAML 兜底） |
-| **最近事件** | **输出侧语义补判** ✅（DEBT-0020 清偿: 三路触发 + 有界截断 + revoke 只升不降, 12 测试）。此前: **网关层 body 上限** ✅ + **元认知观察层** ✅ + **阶段 2′ LLM 提议器** ✅ |
+| **最近事件** | **阶段 A 生产化** ✅（LLM-Judge 服务切 qwen2.5:7b: main() argparse 全局同步 bug 修复 + --timeout; 端到端实测良性 0.0/NORMAL vs 越狱 0.5/SUSPICIOUS+Jailbreak; 服务常驻 127.0.0.1:8765, SEMANTIC_HOOK_ENABLED=1 可激活端到端）。此前: **输出侧语义补判** ✅ + **网关层 body 上限** ✅ + **元认知观察层** ✅ |
 | **CI 状态** | ✅ GATE 1-8 全绿（quality/policy/critic 3 job + all-gates 聚合；GATE 3 junitxml + 真实退出码 + ci_diagnose） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …`04655a5` 网关层 body 上限（v1.40.0-bodylimit）→ 输出侧语义补判（v1.41.0-outputaudit, 待提交） |
+| **提交链** | …`04655a5` 网关层 body 上限（v1.40.0-bodylimit）→ `8b7af5e` 输出侧语义补判（v1.41.0-outputaudit）→ 阶段 A 生产化（v1.42.0-stagea, 待提交） |
 
 ---
 

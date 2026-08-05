@@ -3,6 +3,16 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0064 — 阶段 A 生产化: LLM-Judge 服务切 qwen2.5:7b + 参数同步 bug 修复
+
+- **类型**: 生产化 + 缺陷修复（v1.42.0-stagea 快照）
+- **背景**: 用户批准 Stage A = Ollama JUDGE_MODEL 从 qwen2.5:0.5b 切换 7b（生产化语义评估）。visionpower 幻觉清理先行（标记 unavailable + 备份, 替代路径入 backlog 记忆）
+- **修复的 bug**: `judge/llm_judge.py` main() 的 argparse 参数仅用于日志——handlers 读取模块级全局 JUDGE_MODEL/JUDGE_PORT/OLLAMA_TIMEOUT, 导致 `--model qwen2.5:7b` 从不生效（health 恒报 0.5b）; 修复=main() 内同步全局, 新增 `--timeout` 参数
+- **超时实证**: OLLAMA_TIMEOUT 默认 10s 对 7b CPU 首载不足（实测首载 ~84.6s → 503）; `--timeout 120` 后第二次请求 10.3s（热）
+- **端到端验证**: 127.0.0.1:8765 服务 qwen2.5:7b 实测 — 良性 prompt → score 0.0/NORMAL; 越狱 prompt（DAN + SSH 凭据）→ score 0.5/SUSPICIOUS, flags ["Jailbreak"]
+- **交付**: tests/test_llm_judge.py（4 测试: health 报有效模型 / 422 缺 prompt / 503 fail-soft / 成功形状）; .gitignore 增 judge/*.log（运行时日志不入库）
+- **回归**: 904 passed + 1 skipped 全绿（900 基线 + 4 新增）; 快照 v1.42.0-stagea
+- **配套**: SEMANTIC_HOOK_ENABLED=1 端到端激活说明（judge 服务先起）; 服务进程独立于网关, 8765 端口常驻
 ## AUDIT-0055 — 蒸馏泛化 benchmark（独立语料验证）
 
 - **类型**: 验证交付（v1.34.0-benchmark 快照）

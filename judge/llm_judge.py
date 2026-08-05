@@ -174,13 +174,20 @@ def create_app() -> web.Application:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    global JUDGE_MODEL, JUDGE_PORT, OLLAMA_TIMEOUT
     parser = argparse.ArgumentParser(description="LLM-Judge bypass service (TASK-REAL-009)")
     parser.add_argument("--port", type=int, default=JUDGE_PORT)
     parser.add_argument("--model", default=JUDGE_MODEL)
     parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--timeout", type=float, default=OLLAMA_TIMEOUT)
     args = parser.parse_args(argv)
+    # stage-A fix: CLI args must actually take effect — handlers read the module
+    # globals, not args (they were log-only before; --model silently ignored)
+    JUDGE_MODEL = args.model
+    JUDGE_PORT = args.port
+    OLLAMA_TIMEOUT = args.timeout
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
-    logger.info("LLM-Judge starting on %s:%s model=%s ollama=%s", args.host, args.port, args.model, OLLAMA_URL)
+    logger.info("LLM-Judge starting on %s:%s model=%s ollama=%s timeout=%ss", args.host, args.port, JUDGE_MODEL, OLLAMA_URL, OLLAMA_TIMEOUT)
     web.run_app(create_app(), host=args.host, port=args.port)
     return 0
 

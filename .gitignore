@@ -26,3 +26,6 @@ memory_index.pkl
 
 # 研究产出落盘 (research_output.md 协议 — 运行时产物)
 research_outputs/
+
+# judge 服务运行时日志 (阶段 A 生产化)
+judge/*.log
