@@ -38,6 +38,8 @@ DEFAULT_MIN_SAMPLES = 5      # 最少样本数, 不足则不判定 (避免冷启
 DEFAULT_MAX_META_ROWS = 5000 # decision_meta 表行数上限 (防无限膨胀)
 
 # 独立于 decisions 的元数据表: 记录决策上下文 + 观察信号, 不污染审计主链
+# v1.42.1-step2: 新增 cot TEXT — 可解释主控 Step 2 的 CoT 决策轨迹
+# (真实决策回放: request → policy → breaker/revoke → verdict, JSON 字符串)
 _CREATE_META_SQL = """
 CREATE TABLE IF NOT EXISTS decision_meta (
     id TEXT PRIMARY KEY,
@@ -49,13 +51,14 @@ CREATE TABLE IF NOT EXISTS decision_meta (
     confidence REAL,
     deviation REAL,
     event TEXT,
+    cot TEXT,
     timestamp TEXT NOT NULL
 )
 """
 _INSERT_META_SQL = """INSERT INTO decision_meta
     (id, trace_id, path, method, verdict, matched_rule, confidence,
-     deviation, event, timestamp)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+     deviation, event, cot, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 
 
 @dataclass
@@ -132,7 +135,24 @@ class MetacognitionObserver:
         except sqlite3.Error:
             pass  # :memory: 无 WAL, no-op
         self._conn.execute(_CREATE_META_SQL)
+        self._migrate_locked()
         self._conn.commit()
+
+    def _migrate_locked(self) -> None:
+        """幂等迁移: 老库无 cot 列 (v1.39.1-metaobs 起) → ALTER ADD COLUMN。
+
+        与 storage.py 的 rationale 迁移同模式: PRAGMA table_info 探测列存在性,
+        缺失则 ALTER; 已存在 (新库或已迁移) 则 no-op。失败仅 warning, 不阻断
+        主流程 (fail-soft, 观察层契约)。
+        """
+        try:
+            cols = [r[1] for r in self._conn.execute(
+                "PRAGMA table_info(decision_meta)").fetchall()]
+            if "cot" not in cols:
+                self._conn.execute(
+                    "ALTER TABLE decision_meta ADD COLUMN cot TEXT")
+        except sqlite3.Error as exc:  # pragma: no cover — 迁移失败
+            logger.warning("metacognition: cot migration failed (%s) — fail-soft", exc)
 
     def _ensure_conn(self) -> sqlite3.Connection:
         if self._conn is None:
@@ -151,11 +171,14 @@ class MetacognitionObserver:
         method: Optional[str] = None,
         matched_rule: Optional[str] = None,
         confidence: Optional[float] = None,
+        cot: Optional[str] = None,
     ) -> Optional[MetaEvent]:
         """记录一条决策上下文, 并做一致性检测。
 
         返回偏差 MetaEvent (若有), 否则 None。调用方 (main.py) 在
         storage.save() 之后以 asyncio.create_task/to_thread 方式调用。
+        cot: 可解释主控 Step 2 — 决策轨迹回放 (JSON 字符串), 与决策
+        同库落盘供审计追踪; 无 LLM 事后解释 (诚实: 只记录真实发生的事件)。
         """
         try:
             with self._lock:
@@ -169,7 +192,7 @@ class MetacognitionObserver:
                     (decision_id, trace_id, path, method, verdict,
                      matched_rule, confidence,
                      round(event.deviation, 4) if event else None,
-                     "deviation" if event else None, ts),
+                     "deviation" if event else None, cot, ts),
                 )
                 self._trim_locked()
                 self._conn.commit()

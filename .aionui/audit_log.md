@@ -3,6 +3,17 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0065 — 可解释主控 Step 2: CoT 决策轨迹回放 → decision_meta.cot
+
+- **类型**: 治理能力演进（v1.42.1-step2 快照）; 用户确认优先于 OpenCV MCP（可解释性=核心承诺, 视觉=锦上添花）
+- **关键事实核查**: Step 1 rationale 已落地但薄 (`rule=xxx`); **元认知观察层是孤岛** — `MetacognitionObserver` 从未被 main.py import/调用, decision_meta 表只有单元测试写入 → 修正计划: 接线是 CoT 落地的前提
+- **交付**:
+  1. `observer.py`: `cot TEXT` 列 + `_migrate_locked()` 幂等 ALTER (老库 v1.39.1 无 cot → 自动 ADD COLUMN, 数据保留) + `record(cot=...)` 参数
+  2. `main.py`: `meta_observer` 全局 (GOV_META_DB env opt-in 或 create_app override 注入); `_build_cot()` 有界 JSON 轨迹 (COT_MAX_CHARS=4000, request→policy→reason/trace→verdict, 诚实回放非 LLM 事后解释); `_record_meta_soft()` fail-soft 接线 — 三处 storage.save 后 (intercept / _deny_decision / chat)
+  3. `tests/test_cot_trace.py` +8: 轨迹完整性 / 有界截断 / 无编造字段 / cot 落库 / 老库迁移幂等 / intercept+chat 全链路集成 (命中 SUSPEND 规则, 验证 policy 步骤真实命中) / fail-soft (broken observer 不阻断网关)
+- **回归**: 912 passed + 1 skipped 全绿 (904 基线 + 8 新增, 259s)
+- **范围控制 (帕累托)**: Ls 权重表迁移 YAML (文档承诺的另一半) 独立为 Step 2b backlog, 不混入本期
+- **激活**: `GOV_META_DB=path/to/meta.db` env 或 `meta_observer_override` 注入; 未设置 = 不接线 (向后兼容, 现有测试零影响)
 ## AUDIT-0064 — 阶段 A 生产化: LLM-Judge 服务切 qwen2.5:7b + 参数同步 bug 修复
 
 - **类型**: 生产化 + 缺陷修复（v1.42.0-stagea 快照）

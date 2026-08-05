@@ -23,6 +23,9 @@ from .storage import Storage
 from .revoke import revoke_registry  # P1 (暗雷区): 异步弱监督撤销注册表
 from . import context_hmac  # TASK-REAL-012 Phase 5: Context Hook HMAC（防头伪造）
 from .auth import TenantAuth, load_auth_or_none  # P6: 服务身份认证 + 多租户隔离
+# v1.42.1-step2 (可解释主控 Step 2): 元认知观察层接线 —
+# 决策轨迹 (CoT) 回放写入 decision_meta.cot, 与主审计链解耦 (独立表, fail-soft)。
+from .metacognition.observer import MetacognitionObserver
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +45,64 @@ def _max_resp_bytes() -> int:
     return int(os.environ.get("GOV_MAX_RESP_BYTES", 10 * 1024 * 1024))
 SHUTDOWN_FLUSH_TIMEOUT = 8  # DEBT-0015: independent cap for shutdown flush; must stay < shutdown_timeout=10
 MAX_TRACE_ID_LEN = 128  # TASK-REAL-011.1 (Critic-Security): trace 头值长度上限（超长视为缺失）
+
+# ── v1.42.1-step2 (可解释主控 Step 2): 元认知观察层 ──────────────────
+# 全局 observer; create_app 内由 GOV_META_DB env 实例化 (None = 不接线, 与
+# SEMANTIC_HOOK_ENABLED 同 opt-in 模式)。所有决策分支在 storage.save 后
+# fail-soft 调用 record(cot=...), 观察层异常绝不阻断主路径。
+meta_observer: Optional[MetacognitionObserver] = None
+COT_MAX_CHARS = 4000  # CoT 链有界截断上限 (防超大 JSON 撑爆 decision_meta)
+
+
+def _build_cot(*, method: str, path: str, matched_rule: Optional[str],
+               verdict: str, reason: Optional[str] = None,
+               trace_id: Optional[str] = None,
+               tool_name: Optional[str] = None,
+               tool_lethality: Optional[float] = None) -> str:
+    """构建 CoT 决策轨迹回放 (JSON 字符串, 有界)。
+
+    诚实可审计原则: 只记录真实发生的事件序列 (request 特征 → policy 命中 →
+    附加闸门 → 最终裁决), 不做 LLM 事后解释。写入 decision_meta.cot 供
+    trace/审计追踪: 用户可以复现"为什么这样判"。
+    """
+    steps = [
+        {"t": "request", "method": method, "path": path,
+         "tool": tool_name, "lethality": tool_lethality},
+        {"t": "policy", "matched_rule": matched_rule or None,
+         "action": verdict},
+    ]
+    if reason:
+        steps.append({"t": "reason", "text": reason[:500]})
+    if trace_id:
+        steps.append({"t": "trace", "trace_id": trace_id})
+    steps.append({"t": "verdict", "verdict": verdict})
+    chain = json.dumps(steps, ensure_ascii=False, separators=(",", ":"))
+    return chain[:COT_MAX_CHARS]
+
+
+async def _record_meta_soft(decision: DecisionRecord, *, method: str,
+                            path: str, matched_rule: Optional[str],
+                            trace_id: Optional[str], reason: Optional[str],
+                            tool_name: Optional[str] = None,
+                            tool_lethality: Optional[float] = None) -> None:
+    """fail-soft 接线: observer 未启用 (None) 或任何异常 → 仅 warning。
+
+    与 semantic_output_audit_async 同契约: 观察层绝不影响网关主路径。
+    """
+    if meta_observer is None:
+        return
+    try:
+        cot = _build_cot(method=method, path=path, matched_rule=matched_rule,
+                         verdict=decision.verdict.value, reason=reason,
+                         trace_id=trace_id, tool_name=tool_name,
+                         tool_lethality=tool_lethality)
+        await asyncio.to_thread(
+            meta_observer.record,
+            decision_id=decision.id, path=path,
+            verdict=decision.verdict.value, trace_id=trace_id,
+            method=method, matched_rule=matched_rule, cot=cot)
+    except Exception as exc:  # noqa: BLE001 — fail-soft: 观察层异常绝不外泄
+        logger.warning("metacognition: record failed (fail-soft): %s", exc)
 
 
 def _signed_trace_headers(trace_id: str, span_id: str) -> dict:
@@ -308,6 +369,11 @@ async def intercept_handler(request: web.Request) -> web.Response:
     # the thread pool so the event loop is not blocked (Storage has an internal
     # threading.Lock to serialize access to the shared connection).
     await asyncio.to_thread(storage.save, decision.model_dump(mode="json"))
+    # v1.42.1-step2: CoT 决策轨迹回放 → decision_meta.cot (fail-soft)
+    await _record_meta_soft(decision, method=req.method, path=req.path,
+                            matched_rule=matched_rule, trace_id=trace_id,
+                            reason=reason, tool_name=_tname,
+                            tool_lethality=_tleth)
 
     # 4. if ALLOW(-family) and proxy mode → forward to upstream Agent
     response_body = None
@@ -647,6 +713,11 @@ async def _deny_decision(req, reason, status, matched_rule, tool_name=None, tool
     # the thread pool so the event loop is not blocked (Storage has an internal
     # threading.Lock to serialize access to the shared connection).
     await asyncio.to_thread(storage.save, decision.model_dump(mode="json"))
+    # v1.42.1-step2: CoT 决策轨迹回放 → decision_meta.cot (fail-soft)
+    await _record_meta_soft(decision, method=req.method, path=req.path,
+                            matched_rule=matched_rule, trace_id=trace_id,
+                            reason=reason, tool_name=tool_name,
+                            tool_lethality=tool_lethality)
     _trace_headers = _signed_trace_headers(trace_id, decision.id)
     return web.json_response(
         {
@@ -824,6 +895,11 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
     # the thread pool so the event loop is not blocked (Storage has an internal
     # threading.Lock to serialize access to the shared connection).
     await asyncio.to_thread(storage.save, decision.model_dump(mode="json"))
+    # v1.42.1-step2: CoT 决策轨迹回放 → decision_meta.cot (fail-soft)
+    await _record_meta_soft(decision, method=req.method, path=req.path,
+                            matched_rule=matched_rule, trace_id=trace_id,
+                            reason=reason, tool_name=_tname,
+                            tool_lethality=_tleth)
     _trace_headers = _signed_trace_headers(trace_id, decision.id)
 
     if verdict in (Verdict.DENY, Verdict.SUSPEND, Verdict.ESCALATE):
@@ -958,17 +1034,22 @@ async def _flush_pending_on_shutdown(app: web.Application) -> None:
 
 
 def create_app(config_path: Optional[str] = None,
-               auth_override: Optional[TenantAuth] = None) -> web.Application:
+               auth_override: Optional[TenantAuth] = None,
+               meta_observer_override: Optional[MetacognitionObserver] = None) -> web.Application:
     """Build the aiohttp app.
 
     config_path: policies YAML (默认 ./config/policies.yaml)。
     auth_override: P6 身份认证实例 (TenantAuth.from_yaml(...)); None 时若
     AUTH_ENABLED=1 自动加载 config/tenants.yaml; 否则认证关闭 (兼容模式)。
+    meta_observer_override: v1.42.1-step2 元认知观察层注入 (测试可传
+    :memory: 实例); None 时若 GOV_META_DB env 设置则自动接线, 否则不接线
+    (opt-in, 与 SEMANTIC_HOOK_ENABLED 同模式)。
     """
     global policy_engine, storage, escalate_count_since_resolve, last_escalate_time, breaker_tripped_until, _escalate_lock
     # TASK-REAL-012 Phase 4 (治理大脑 Phase 1): config_path 可注入 —
     # 测试/多租户可加载独立策略文件；None 保持默认 config/policies.yaml。
     global auth  # P6: 认证门读取全局 auth; 显式注入优先, 否则 AUTH_ENABLED 自动加载
+    global meta_observer  # v1.42.1-step2: 观察层全局接线点
     auth = load_auth_or_none() if auth_override is None else auth_override
     if auth is not None:
         logger.info("P6 auth enabled: %d tenant(s) — %s", len(auth.tenant_ids()),
@@ -993,6 +1074,16 @@ def create_app(config_path: Optional[str] = None,
     last_escalate_time = float(breaker_state.get("last_escalate", 0.0))
     breaker_tripped_until = float(breaker_state.get("tripped_until", 0.0))
     _escalate_lock = asyncio.Lock()
+    # v1.42.1-step2: 元认知观察层接线 — override 优先 (测试), 否则 GOV_META_DB
+    # env opt-in; None = 不接线 (向后兼容, 现有测试零影响)。
+    if meta_observer_override is not None:
+        meta_observer = meta_observer_override
+        logger.info("metacognition observer wired (override)")
+    elif os.environ.get("GOV_META_DB"):
+        meta_observer = MetacognitionObserver(db_path=os.environ["GOV_META_DB"])
+        logger.info("metacognition observer wired: %s", os.environ["GOV_META_DB"])
+    else:
+        meta_observer = None
 
     app = web.Application()
     app.on_cleanup.append(_flush_pending_on_shutdown)
