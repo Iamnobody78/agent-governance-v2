@@ -19,7 +19,7 @@
 | **最近事件** | **可解释主控 Step 2b** ✅（Ls 权重表迁移 YAML: 67 项 → config/lethality.yaml, mtime 热重载, fail-closed 校验; 策略调整不再改代码）。此前: **Step 4 Judge 裁决入 CoT** ✅ + **Step 3 上下文漂移** ✅ + **Step 2 CoT 轨迹** ✅ + **阶段 A 生产化** ✅（qwen2.5:7b judge 常驻 8765）+ **输出侧语义补判** ✅ + **网关层 body 上限** ✅ |
 | **CI 状态** | ✅ GATE 1-8 全绿（quality/policy/critic 3 job + all-gates 聚合；GATE 3 junitxml + 真实退出码 + ci_diagnose） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …`04655a5` 网关层 body 上限（v1.40.0-bodylimit）→ `8b7af5e` 输出侧语义补判（v1.41.0-outputaudit）→ `da7545b` 阶段 A 生产化（v1.42.0-stagea）→ `044b61b` 可解释主控 Step 2 CoT 轨迹（v1.42.1-step2）→ `43726e1` 上下文漂移检测（v1.42.2-step3）→ `f465fdb` Judge 裁决入 CoT（v1.42.3-step4）→ Ls 权重表迁移 YAML（v1.42.4-step2b, 待提交） |
+| **提交链** | …`04655a5` 网关层 body 上限（v1.40.0-bodylimit）→ `8b7af5e` 输出侧语义补判（v1.41.0-outputaudit）→ `da7545b` 阶段 A 生产化（v1.42.0-stagea）→ `044b61b` 可解释主控 Step 2 CoT 轨迹（v1.42.1-step2）→ `43726e1` 上下文漂移检测（v1.42.2-step3）→ `f465fdb` Judge 裁决入 CoT（v1.42.3-step4）→ `2ee95c2` Ls 权重表迁移 YAML（v1.42.4-step2b）→ 会话交接文档（HANDOVER.md, 收尾） |
 
 ---
 
