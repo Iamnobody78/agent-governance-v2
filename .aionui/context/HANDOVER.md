@@ -47,7 +47,10 @@ SQLite（decisions / decision_meta / traces 表）。
 ```powershell
 # Judge 服务（Stage A 常驻）：
 #   127.0.0.1:8765, 模型 qwen2.5:7b, OLLAMA_TIMEOUT=120
-#   启动：ollama serve + python -m src.judge_service --model qwen2.5:7b --timeout 120
+#   启动（从仓库根目录, 入口为脚本 judge/llm_judge.py — 已核实 CLI）：
+#     ollama serve
+#     python judge/llm_judge.py --model qwen2.5:7b --port 8765
+#   可用参数: --host(默认127.0.0.1) --timeout(默认120)
 # 关键环境变量：
 #   GOV_LETHALITY_CONFIG   Ls 权重表路径（默认 config/lethality.yaml，缺失拒绝启动）
 #   GOV_META_DB / meta_observer_override   观察层激活（未设 = 不接线，向后兼容）
