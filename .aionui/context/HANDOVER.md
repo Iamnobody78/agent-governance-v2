@@ -47,6 +47,8 @@ SQLite（decisions / decision_meta / traces 表）。
 ```powershell
 # Judge 服务（Stage A 常驻）：
 #   127.0.0.1:8765, 模型 qwen2.5:7b, OLLAMA_TIMEOUT=120
+#   健康检查: GET http://127.0.0.1:8765/v1/health  → 200 {"status":"ok",...}
+#     (注意: 是 /v1/health 不是 /health — 已核实路由)
 #   启动（从仓库根目录, 入口为脚本 judge/llm_judge.py — 已核实 CLI）：
 #     ollama serve
 #     python judge/llm_judge.py --model qwen2.5:7b --port 8765
