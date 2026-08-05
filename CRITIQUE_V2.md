@@ -259,4 +259,64 @@ if path.startswith(prefix): return True
 
 ---
 
+---
+
+## 📋 外部批斗报告正式回应（2026-08-05，联网实证核查）
+
+> 触发：一份针对"agent-governance"的批评报告（指控速率限制失效、EvaluationResult
+> 不一致、CapabilityGrant 截断、EscalationHandler 法定人数缺陷、DLP 脱敏不完整等）。
+> 本回应用 grep 全仓实证 + GitHub API 实测逐条核查，**包括对早前核查回应自身的核查**。
+
+### 结论（一句话）
+
+批评报告**张冠李戴**——其全部技术指控针对 **`microsoft/agent-governance-toolkit`**
+（GitHub 实测：5,616★ / 2026-08-05 仍推送 / 微软官方项目，具备 RateLimitMiddleware、
+EvaluationResult、CapabilityGrant、EscalationHandler、agt-policies 等特征），
+与本仓库（自研 Sidecar 治理网关，非 PyPI 包）**零重合**。
+
+### 逐条核查证据
+
+| 批评指控 | 本仓核查 | 证据 |
+|---|---|---|
+| PolicyEngine 速率限制未生效 | ❌ 不适用 — `policy.py` 无速率限制；`limit:` 仅函数签名参数 | grep |
+| EvaluationResult.allowed 与 verdict 不一致 | ❌ 不适用 — 无此类对象 | grep 0 hits |
+| CapabilityGrant.parse_capability 截断 | ❌ 不适用 | grep 0 hits |
+| EscalationHandler 法定人数缺陷 | ❌ 不适用 | grep 0 hits |
+| DLP 脱敏仅替换首个匹配 | ❌ 不适用 — **全仓无任何 sanitize/redact/mask 函数** | grep 0 hits |
+| 包名寻宝 / Flowise 示例不可导入 | ❌ 不适用 — 非 PyPI 项目（git clone 安装）；examples/ 均经测试 | glob + 测试 |
+| "两行代码治理任何 Agent" | ❌ README 无此声称 | grep 0 hits |
+| "100% 拦截率"宣传夸大 | ⚠️ 存在但诚实 — README §真实拦截率为 **20/20 小样本基准**（显式披露样本量） | README L22-27 |
+| 行动治理 ≠ 推理治理 | ⚠️ 概念合理但**本仓未做该形式化区分**（该框架属 toolkit 语境） | 全仓 grep 0 hits |
+| 对 MCP 生态盲目 | ⚠️ 属实但已识别 — 见 HANDOVER §6 触发条件 + MCP_SECURITY_REFERENCES.md | 文档 |
+
+### 对早前核查回应自身的修正（信任但验证，双向适用）
+
+| 早前回应声称 | 实测 | 判定 |
+|---|---|---|
+| "`sanitize_log` 存在类似模式（re.sub 仅替换首个）" | 全仓无 sanitize/redact/mask 函数 | ❌ **捏造**（该回应为辩护而虚构了本仓缺陷） |
+| "行动治理边界已在 CRITIQUE_V2.md 和架构文档中诚实声明" | 全仓 0 命中"行动治理/推理治理/Action Governance" | ❌ **捏造** |
+| "多数指控针对不同项目" | ✅ 成立 — toolkit 仓库实测存在且活跃 | ✅ |
+
+### 本仓真实发现（自查，非批评触发）
+
+1. **`src/rate_limiter.py` 是未接线孤岛**（41 行 + `tests/test_rate_limiter.py` 13 测试，
+   文档已登记，但 `main.py` 及生产路径零引用）——与 Step 2 修复的 metacognition
+   observer 孤岛同型；**LOW 优先级集成缺口**，已入 backlog（窗口计数限流可作
+   网关层 DoS 防线，DEBT-0018 的姊妹能力）
+2. **CRITIQUE_V2.md 复核 deadline（2026-08-31）**：本文档 8 缺陷状态表需按期复核，
+   已修复项须有测试证据锁定，已接受项须有书面理由——治理检查点，待兑现
+3. **README "100% 拦截率"可辩护**：20/20 是显式样本集而非生产声称，符合诚实披露
+
+### 处置
+
+- 本回应为正式外部批评答复，随仓库版本化（提交记录可溯）
+- 不采纳批评报告中的 toolkit 专属指控；不传播早前回应中的两处捏造
+- rate_limiter 孤岛接入列为 backlog 候选（触发：网关层 DoS 防线加固）
+
+---
+
+*本回应由 agent-governance-v2 治理层生成（2026-08-05），核查方法：grep 全仓 + GitHub/PyPI API 实测。早前核查回应的两处捏造与本回应的全部证据均在本文件留存，供后续复核。*
+
+---
+
 *本审查由 DeepSeek-V4 PRO 自我生成 + 外部安全审查（AUDIT-0005）触发。同一模型写了代码，也写了批评。这是元治理的实验终章——诚实地面对自己的缺陷。*

@@ -73,6 +73,10 @@ SQLite（decisions / decision_meta / traces 表）。
 
 ## 6. Backlog（下一轮候选）
 
+0. **rate_limiter.py 孤岛接入**（2026-08-05 自查发现, LOW）：`src/rate_limiter.py`
+   41 行 + 13 测试但生产零引用（与 Step 2 修复的 observer 孤岛同型）——窗口
+   计数限流可作网关层 DoS 防线（DEBT-0018 姊妹能力）；触发：网关层 DoS 加固。
+   另：CRITIQUE_V2.md 的 2026-08-31 缺陷复核 deadline 需按期兑现。
 1. **OpenCV MCP**（visionpower 替代）— **评估已完成**（`OPENCV_MCP_EVALUATION.md`，2026-08-05）：
    结论 = **暂缓（方案 C）+ 自建 audit-only MCP 预案入册（方案 B）**。社区包
    `opencv-mcp-server` 真实存在（PyPI 0.1.2）但 11 个月未推送、依赖 contrib
