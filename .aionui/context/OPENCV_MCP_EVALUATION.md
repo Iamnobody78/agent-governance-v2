@@ -12,7 +12,8 @@
 | 简报声称 | 核查结果 | 证据 |
 |---|---|---|
 | "`opencv-mcp-server` 是真实可用、社区维护的替代方案" | ⚠️ **部分成立**：包真实存在，但"社区维护"言过其实 | PyPI: **0.1.2**（仅 3 个版本）；GitHub: **112 stars / 21 forks / 最后推送 2025-09-11（距今 11 个月）** / MIT / 3 open issues |
-| "OpenCV 5.0（2026-06 发布）重大升级" | ⚠️ **无法验证 + 与采用路径矛盾** | opencv-mcp-server 依赖锁定 `opencv-contrib-python>=4.12.0.88`（**4.x 线**）——采纳该包拿不到 5.0；5.0 性能论只对"自建 + opencv-python 5.x"成立 |
+| "OpenCV 5.0（2026-06 发布）重大升级" | ✅ **已验证（2026-08-05 联网实证）**：GitHub opencv/opencv latest release = **5.0.0（2026-06-06）**；PyPI opencv-python 最新 = **5.0.0.93**（headless/contrib 同步 5.0.0.93）。简报声称属实 | |
+| ~~"该包锁定 4.12 线拿不到 5.0"~~ | ⚠️ **修正（2026-08-05）**：`opencv-contrib-python>=4.12.0.88` 是**下界**不是锁定 — 今天全新安装解析到 **5.0.0.93**（能拿到 5.0）。但该包最后测试于 2025-09（当时仅 4.12），**5.0 兼容性无人验证**（休眠项目 = 无人修破坏性变更）→ 采纳风险从"拿不到 5.0"变为"拿得到但可能跑不起来" | PyPI opencv-contrib-python releases = [4.x…, 5.0.0.93]；项目最后推送 2025-09-11 |
 | 安装轻量、适合边缘 | ❌ **不轻量** | requires_dist: `mcp>=1.13.1` + `numpy>2.2.6` + **`opencv-contrib-python>=4.12.0.88`**（contrib 全家桶，~90MB+ 轮子） |
 | 与 Sidecar 架构契合 | ✅ 成立 | 本工作区 `.aionui/mcp/` 已有 **5 个自建 Python MCP stdio 服务器**先例（fetch/memory/filesystem/research/team_coordinator），运行时 Python 3.12 现成 |
 | visionpower 是空头注册 | ✅ 已核实（上轮） | 平台级 `servers.json` 中 status=unavailable，备注指向自建替代路径 |
@@ -23,7 +24,7 @@
 | 维度 | A. 采纳 opencv-mcp-server | B. 自建轻量 MCP（audit-only） | C. 暂缓（当前建议） |
 |---|---|---|---|
 | 工具面 | 通用全家桶：相机/视频/人脸/跟踪（**治理视角 = 攻击面大**，含 camera 控制 + 文件读写） | 仅治理所需：load_image / analyze（无相机、无视频、无写盘） | — |
-| 依赖 | opencv-contrib（~90MB）+ mcp + numpy | opencv-python(-headless) 或**先 numpy+PIL 零新增**（.venv-research 已有） | 零 |
+| 依赖 | opencv-contrib（~90MB, 下界>=4.12.0.88 → 解析到 5.0.0.93 但**兼容性未验证**）+ mcp + numpy | **opencv-python-headless 5.0.0.93**（纯 5.0, 无 GUI 依赖, 比 contrib 小）或先 numpy+PIL 零新增（.venv-research 已有） | 零 |
 | 维护 | ⚠️ 11 个月未推送，0.1.x | 自持（本环境已有 5 个自建先例） | — |
 | 与治理哲学 | 违背最小权限 | ✅ 契合（least privilege） | — |
 | 成本 | ~30 分钟接入 | 1-2 天（含测试） | 0 |
