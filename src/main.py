@@ -31,6 +31,15 @@ INTERCEPT_TIMEOUT = 0.5       # seconds — if policy eval exceeds this, fail-cl
 CIRCUIT_BREAKER_LIMIT = 10    # consecutive ESCALATE without resolution → DENY (fail-closed)
 CIRCUIT_COOLDOWN_SECONDS = 30.0  # breaker trip cooldown window (DEBT-0001)
 AGENT_BACKEND_URL = "http://localhost:8000"   # upstream Agent (for proxy mode)
+
+# DEBT-0018: 网关层请求/响应 body 上限 — 默认 10MB, env 可覆盖。
+# 请求侧超限 → 413 拒绝 (fail-closed, DENY 落库可审计); 响应侧超限 →
+# 截断 + 标记 (不拒绝合法长响应)。函数形式延迟读 env, 测试可 monkeypatch。
+def _max_body_bytes() -> int:
+    return int(os.environ.get("GOV_MAX_BODY_BYTES", 10 * 1024 * 1024))
+
+def _max_resp_bytes() -> int:
+    return int(os.environ.get("GOV_MAX_RESP_BYTES", 10 * 1024 * 1024))
 SHUTDOWN_FLUSH_TIMEOUT = 8  # DEBT-0015: independent cap for shutdown flush; must stay < shutdown_timeout=10
 MAX_TRACE_ID_LEN = 128  # TASK-REAL-011.1 (Critic-Security): trace 头值长度上限（超长视为缺失）
 
@@ -138,7 +147,17 @@ async def intercept_handler(request: web.Request) -> web.Response:
         return auth_resp
 
     try:
-        data = await request.json()
+        # DEBT-0018: 显式 body 上限 — content-length 快速拒绝 + 受控读取兜底
+        # (aiohttp 3.9+ 移除了 request.json(max_size=...), 改在读取层控制)。
+        # 超限 → 413 拒绝 (fail-closed) 并落库, 不再无界读入内存。
+        _limit = _max_body_bytes()
+        _clen = request.content_length
+        if _clen is not None and _clen > _limit:
+            return await _oversize_deny(request)
+        _raw = await request.content.read(_limit + 1)
+        if len(_raw) > _limit:
+            return await _oversize_deny(request)
+        data = json.loads(_raw)
     except json.JSONDecodeError:
         return web.json_response(
             {"error": "invalid JSON"}, status=400
@@ -343,11 +362,18 @@ async def _proxy_forward(req: InterceptRequest) -> Optional[dict]:
                 },
                 json=body,
             ) as resp:
-                text = await resp.text()
+                # DEBT-0018: 响应侧受控读取 — 超限截断 (不拒绝合法长响应),
+                # 截断时返回体携带 truncated 标记供审计消费。
+                _limit = _max_resp_bytes()
+                _raw = await resp.content.read(_limit + 1)
+                _truncated = len(_raw) > _limit
+                if _truncated:
+                    _raw = _raw[:_limit]
+                text = _raw.decode("utf-8", errors="replace")
                 try:
                     return json.loads(text)
                 except json.JSONDecodeError:
-                    return {"status": resp.status, "body": text[:1000]}
+                    return {"status": resp.status, "body": text[:1000], "truncated": _truncated}
     except Exception as e:
         logger.warning("proxy forward failed: %s", e)
         logger.debug("proxy forward traceback:\n%s", traceback.format_exc())
@@ -629,6 +655,32 @@ async def _deny_decision(req, reason, status, matched_rule, tool_name=None, tool
     )
 
 
+async def _oversize_deny(request: web.Request) -> web.Response:
+    """DEBT-0018: 请求体超限 → 413 拒绝 (fail-closed) + DENY 落库 (可审计)。
+
+    统一 intercept / chat 两个入口的超限拒绝行为: trace 上下文从 header
+    提取 (body 未解析, 无法从 body 取), 保证超限决策同样在调用链上。
+    状态码用 413 (协议语义准确), 与 malformed-declaration 走 400 的
+    先例一致 — 非 403 状态码同样落库 DENY, 保持"全部决策在链上"。
+    """
+    trace_id, parent_span_id = _trace_context(request.headers)
+    req = InterceptRequest(
+        path=request.path,
+        method=request.method,
+        headers={k: v for k, v in request.headers.items()},
+        body=None,
+        agent_id=request.headers.get("x-agent-id"),
+    )
+    return await _deny_decision(
+        req,
+        reason=f"请求体超过上限 {_max_body_bytes()} bytes — 拒绝 (fail-closed)",
+        status=413,
+        matched_rule="body-too-large",
+        trace_id=trace_id,
+        parent_span_id=parent_span_id,
+    )
+
+
 async def chat_completions_handler(request: web.Request) -> web.Response:
     """OpenAI-compatible /v1/chat/completions.
 
@@ -646,7 +698,16 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
     # 携带 trace_id/parent_span_id, 否则多 Agent 链跨端点断链。
     trace_id, parent_span_id = _trace_context(request.headers)
     try:
-        raw = await request.read()
+        # DEBT-0018: 网关层请求体上限 — content-length 快速拒绝 + 受控读取
+        # 兜底 (chunked / 无长度 body 同样覆盖)。超限 → 413 拒绝 (fail-closed,
+        # 落库可审计), 不再无界读入内存。
+        _limit = _max_body_bytes()
+        _clen = request.content_length
+        if _clen is not None and _clen > _limit:
+            return await _oversize_deny(request)
+        raw = await request.content.read(_limit + 1)
+        if len(raw) > _limit:
+            return await _oversize_deny(request)
         body = json.loads(raw) if raw else None
     except json.JSONDecodeError:
         return web.json_response(
@@ -791,7 +852,13 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
             ) as resp:
                 if not stream:
                     # non-streaming: buffer the full JSON response (legacy path)
-                    text = await resp.text()
+                    # DEBT-0018: 受控读取 — 超限截断, 避免超大响应撑爆内存;
+                    # 截断后 JSON 解析失败 → 走 web.Response 透传截断文本。
+                    _limit = _max_resp_bytes()
+                    _raw = await resp.content.read(_limit + 1)
+                    if len(_raw) > _limit:
+                        _raw = _raw[:_limit]
+                    text = _raw.decode("utf-8", errors="replace")
                     try:
                         return web.json_response(json.loads(text), status=resp.status,
                                                  headers=_trace_headers)

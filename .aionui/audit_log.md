@@ -38,6 +38,15 @@
 - **D1/D2 MEDIUM 顺带修复**: OPERATIONS_MANUAL openapi.yaml 悬空引用标注待交付; README 版本滞后 v1.27.0-sql → v1.37.0-toolargs
 - **L2 tool_args YAML 规则**（P1）: policy.py 新增 tool_args 字段 — name（glob）+ 参数键值（复用 json_path 解析器, 相对参数路径支持嵌套）+ 同一 tool_calls 节点作用域 + OpenAI 字符串/dict 参数双形态; 加载期 fail-closed（非 dict/空值/与 json_path 互斥/非法键 → 拒绝载入）; 19 新测试 test_policy_tool_args.py; config/policies.yaml 未动避免 codegen 漂移（len(_MATCHERS)==len(rules) 契约）, codegen tool_args 支持=文档化 P2
 - **回归**: 848+ passed 分批全绿（63 文件 0 失败）; 快照 v1.37.0-toolargs
+## AUDIT-0062 — 网关层请求/响应 body 大小上限 (DEBT-0018)
+
+- **类型**: 缺陷修复（v1.40.0-bodylimit 快照）
+- **触发**: 治理循环恢复后 PRIORITIZE 裁决 — DEBT-0018（MEDIUM, 外部代码审查遗留最高优先活跃债务）: 网关层无显式 body 上限
+- **缺口实证**: src/ 全量 grep 无任何 MAX_BODY/Content-Length/413 逻辑; /v1/intercept 的 request.json() 仅依赖 aiohttp 默认上限且 413 未捕获; /v1/chat/completions 的 request.read() 无界读入内存
+- **修复** (src/main.py): `_max_body_bytes()/_max_resp_bytes()`（默认 10MB, env GOV_MAX_BODY_BYTES/GOV_MAX_RESP_BYTES 可覆盖, 函数式延迟读 env 便于测试）; `_oversize_deny()` 统一 413 拒绝（content-length 快速拒绝 + request.content.read(limit+1) 受控读取兜底 chunked/无长度 body; DENY 落库 matched_rule="body-too-large" — 解析前拒绝走 error 契约, 与 malformed-400 同源 _deny_decision, 保持"全部决策在链上"）; 响应侧 _proxy_forward 与 chat 非流式转发改为受控读取 + 截断标记 truncated（不拒绝合法长响应）
+- **调试发现的兼容性事实**: aiohttp 3.14.3 已移除 request.json(max_size=...) 参数（3.9+ 移除）→ intercept 入口改为与 chat 相同的读取层控制; 初版测试断言误用 InterceptResponse 契约（verdict/matched_rule 顶层字段）——413 属解析前拒绝, 正确契约是 error 结构（与 malformed 400 一致, 分层自洽: verdict 结构=已解析请求的裁决, error 结构=解析前的协议层拒绝）
+- **交付**: tests/test_body_size_limit.py（10 测试: intercept/chat 413 + 落库可审计断言 + chunked 兜底 + content-length 快速路径 + env 覆盖 + 双路响应截断, 含 upstream stub AioHTTPTestCase）
+- **回归**: 888 passed + 1 skipped 全绿（881 基线 + 10 新增, 既有 intercept/chat/streaming 零破坏）; 快照 v1.40.0-bodylimit
 ## AUDIT-0061 — 外部审查幻觉核查 + 元认知观察层 (Meta-Cognition Observer) + pyproject 依赖修复
 
 - **类型**: 事实核查 + 能力扩展 + 缺陷修复（v1.39.1-metaobs 快照）

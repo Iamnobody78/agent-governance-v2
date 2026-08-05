@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.39.1-metaobs
-> 快照时间: 2026-08-04（**元认知观察层 + 外部审查幻觉核查** ✅（AUDIT-0061: 第三方 AI 审查 8/11 指控被本地 git 铁证否定, 3 项歪打正着含 pyproject tree-sitter 缺失→已修复; 元集成提案资源核查 ReMA ⛔幻觉/learn2learn ✅2891★但重装备→阶段 A 采纳重设计/阶段 B 拒绝/阶段 C 推迟; Hermes v0.20.0 属实但初判错误的核查盲区教训; src/metacognition/observer.py: record→decision_meta/一致性按 path/偏差=稀有度>30% 触发/fail-soft 不阻断, +18 测试, 881 全绿））
-> 最近审计: AUDIT-0061（外部审查幻觉核查 + 元认知观察层 + pyproject 修复）+ AUDIT-0060（阶段 2′ LLM 提议器 + 三社区实现事实核查）+ AUDIT-0059（Meta-Harness 执行状态核查 + 3 处文档漂移修复）
+> 版本: v1.40.0-bodylimit
+> 快照时间: 2026-08-05（**网关层 body 大小上限** ✅（AUDIT-0062: DEBT-0018 MEDIUM 清偿 — _max_body_bytes/_max_resp_bytes 默认 10MB env 可覆盖; _oversize_deny 统一 413 拒绝 content-length 快速拒绝 + 受控读取兜底 chunked; DENY 落库 matched_rule=body-too-large 全决策在链上; 响应侧双路截断 truncated 不拒绝合法长响应; aiohttp 3.14 已移除 json(max_size=) 的兼容事实; +10 测试, 888 全绿））
+> 最近审计: AUDIT-0062（网关层 body 大小上限, DEBT-0018 清偿）+ AUDIT-0061（外部审查幻觉核查 + 元认知观察层 + pyproject 修复）+ AUDIT-0060（阶段 2′ LLM 提议器 + 三社区实现事实核查）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,14 +12,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 881 passed（分批全绿 0 失败；本轮 +18 元认知观察层；环境级慢非回归） |
+| **测试全量** | 888 passed + 1 skipped（分批全绿 0 失败；本轮 +10 body 上限；环境级慢非回归） |
 | **覆盖率** | 87%（`--source=src` 实测；门槛 ≥ 60%） |
-| **债务清偿率** | 活跃 3（DEBT-0018/0020/0021，无阻塞） |
-| **活跃债务** | DEBT-0018（body 大小上限, MEDIUM）、DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）；已知边界: ① 拼接形态已由 src/taint.py 闭合（函数参数跨界/条件分支/属性链传播仍为边界）；② DROP DATABASE = grammar ERROR 节点（L2 YAML 兜底） |
-| **最近事件** | **元认知观察层** ✅（外部审查 8/11 指控被铁证否定 + pyproject tree-sitter 修复 + observer.py 记录/一致性/偏差触发 fail-soft + 18 测试）。此前: **阶段 2′ LLM 提议器** ✅ + **Meta-Harness 核查** ✅ + **L2 tool_args** ✅ |
+| **债务清偿率** | 活跃 2（DEBT-0020/0021，无阻塞） |
+| **活跃债务** | DEBT-0020（输出侧语义, LOW）、DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）；已清偿: DEBT-0018（body 大小上限, MEDIUM）@v1.40.0; 已知边界: ① 拼接形态已由 src/taint.py 闭合（函数参数跨界/条件分支/属性链传播仍为边界）；② DROP DATABASE = grammar ERROR 节点（L2 YAML 兜底） |
+| **最近事件** | **网关层 body 上限** ✅（DEBT-0018 清偿: 413 fail-closed + 落库可审计 + 响应侧截断, 10 测试）。此前: **元认知观察层** ✅ + **阶段 2′ LLM 提议器** ✅ + **L2 tool_args** ✅ |
 | **CI 状态** | ✅ GATE 1-8 全绿（quality/policy/critic 3 job + all-gates 聚合；GATE 3 junitxml + 真实退出码 + ci_diagnose） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …`a73ab74` 阶段 2′ LLM 提议器（v1.39.0-mhproposer）→ 元认知观察层+外部审查核查+pyproject 修复（v1.39.1-metaobs, 待提交） |
+| **提交链** | …`2649ffa` 元认知观察层+外部审查核查+pyproject 修复（v1.39.1-metaobs）→ 网关层 body 上限（v1.40.0-bodylimit, 待提交） |
 
 ---
 
