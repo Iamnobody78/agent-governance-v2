@@ -346,6 +346,38 @@ class MetacognitionObserver:
           - 成功追加 → True
         fail-soft: 任何 sqlite3.Error → warning + False, 不阻断调用方。
         """
+        return self._append_event_locked(decision_id, "context_drift",
+                                         {"t": "context_drift",
+                                          "score": round(float(drift_score), 4),
+                                          "flags": [str(f) for f in (flags or [])]})
+
+    def append_semantic(self, decision_id: str, score: float,
+                        flags: Optional[List[str]] = None,
+                        level: Optional[str] = None) -> bool:
+        """Step 4: 向已有 decision_meta 行的 cot 轨迹追加 semantic_judge 事件。
+
+        Judge 语义评估结果 (score/flags/派生 level) 进入 CoT 轨迹, 与
+        policy/verdict 事件并列 — "为什么 Judge 这么判"的可解释证据。
+        幂等语义与 append_drift 相同: 行缺失 no-op / 已记录跳过 /
+        成功追加 True。level 为派生值 (非 judge 原始字段), 从 score 映射:
+        >= SEMANTIC_HOOK_THRESHOLD(0.85) → high; >= 0.5 → medium; 否则 low。
+        """
+        if level is None:
+            level = ("high" if score >= 0.85
+                     else "medium" if score >= 0.5 else "low")
+        return self._append_event_locked(decision_id, "semantic_judge",
+                                         {"t": "semantic_judge",
+                                          "score": round(float(score), 4),
+                                          "level": level,
+                                          "flags": [str(f) for f in (flags or [])]})
+
+    def _append_event_locked(self, decision_id: str, marker: str,
+                             event: Dict) -> bool:
+        """通用追加: 向 decision_meta.cot 追加一个事件 dict (幂等)。
+
+        marker: 幂等标记 — cot 中已含该 marker 字符串则跳过 (每 decision
+        每事件类型只记录一次)。行缺失 → no-op False。fail-soft。
+        """
         try:
             with self._lock:
                 self._ensure_conn()
@@ -355,12 +387,9 @@ class MetacognitionObserver:
                 if row is None:
                     return False  # 决策已裁剪/不存在 → no-op
                 old = row[0] or ""
-                if '"context_drift"' in old:
+                if f'"{marker}"' in old:
                     return False  # 幂等: 已记录过
-                drift = json.dumps(
-                    {"t": "context_drift", "score": round(float(drift_score), 4),
-                     "flags": [str(f) for f in (flags or [])]},
-                    ensure_ascii=False, separators=(",", ":"))
+                drift = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
                 # 追加到步骤数组尾部 (兼容既有数组, 保持 JSON 合法)
                 if old.strip().endswith("]"):
                     new_cot = old.rstrip()[:-1] + "," + drift + "]"
@@ -372,7 +401,8 @@ class MetacognitionObserver:
                 self._conn.commit()
                 return True
         except sqlite3.Error as exc:  # pragma: no cover — db 故障
-            logger.warning("metacognition: append_drift failed (%s) — fail-soft", exc)
+            logger.warning("metacognition: append %s failed (%s) — fail-soft",
+                           marker, exc)
             return False
 
     def close(self) -> None:

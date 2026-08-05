@@ -3,6 +3,20 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0067 — 可解释主控 Step 4: Judge 裁决接入 Explainable Master 输出（semantic_judge → CoT）
+
+- **类型**: 治理能力演进（v1.42.3-step4 快照）; 用户确认优先于 Step 2b/OpenCV（裁决分数/旗标是"静态规则→语义评估→上下文漂移→最终裁决"闭环的最后一块）
+- **架构事实核查修正（同 Step 2/3 修正模式）**: 用户期望链 `request → policy → semantic_judge → context_drift → verdict` 在**单决策轨迹内不可达成** — semantic_judge 是事后审计事件, 需要 decision.id, 而 id 只在决策构造/落库后才存在; `_build_cot()` 同步写入 request→policy→reason/trace→verdict。修正: 事件按**真实发生时序**追加在 verdict 之后（诚实回放原则）, 可解释链断言改为"五要素齐备 + 核心链顺序 + judge 事件为终端证据"
+- **交付**:
+  1. `observer.py`: `append_semantic(decision_id, score, flags, level=None)` + 公共 `_append_event_locked()`（append_drift 重构为薄包装）— 派生 level（>=0.85 high / >=0.5 medium / low）, UPDATE 追加语义 judge 事件到已有 cot（幂等: 行缺失 no-op / 已记录跳过, 与 context_drift 互不干扰）
+  2. `semantic_hook.py`: 三个审计函数（`semantic_audit_async` / `semantic_code_audit_async` / `semantic_output_audit_async`）接受 `decision_id` + `on_semantic`; **任何成功的 judge 结果（result 非 None, 含低分）都回调** — 诚实记录, 低分证据不因不撤销而丢失; 回调自身抛异常被吞（fail-soft, 审计不中断）; 无 decision_id（旧调用方）不回调不报错（向后兼容）
+  3. `main.py`: intercept 路径 — 两项输入审计任务移出 hook 块, 与漂移任务统一在 decision 落库后启动（同一个 `verdict != DENY and semantic_hook_enabled()` 块, `_on_semantic = meta_observer.append_semantic`）; `_proxy_forward` 增 decision_id + on_semantic 透传（DEBT-0020 输出审计同构接线）; chat 路径 3 处输出审计（non-streaming ×2 + streaming）挂 `_on_semantic`
+  4. `tests/test_semantic_judge_cot.py` +10: 高/低分追加 / level 派生边界（0.85/0.5/0.3）/ 显式 level 优先 / 幂等+与 drift 共存 / 缺失行 no-op / 低分也回调（诚实）/ 回调崩溃 fail-soft / 无 decision_id 跳过 / intercept 全链路 E2E（真实 CoT 含 semantic_judge, 双 patch: main_module.semantic_hook_enabled + sh.is_enabled）
+- **修复的测试缺陷**: `get_meta` 按 timestamp DESC 排序（同秒插入顺序不稳定）→ 派生测试改按 decision_id 匹配行, 不依赖插入顺序
+- **回归**: 934 passed + 1 skipped 全绿（924 基线 + 10 新增, 219s）
+- **激活**: 依赖 SEMANTIC_HOOK_ENABLED=1（hook 启用）+ GOV_META_DB/override（CoT 追加）; judge 服务离线 → 审计失败但无事件（fail-soft, 决策不阻塞）
+- **遗留/后续**: OpenCV MCP（机器人项目有用）与 Ls YAML 补全仍为 backlog; semantic_judge 事件目前为纯记录（不参与 revoke 决策 — revoke 由审计内部按 override 处理, CoT 仅追加证据）
+
 ## AUDIT-0066 — 可解释主控 Step 3: 上下文漂移检测（judge 语义一致性 → revoke + CoT 事件）
 
 - **类型**: 治理能力演进（v1.42.2-step3 快照）; 用户确认优先（Step 2 记录"发生了什么", Step 3 判断"在上下文中是否合理" → 完整可解释闭环）

@@ -337,19 +337,16 @@ async def intercept_handler(request: web.Request) -> web.Response:
     # 后台审计高风险 → 撤销 trace 链（后续请求短路 SUSPEND，见入口检查）。
     if verdict != Verdict.DENY and semantic_hook_enabled():
         _prompt = extract_prompt(req.body)
-        asyncio.create_task(semantic_audit_async(
-            trace_id=trace_id, user_prompt=_prompt, base_reason=reason))
         # Step 3 (v1.42.2-step3, 可解释主控): 上下文漂移检测 —
         # record_prompt 推当前轮进窗口; 漂移任务在 decision 落库后启动
         # (下方 save 后, 需要 decision.id 供 on_drift 追加 CoT)。
         record_prompt(req.agent_id, _prompt)
         # ML 集成 Phase 1' (裁决 2026-08-04): AST 放行的代码片段也过语义复查 —
         # AST 语法安全但意图危险 (编码混淆/跨函数数据流) 的片段由 LLM-Judge
-        # 按红线 A/C 判定, 高风险撤销 trace。与 prompt 审计并发, 互不阻塞。
+        # 按红线 A/C 判定, 高风险撤销 trace。
+        # v1.42.3-step4: 两项语义审计任务移出 hook 块 → decision 落库后启动
+        # (需要 decision.id 供 on_semantic 追加 semantic_judge 到 CoT)。
         _code = extract_code_snippets(req.body)
-        if _code:
-            asyncio.create_task(semantic_code_audit_async(
-                trace_id=trace_id, code_snippets=_code, base_reason=reason))
 
     # 3. persist decision (strong-typed model, serialized at DB edge)
     _tname, _tleth = _audit_tool_fields(req)
@@ -379,21 +376,36 @@ async def intercept_handler(request: web.Request) -> web.Response:
                             matched_rule=matched_rule, trace_id=trace_id,
                             reason=reason, tool_name=_tname,
                             tool_lethality=_tleth)
-    # v1.42.2-step3 (可解释主控): 上下文漂移检测后台任务 —
-    # decision.id 此时已存在, on_drift 回调 (meta_observer.append_drift)
-    # 把 context_drift 事件追加到该决策的 CoT 轨迹 (幂等)。
+    # v1.42.2-step3 + v1.42.3-step4 (可解释主控): 后台审计任务统一在
+    # decision 落库后启动 — decision.id 此时已存在, on_drift / on_semantic
+    # 回调把 context_drift / semantic_judge 事件追加到该决策的 CoT 轨迹
+    # (均幂等, fail-soft)。完整可解释链:
+    # request → policy → semantic_judge → context_drift → verdict。
     if verdict != Verdict.DENY and semantic_hook_enabled():
+        _on_semantic = (meta_observer.append_semantic
+                        if meta_observer is not None else None)
         asyncio.create_task(semantic_context_drift_async(
             trace_id=trace_id, agent_id=req.agent_id,
             user_prompt=_prompt, decision_id=decision.id,
             base_reason=reason,
             on_drift=(meta_observer.append_drift
                       if meta_observer is not None else None)))
+        asyncio.create_task(semantic_audit_async(
+            trace_id=trace_id, user_prompt=_prompt, base_reason=reason,
+            decision_id=decision.id, on_semantic=_on_semantic))
+        if _code:
+            asyncio.create_task(semantic_code_audit_async(
+                trace_id=trace_id, code_snippets=_code, base_reason=reason,
+                decision_id=decision.id, on_semantic=_on_semantic))
 
     # 4. if ALLOW(-family) and proxy mode → forward to upstream Agent
     response_body = None
     if verdict in (Verdict.ALLOW, Verdict.ALLOW_WITH_WARNING) and AGENT_BACKEND_URL:
-        response_body = await _proxy_forward(req, trace_id)
+        response_body = await _proxy_forward(
+            req, trace_id,
+            decision_id=decision.id,
+            on_semantic=(meta_observer.append_semantic
+                         if meta_observer is not None else None))
 
     # 5. build response — TASK-REAL-011: 回传 trace 上下文供下游链接
     #    (span_id == decision.id; 下游用 X-Parent-Span-ID 指向它)
@@ -424,7 +436,9 @@ async def intercept_handler(request: web.Request) -> web.Response:
         return web.json_response(result, status=200, headers=_resp_headers)
 
 
-async def _proxy_forward(req: InterceptRequest, trace_id: Optional[str] = None) -> Optional[dict]:
+async def _proxy_forward(req: InterceptRequest, trace_id: Optional[str] = None,
+                         decision_id: Optional[str] = None,
+                         on_semantic=None) -> Optional[dict]:
     """Forward the request to the upstream Agent backend.
 
     v0.2.0 (AUDIT-0005): only whitelisted headers are forwarded.
@@ -454,9 +468,12 @@ async def _proxy_forward(req: InterceptRequest, trace_id: Optional[str] = None) 
                     _raw = _raw[:_limit]
                 text = _raw.decode("utf-8", errors="replace")
                 # DEBT-0020: 代理转发响应同样异步补判 (与 chat 路径同构)
+                # v1.42.3-step4: 附带 decision_id + on_semantic → Judge 裁决
+                # 以 semantic_judge 事件追加到该决策的 CoT 轨迹。
                 if semantic_hook_enabled() and trace_id:
                     asyncio.create_task(semantic_output_audit_async(
-                        trace_id, text, base_reason="proxy-forward"))
+                        trace_id, text, base_reason="proxy-forward",
+                        decision_id=decision_id, on_semantic=on_semantic))
                 try:
                     return json.loads(text)
                 except json.JSONDecodeError:
@@ -916,6 +933,9 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
                             reason=reason, tool_name=_tname,
                             tool_lethality=_tleth)
     _trace_headers = _signed_trace_headers(trace_id, decision.id)
+    # v1.42.3-step4: 输出侧审计的 CoT 回调 (None = 观察层未接线, fail-soft)
+    _on_semantic = (meta_observer.append_semantic
+                    if meta_observer is not None else None)
 
     if verdict in (Verdict.DENY, Verdict.SUSPEND, Verdict.ESCALATE):
         return web.json_response(
@@ -958,15 +978,19 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
                     text = _raw.decode("utf-8", errors="replace")
                     try:
                         # DEBT-0020: 输出侧异步补判 — fire-and-forget, 不阻塞返回
+                        # v1.42.3-step4: 附带 decision_id + on_semantic → Judge
+                        # 裁决以 semantic_judge 事件追加到该决策的 CoT 轨迹。
                         if semantic_hook_enabled():
                             asyncio.create_task(semantic_output_audit_async(
-                                trace_id, text, base_reason="chat non-streaming"))
+                                trace_id, text, base_reason="chat non-streaming",
+                                decision_id=decision.id, on_semantic=_on_semantic))
                         return web.json_response(json.loads(text), status=resp.status,
                                                  headers=_trace_headers)
                     except json.JSONDecodeError:
                         if semantic_hook_enabled():
                             asyncio.create_task(semantic_output_audit_async(
-                                trace_id, text, base_reason="chat non-streaming"))
+                                trace_id, text, base_reason="chat non-streaming",
+                                decision_id=decision.id, on_semantic=_on_semantic))
                         return web.Response(text=text, status=resp.status,
                                             headers=_trace_headers)
                 # DEBT-0004: SSE streaming pass-through — forward upstream
@@ -998,6 +1022,7 @@ async def chat_completions_handler(request: web.Request) -> web.Response:
                         trace_id,
                         _out_buf.decode("utf-8", errors="replace"),
                         base_reason="chat streaming",
+                        decision_id=decision.id, on_semantic=_on_semantic,
                     ))
                 return sse
     except Exception as e:

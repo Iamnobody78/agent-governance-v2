@@ -96,7 +96,7 @@ curl -X POST http://localhost:8000/v1/chat/completions -H "Content-Type: applica
 
 - **Python ≥ 3.10** / FastAPI / Uvicorn
 - **tree-sitter 0.21.3**(硬锁)+ tree-sitter-languages 1.5.0(硬锁)
-- **PyYAML** 策略引擎 · **pytest** 测试(924 用例通过 + 1 跳过)· **Ruff** lint 零错误
+- **PyYAML** 策略引擎 · **pytest** 测试(934 用例通过 + 1 跳过)· **Ruff** lint 零错误
 - **GitHub Actions** CI 3 门(quality/policy/critic)+ all-gates 聚合 + dependabot(忽略破坏性 tree-sitter 升级)
 
 ## 🩺 维护状态

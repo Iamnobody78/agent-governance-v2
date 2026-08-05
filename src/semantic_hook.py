@@ -177,13 +177,16 @@ def _code_judge_prompt(code_snippets: str) -> str:
 
 
 async def semantic_code_audit_async(trace_id: str, code_snippets: str,
-                                    base_reason: str = "") -> Optional[Dict]:
+                                    base_reason: str = "",
+                                    decision_id: Optional[str] = None,
+                                    on_semantic=None) -> Optional[Dict]:
     """后台代码片段语义审计 (fire-and-forget, 供 asyncio.create_task 调度)。
 
     与 semantic_audit_async 完全同构: 只升不降 / fail-soft / 永不抛异常。
     差异: 输入是 AST 放行的代码片段 (而非用户 prompt), judge prompt 加
     "[代码片段语义审计]" 标记避免与用户消息混淆。
     副作用: score >= 阈值 → revoke_registry.revoke(trace_id) (后续短路 SUSPEND)。
+    Step 4: 成功的评估经 on_semantic 进入 CoT (同 semantic_audit_async)。
     """
     from .revoke import revoke_registry
     if not is_enabled():
@@ -195,6 +198,13 @@ async def semantic_code_audit_async(trace_id: str, code_snippets: str,
     except Exception as e:  # noqa: BLE001 — background task must never crash loop
         logger.warning("semantic code audit crashed (%.80s) — trace=%s", e, trace_id)
         return None
+    if result is not None and decision_id and on_semantic is not None:
+        # Step 4: 成功的 judge 评估 (含低分) 进入 CoT
+        try:
+            on_semantic(decision_id, result.get("score", 0.0),
+                        result.get("flags", []))
+        except Exception as e:  # noqa: BLE001 — CoT 追加失败不阻断
+            logger.warning("on_semantic failed (%.80s) — trace=%s", e, trace_id)
     if result and result.get("override") == "ESCALATE":
         score = result.get("score", 0.0)
         flags = result.get("flags", [])
@@ -356,7 +366,9 @@ async def semantic_hook(user_prompt: str, timeout: Optional[float] = None) -> Op
 # （SUSPEND 待人工复审），绝不放行 DENY —— 只升不降原则保持。
 
 async def semantic_audit_async(trace_id: str, user_prompt: str,
-                               base_reason: str = "") -> Optional[Dict]:
+                               base_reason: str = "",
+                               decision_id: Optional[str] = None,
+                               on_semantic=None) -> Optional[Dict]:
     """后台弱监督审计（fire-and-forget，供 asyncio.create_task 调度）。
 
     返回 judge 结果（{override, score, flags} 或 None）。副作用:
@@ -364,6 +376,11 @@ async def semantic_audit_async(trace_id: str, user_prompt: str,
       - 审计事件以 warning 日志记录（撤销的持久化发生在后续请求的
         SUSPEND DecisionRecord 落库时 —— 见 main.py intercept 入口）
     永不抛异常（fail-soft：judge 不可用 → 返回 None，静默降级）。
+
+    Step 4 (v1.42.3-step4, 可解释主控): 集成闭环 — 任何成功的 judge
+    评估 (result 非 None, 含低分) 都经 on_semantic(decision_id, score,
+    flags) 回调进入 CoT 轨迹 (observer.append_semantic)。decision_id 由
+    网关层在 decision 落库后传入; 回调异常被吞 (fail-soft)。
     """
     from .revoke import revoke_registry
     if not is_enabled():
@@ -373,6 +390,13 @@ async def semantic_audit_async(trace_id: str, user_prompt: str,
     except Exception as e:  # noqa: BLE001 — background task must never crash loop
         logger.warning("semantic audit crashed (%.80s) — trace=%s", e, trace_id)
         return None
+    if result is not None and decision_id and on_semantic is not None:
+        # Step 4: 成功的 judge 评估 (含低分) 进入 CoT — "为什么这么判"
+        try:
+            on_semantic(decision_id, result.get("score", 0.0),
+                        result.get("flags", []))
+        except Exception as e:  # noqa: BLE001 — CoT 追加失败不阻断
+            logger.warning("on_semantic failed (%.80s) — trace=%s", e, trace_id)
     if result and result.get("override") == "ESCALATE":
         score = result.get("score", 0.0)
         flags = result.get("flags", [])
@@ -440,11 +464,14 @@ def extract_agent_response(resp_text: str, max_total: int = AGENT_RESPONSE_MAX_C
 
 
 async def semantic_output_audit_async(trace_id: str, agent_response: str,
-                                      base_reason: str = "") -> Optional[Dict]:
+                                      base_reason: str = "",
+                                      decision_id: Optional[str] = None,
+                                      on_semantic=None) -> Optional[Dict]:
     """输出侧异步补判 (DEBT-0020) — 与 semantic_audit_async 严格同构。
 
     fire-and-forget (供 asyncio.create_task 调度), fail-soft (永不抛异常),
     只升不降。无 judge (未启用/不可用) → None 静默降级, 主链路不受影响。
+    Step 4: 成功的评估经 on_semantic 进入 CoT (同 semantic_audit_async)。
     """
     from .revoke import revoke_registry
     if not is_enabled():
@@ -457,6 +484,13 @@ async def semantic_output_audit_async(trace_id: str, agent_response: str,
     except Exception as e:  # noqa: BLE001 — background task must never crash loop
         logger.warning("semantic output audit crashed (%.80s) — trace=%s", e, trace_id)
         return None
+    if result is not None and decision_id and on_semantic is not None:
+        # Step 4: 成功的 judge 评估 (含低分) 进入 CoT
+        try:
+            on_semantic(decision_id, result.get("score", 0.0),
+                        result.get("flags", []))
+        except Exception as e:  # noqa: BLE001 — CoT 追加失败不阻断
+            logger.warning("on_semantic failed (%.80s) — trace=%s", e, trace_id)
     if result and result.get("override") == "ESCALATE":
         score = result.get("score", 0.0)
         flags = result.get("flags", [])
