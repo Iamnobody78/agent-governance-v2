@@ -3,6 +3,20 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0066 — 可解释主控 Step 3: 上下文漂移检测（judge 语义一致性 → revoke + CoT 事件）
+
+- **类型**: 治理能力演进（v1.42.2-step3 快照）; 用户确认优先（Step 2 记录"发生了什么", Step 3 判断"在上下文中是否合理" → 完整可解释闭环）
+- **事实核查修正**: 用户原方案"从 storage.get_trace() 拉最近 3 轮摘要"**不可行** — decisions 表不存 prompt/body 内容（只有决策元数据）, get_trace 无语义内容可比 → 改为**进程内 per-agent 滑动窗口**（deque maxlen=CONTEXT_WINDOW_SIZE=3, prompt 有界截断 800）; 重启丢窗口 = 诚实降级（漂移是弱信号非门禁）
+- **交付**:
+  1. `semantic_hook.py`: `record_prompt()` 窗口推入（per-agent 隔离）; `_drift_history()` 窗口 < 2 轮 → 空串（不评估）; `_drift_judge_prompt()` 漂移评估 prompt（复用 judge 服务）; `semantic_context_drift_async()` fire-and-forget — 漂移 >= SEMANTIC_DRIFT_THRESHOLD(0.75) → revoke + on_drift 回调（CoT 追加）
+  2. **弱信号不覆盖强信号**: drift 发现 trace 已撤销（输入红线语义审计先行）→ 跳过 revoke 保留原 reason（只升不降扩展）; 语义审计 revoke 无条件覆盖 → 最终 reason 恒为强信号源
+  3. `observer.py`: `append_drift(decision_id, score, flags)` — UPDATE 追加 context_drift 事件到已有 cot（幂等: 行缺失 no-op / 已记录跳过）
+  4. `main.py`: intercept 路径 — hook 块内 `record_prompt(agent_id, prompt)`, decision 落库后 `create_task(semantic_context_drift_async(..., decision_id=decision.id, on_drift=meta_observer.append_drift))`（decision.id 此时才可用）
+  5. `tests/conftest.py`: autouse 清理 `_drift_windows`（进程级全局隔离, 防跨文件泄漏）
+  6. `tests/test_context_drift.py` +12: 窗口有界/per-agent 隔离/截断 / 双轮才评估 / prompt 形状 / 高漂移 revoke+回调 / 低漂移无副作用 / judge down fail-soft / 单轮跳过 judge / 禁用返回 None / append_drift 幂等+缺失 no-op / intercept 全链路 CoT 含 context_drift
+- **修复的测试泄漏**: TestDriftWiring 漏恢复 `sh.is_enabled` patch → 跨文件污染 test_semantic_code_hook（enabled=False 仍 ESCALATE）; 补恢复后 924 全绿
+- **回归**: 924 passed + 1 skipped 全绿（912 基线 + 12 新增, 231s）
+- **激活**: 依赖 SEMANTIC_HOOK_ENABLED=1（hook 启用）+ GOV_META_DB/override（CoT 追加）; 无历史窗口 → 不评估（诚实降级）
 ## AUDIT-0065 — 可解释主控 Step 2: CoT 决策轨迹回放 → decision_meta.cot
 
 - **类型**: 治理能力演进（v1.42.1-step2 快照）; 用户确认优先于 OpenCV MCP（可解释性=核心承诺, 视觉=锦上添花）

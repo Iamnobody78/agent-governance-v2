@@ -122,6 +122,7 @@ from .danger import DANGEROUS_PREFIXES, DANGEROUS_METHODS, is_dangerous as _is_d
 from .semantic_hook import (extract_prompt, is_enabled as semantic_hook_enabled,
                             semantic_hook, semantic_audit_async,
                             extract_code_snippets, semantic_code_audit_async,
+                            record_prompt, semantic_context_drift_async,
                             extract_agent_response, semantic_output_audit_async,
                             AGENT_RESPONSE_MAX_CHARS)
 
@@ -338,6 +339,10 @@ async def intercept_handler(request: web.Request) -> web.Response:
         _prompt = extract_prompt(req.body)
         asyncio.create_task(semantic_audit_async(
             trace_id=trace_id, user_prompt=_prompt, base_reason=reason))
+        # Step 3 (v1.42.2-step3, 可解释主控): 上下文漂移检测 —
+        # record_prompt 推当前轮进窗口; 漂移任务在 decision 落库后启动
+        # (下方 save 后, 需要 decision.id 供 on_drift 追加 CoT)。
+        record_prompt(req.agent_id, _prompt)
         # ML 集成 Phase 1' (裁决 2026-08-04): AST 放行的代码片段也过语义复查 —
         # AST 语法安全但意图危险 (编码混淆/跨函数数据流) 的片段由 LLM-Judge
         # 按红线 A/C 判定, 高风险撤销 trace。与 prompt 审计并发, 互不阻塞。
@@ -374,6 +379,16 @@ async def intercept_handler(request: web.Request) -> web.Response:
                             matched_rule=matched_rule, trace_id=trace_id,
                             reason=reason, tool_name=_tname,
                             tool_lethality=_tleth)
+    # v1.42.2-step3 (可解释主控): 上下文漂移检测后台任务 —
+    # decision.id 此时已存在, on_drift 回调 (meta_observer.append_drift)
+    # 把 context_drift 事件追加到该决策的 CoT 轨迹 (幂等)。
+    if verdict != Verdict.DENY and semantic_hook_enabled():
+        asyncio.create_task(semantic_context_drift_async(
+            trace_id=trace_id, agent_id=req.agent_id,
+            user_prompt=_prompt, decision_id=decision.id,
+            base_reason=reason,
+            on_drift=(meta_observer.append_drift
+                      if meta_observer is not None else None)))
 
     # 4. if ALLOW(-family) and proxy mode → forward to upstream Agent
     response_body = None

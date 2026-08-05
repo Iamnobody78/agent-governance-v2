@@ -1,8 +1,8 @@
 # 🧬 三循环治理状态快照
 
-> 版本: v1.42.1-step2
-> 快照时间: 2026-08-05（**可解释主控 Step 2** ✅（AUDIT-0065: CoT 决策轨迹回放 → decision_meta.cot; 修复元认知观察层孤岛 — main.py 三处决策路径 fail-soft 接线; 幂等迁移; +8 测试, 912 全绿; Ls YAML 迁移独立为 Step 2b））
-> 最近审计: AUDIT-0065（可解释主控 Step 2, CoT 轨迹回放）+ AUDIT-0064（阶段 A 生产化, qwen2.5:7b）+ AUDIT-0063（输出侧语义补判, DEBT-0020 清偿）+ AUDIT-0062（网关层 body 大小上限, DEBT-0018 清偿）+ AUDIT-0061（外部审查幻觉核查 + 元认知观察层 + pyproject 修复）+ AUDIT-0060（阶段 2′ LLM 提议器 + 三社区实现事实核查）
+> 版本: v1.42.2-step3
+> 快照时间: 2026-08-05（**可解释主控 Step 3** ✅（AUDIT-0066: 上下文漂移检测 — judge 语义一致性, 进程内 per-agent 滑动窗口, 漂移≥0.75 → revoke + CoT context_drift 事件; 弱信号不覆盖强信号; +12 测试, 924 全绿; 可解释闭环完成: Step1 rationale + Step2 CoT + Step3 上下文感知））
+> 最近审计: AUDIT-0066（可解释主控 Step 3, 上下文漂移）+ AUDIT-0065（可解释主控 Step 2, CoT 轨迹回放）+ AUDIT-0064（阶段 A 生产化, qwen2.5:7b）+ AUDIT-0063（输出侧语义补判, DEBT-0020 清偿）+ AUDIT-0062（网关层 body 大小上限, DEBT-0018 清偿）+ AUDIT-0061（外部审查幻觉核查 + 元认知观察层 + pyproject 修复）+ AUDIT-0060（阶段 2′ LLM 提议器 + 三社区实现事实核查）
 > 生成方式: 自持式三循环治理引擎自动生成
 > 用途: 任何新会话或新 Agent 实例可通过此文件在 30 秒内恢复完整项目状态
 
@@ -12,14 +12,14 @@
 
 | 指标 | 值 |
 |------|-----|
-| **测试全量** | 912 passed + 1 skipped（分批全绿 0 失败；本轮 +8 CoT 决策轨迹回放；环境级慢非回归） |
+| **测试全量** | 924 passed + 1 skipped（分批全绿 0 失败；本轮 +12 上下文漂移检测；环境级慢非回归） |
 | **覆盖率** | 87%（`--source=src` 实测；门槛 ≥ 60%） |
 | **债务清偿率** | 活跃 1（DEBT-0021 已文档化接受，无阻塞） |
 | **活跃债务** | DEBT-0021（timeout 分支不覆盖 json_path 规则, LOW, 已文档化接受）；已清偿: DEBT-0020（输出侧语义评估, LOW）@v1.41.0 + DEBT-0018（body 大小上限, MEDIUM）@v1.40.0; 已知边界: ① 拼接形态已由 src/taint.py 闭合（函数参数跨界/条件分支/属性链传播仍为边界）；② DROP DATABASE = grammar ERROR 节点（L2 YAML 兜底） |
-| **最近事件** | **可解释主控 Step 2** ✅（CoT 决策轨迹回放 → decision_meta.cot: 修复元认知观察层孤岛 — main.py 三处决策路径 fail-soft 接线; GOV_META_DB opt-in; Ls YAML 迁移独立 Step 2b）。此前: **阶段 A 生产化** ✅（qwen2.5:7b judge 常驻 8765）+ **输出侧语义补判** ✅ + **网关层 body 上限** ✅ |
+| **最近事件** | **可解释主控 Step 3** ✅（上下文漂移检测: judge 语义一致性 + per-agent 窗口 + revoke + CoT 事件; 可解释闭环完成）。此前: **Step 2 CoT 轨迹** ✅ + **阶段 A 生产化** ✅（qwen2.5:7b judge 常驻 8765）+ **输出侧语义补判** ✅ + **网关层 body 上限** ✅ |
 | **CI 状态** | ✅ GATE 1-8 全绿（quality/policy/critic 3 job + all-gates 聚合；GATE 3 junitxml + 真实退出码 + ci_diagnose） |
 | **约束体系** | R1-R6 已固化 + 防伪造三原则（真实执行输出/一次一 Phase/独立可复核提交） |
-| **提交链** | …`04655a5` 网关层 body 上限（v1.40.0-bodylimit）→ `8b7af5e` 输出侧语义补判（v1.41.0-outputaudit）→ `da7545b` 阶段 A 生产化（v1.42.0-stagea）→ 可解释主控 Step 2 CoT 轨迹（v1.42.1-step2, 待提交） |
+| **提交链** | …`04655a5` 网关层 body 上限（v1.40.0-bodylimit）→ `8b7af5e` 输出侧语义补判（v1.41.0-outputaudit）→ `da7545b` 阶段 A 生产化（v1.42.0-stagea）→ `044b61b` 可解释主控 Step 2 CoT 轨迹（v1.42.1-step2）→ 上下文漂移检测（v1.42.2-step3, 待提交） |
 
 ---
 

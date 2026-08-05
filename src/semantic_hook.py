@@ -32,6 +32,22 @@ SEMANTIC_JUDGE_URL = os.environ.get("SEMANTIC_JUDGE_URL", "http://127.0.0.1:8765
 SEMANTIC_HOOK_TIMEOUT = float(os.environ.get("SEMANTIC_HOOK_TIMEOUT", "0.15"))
 SEMANTIC_HOOK_THRESHOLD = float(os.environ.get("SEMANTIC_HOOK_THRESHOLD", "0.85"))
 
+# ── Step 3 (v1.42.2-step3, 可解释主控): 上下文漂移检测 ──────────────
+# 目标: 判断"当前请求在会话上下文中是否合理" — 语义一致性检测, 补齐
+# CoT(发生了什么) + rationale(为什么) 之上的"上下文感知(在什么语境下)"。
+# 事实核查 (2026-08-05): storage.decisions 不存 prompt/body 内容 (只有
+# 决策元数据) → 用户原方案"从 storage.get_trace() 拉最近 3 轮摘要"不可行。
+# 修正: 进程内 per-agent 滑动窗口 (deque maxlen=CONTEXT_WINDOW_SIZE),
+# judge 比较"最近 N 轮 vs 当前"的语义漂移度。重启丢窗口 = 诚实降级
+# (漂移检测是弱信号增强, 非阻断性门禁; 无历史 → 不评估)。
+# 与 semantic_audit_async 同构: fire-and-forget / fail-soft / 只升不降 /
+# 阈值触发 → revoke_registry.revoke (后续请求短路 SUSPEND)。
+SEMANTIC_DRIFT_THRESHOLD = float(os.environ.get("SEMANTIC_DRIFT_THRESHOLD", "0.75"))
+CONTEXT_WINDOW_SIZE = 3      # 每 agent 保留最近 N 轮 prompt
+DRIFT_HISTORY_MAX_CHARS = 800  # 历史窗口整体有界 (防 judge 输入膨胀)
+_drift_windows: Dict[str, list] = {}  # agent_id -> [prompt1, prompt2, ...]
+_ANON_AGENT = "<anonymous>"
+
 # TASK-REAL-009 / DEBT-0018: bounded input — the judge only ever sees a
 # truncated prefix (meta-prompt rule: first ~512 tokens + tail). Full text
 # never leaves the gateway process.
@@ -187,6 +203,104 @@ async def semantic_code_audit_async(trace_id: str, code_snippets: str,
         revoke_registry.revoke(trace_id, reason, score)
         logger.warning("semantic CODE audit REVOKED trace=%s score=%s flags=%s",
                        trace_id, score, flags)
+    return result
+
+
+# ── Step 3 (v1.42.2-step3): 上下文漂移检测 ──────────────────────────
+
+def record_prompt(agent_id: Optional[str], prompt: str) -> None:
+    """把当前 prompt 推入 per-agent 滑动窗口 (有界, maxlen=CONTEXT_WINDOW_SIZE)。
+
+    在任何语义审计 (含漂移) 之前调用 — 当前轮也进窗口, 下一轮才能比较。
+    进程内状态: 重启丢失 (诚实降级, 漂移是弱信号非门禁)。
+    """
+    key = agent_id or _ANON_AGENT
+    win = _drift_windows.get(key)
+    if win is None:
+        win = _drift_windows[key] = []
+    prompt = truncate_prompt(prompt, max_chars=DRIFT_HISTORY_MAX_CHARS)
+    win.append(prompt)
+    while len(win) > CONTEXT_WINDOW_SIZE:
+        win.pop(0)
+
+
+def _drift_history(agent_id: Optional[str]) -> str:
+    """窗口内历史轮次摘要 (不含当前轮; 窗口未填满 → 空串 = 不评估)。"""
+    win = _drift_windows.get(agent_id or _ANON_AGENT, [])
+    if len(win) < 2:
+        return ""  # 无历史可比较 (单轮或窗口冷启动)
+    return "\n---\n".join(f"[轮次{i+1}] {p}" for i, p in enumerate(win[:-1]))
+
+
+def _drift_judge_prompt(history: str, current: str) -> str:
+    """构造漂移评估 prompt: 历史 N 轮 vs 当前轮, judge 输出 JSON。
+
+    明确要求 judge 只输出 {drift_score, flags} 结构 (与 semantic_hook
+    的解析契约一致, 复用 _parse_judge_payload 风格 — 见 semantic_hook)。
+    """
+    json_schema = '{"drift_score": <0.0-1.0>, "flags": ["TopicShift"]}'
+    return (
+        "[上下文漂移评估] 以下是同一 agent 会话的历史消息和当前消息。\n"
+        "请评估当前消息相对历史上下文的语义漂移度 (0.0=完全一致, "
+        "1.0=完全无关/话题骤变/上下文欺骗)。只输出 JSON: " + json_schema + "\n"
+        "历史消息:\n" + history + "\n\n当前消息:\n" + current
+    )
+
+
+async def semantic_context_drift_async(trace_id: str,
+                                       agent_id: Optional[str],
+                                       user_prompt: str,
+                                       decision_id: Optional[str] = None,
+                                       base_reason: str = "",
+                                       on_drift=None) -> Optional[Dict]:
+    """后台上下文漂移检测 (fire-and-forget, 供 asyncio.create_task 调度)。
+
+    Step 3 契约 (与 semantic_audit_async 完全同构):
+      - fail-soft: judge 超时/异常/不可用 → None, 永不抛异常
+      - 只升不降: 漂移 >= 阈值 → revoke_registry.revoke(trace_id)
+        (后续请求短路 SUSPEND, 与输入语义审计共用撤销链)
+      - 诚实降级: 窗口无历史 (< 2 轮) → 不评估, 直接返回 None
+      - CoT 集成: on_drift(decision_id, score, flags) 回调由网关层注入
+        (main.py 的 meta_observer.append_drift), 幂等追加 context_drift
+        事件; 回调异常被吞 (fail-soft)
+    注: 当前轮的 prompt 已在调用点通过 record_prompt() 推入窗口, 这里
+    只读窗口做比较 — 不要在函数内再 record (避免双写)。
+    """
+    from .revoke import revoke_registry
+    if not is_enabled():
+        return None
+    history = _drift_history(agent_id)
+    if not history:
+        return None  # 无历史上下文 → 无法评估 (诚实降级)
+    try:
+        result = await semantic_hook(_drift_judge_prompt(history, user_prompt))
+    except Exception as e:  # noqa: BLE001 — background task must never crash loop
+        logger.warning("semantic context drift crashed (%.80s) — trace=%s", e, trace_id)
+        return None
+    if result is None:
+        return None
+    score = result.get("score", 0.0)
+    flags = result.get("flags", [])
+    if score >= SEMANTIC_DRIFT_THRESHOLD:
+        # 只升不降 (弱信号不覆盖强信号): 若 trace 已被撤销 (输入红线语义
+        # 审计等强信号先行), drift 不覆盖其 reason — 仅补充 CoT 事件。
+        # 语义审计 revoke 无条件覆盖, 因此最终 reason 恒为强信号源。
+        if not revoke_registry.is_revoked(trace_id):
+            reason = (f"上下文漂移撤销 (drift={score}, flags={flags})"
+                      f"{' | ' + base_reason if base_reason else ''}")
+            revoke_registry.revoke(trace_id, reason, score)
+            logger.warning("semantic DRIFT REVOKED trace=%s drift=%s flags=%s",
+                           trace_id, score, flags)
+        else:
+            logger.warning(
+                "semantic DRIFT detected trace=%s drift=%s but already revoked "
+                "(stronger signal wins — keep reason)", trace_id, score)
+        # CoT 集成: 回调由网关层注入 (meta_observer.append_drift), fail-soft
+        if decision_id and on_drift is not None:
+            try:
+                on_drift(decision_id, score, flags)
+            except Exception as e:  # noqa: BLE001 — CoT 追加失败不阻断
+                logger.warning("on_drift failed (%.80s) — trace=%s", e, trace_id)
     return result
 
 

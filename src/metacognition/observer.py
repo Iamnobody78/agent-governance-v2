@@ -335,6 +335,46 @@ class MetacognitionObserver:
         except sqlite3.Error:
             return []
 
+    def append_drift(self, decision_id: str, drift_score: float,
+                     flags: Optional[List[str]] = None) -> bool:
+        """Step 3: 向已有 decision_meta 行的 cot 轨迹追加 context_drift 事件。
+
+        漂移检测是异步的 (semantic_context_drift_async), 发生在 record()
+        之后 — 因此用 UPDATE 追加而非新建行。幂等语义:
+          - 行不存在 → no-op (返回 False, 不报错)
+          - 行存在且已有 context_drift → 跳过 (每个 decision 只记录一次)
+          - 成功追加 → True
+        fail-soft: 任何 sqlite3.Error → warning + False, 不阻断调用方。
+        """
+        try:
+            with self._lock:
+                self._ensure_conn()
+                row = self._conn.execute(
+                    "SELECT cot FROM decision_meta WHERE id = ?",
+                    (decision_id,)).fetchone()
+                if row is None:
+                    return False  # 决策已裁剪/不存在 → no-op
+                old = row[0] or ""
+                if '"context_drift"' in old:
+                    return False  # 幂等: 已记录过
+                drift = json.dumps(
+                    {"t": "context_drift", "score": round(float(drift_score), 4),
+                     "flags": [str(f) for f in (flags or [])]},
+                    ensure_ascii=False, separators=(",", ":"))
+                # 追加到步骤数组尾部 (兼容既有数组, 保持 JSON 合法)
+                if old.strip().endswith("]"):
+                    new_cot = old.rstrip()[:-1] + "," + drift + "]"
+                else:
+                    new_cot = "[" + drift + "]"
+                self._conn.execute(
+                    "UPDATE decision_meta SET cot = ? WHERE id = ?",
+                    (new_cot, decision_id))
+                self._conn.commit()
+                return True
+        except sqlite3.Error as exc:  # pragma: no cover — db 故障
+            logger.warning("metacognition: append_drift failed (%s) — fail-soft", exc)
+            return False
+
     def close(self) -> None:
         with self._lock:
             if self._conn is not None:
