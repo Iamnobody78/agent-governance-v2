@@ -1,4 +1,0 @@
-C:\Users\ivy\AppData\Roaming\AionUi\aionui\conversations\2026\07\27\aionrs-temp-48324704\agent-governance-v2\.venv-b1\Lib\site-packages\tree_sitter\__init__.py:36: FutureWarning: Language(path, name) is deprecated. Use Language(ptr, name) instead.
-  warn("{} is deprecated. Use {} instead.".format(old, new), FutureWarning)
-INFO:__main__:ASTGuard loaded: bash, python, sql
-INFO:__main__:governance-gateway v0.4.0 starting on :9000

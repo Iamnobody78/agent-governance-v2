@@ -29,3 +29,4 @@ research_outputs/
 
 # judge 服务运行时日志 (阶段 A 生产化)
 judge/*.log
+gateway_*.log
