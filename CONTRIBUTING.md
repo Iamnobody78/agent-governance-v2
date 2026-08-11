@@ -23,7 +23,7 @@ Windows 下两个 venv 的分工：`.venv-b1` = LangChain SDK；`.venv-b2` = 核
 ```bash
 # GATE 1  语法/导入     python -m compileall src tests examples
 # GATE 2  策略一致性     python examples/policy_probe.py        # exit 0 = 一致
-# GATE 3  单元+集成      python -m pytest tests -q              # 基线 ≥450 passed
+# GATE 3  单元+集成      python -m pytest tests -q              # 基线 ≥1042 passed（2026-08-10 实测；S63-S66 CVE-S 套件已含）
 # GATE 4  B1/B2 契约    python -m pytest tests/test_integration_langchain.py tests/test_integration_autogen.py -q
 # GATE 5  认证层自检     python -m src.certification.sign --file <f> && python -m src.certification.verify --file <f>
 # GATE 6  示例 E2E       powershell -File examples/run_examples.ps1   # PASS=3 FAIL=0

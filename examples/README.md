@@ -1,4 +1,20 @@
-# examples/ — 外部代理接入示例（P9）
+# examples/ — 治理引擎示例
+
+> 目的：证明 `agent-governance` 可迁移治理**任意外部 Agent**——不是声称，
+> 而是可运行的代码 + 真实治理证据（DENY/ESCALATE 裁决 + trace_id 追踪链）。
+
+## v2.0 治理闭环示例（S63-S69，推荐优先看）
+
+| 文件 | 演示能力 | 运行命令 | 预期判定 |
+|------|---------|---------|---------|
+| `feynman_test_false_claim.py` | **S66 谎报缓解**——裸 `satisfied` 声明 → 验证通道降级 `ESCALATE` (c=0.6)；带证据锚点 → 放行；矛盾声明 → 伦理 `DENY` | `python examples/feynman_test_false_claim.py` | PASS — 谎报被拦截 |
+| `ethics_deny_demo.py` | 伦理边界 `DENY` 硬阻断——不依赖 satisfied 声明，验证通道平凡通过 | `python examples/ethics_deny_demo.py` | PASS — DENY 不受谎报通道影响 |
+| `vce_scan_demo.py` | **S65 治理自审**——VCE 2.0 扫描（极化指数 / 冲突 / 盲点）+ MCE 自省 | `python examples/vce_scan_demo.py` | PASS — 扫描报告可生成 |
+
+三个示例直接调用 `ProtocolGateway`（`src/protocol_gateway.py`），验证通道为
+`BaselineDeclarationValidator`（baseline）。示例以 exit code 断言判定，可接入 CI。
+
+## 外部代理接入示例（v1 时代，P9）
 
 > 目的：证明 `agent-governance` 可迁移治理**任意外部 Agent**——不是声称，
 > 而是可运行的代码 + 真实治理证据（DENY/ESCALATE 裁决 + trace_id 追踪链）。
