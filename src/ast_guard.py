@@ -26,6 +26,7 @@ Tree-sitter 裁决落地: 在所有 YAML 规则匹配之前, 先对请求体中�
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -79,6 +80,43 @@ def _has_where_clause(node: Node) -> bool:
         if child.type == "where_clause":
             return True
     return False
+
+
+def _has_tautology_where(node: Node) -> bool:
+    """SQL UPDATE 后处理 (Round 2): where_clause 内是否存在"变量自指"恒真比较。
+
+    覆盖 `WHERE id=id` 形态 (S58/R2 实证: 该形态通过 tree-sitter 解析, 不在
+    trivial_where (1=1/TRUE) 捕获内, 旧逻辑放行 → 全表覆盖 FN)。判定规则:
+    binary_expression 的两个 named 子节点均为 identifier/field_identifier 且
+    **文本完全相等** → 恒真条件 (与 1=1 语义等价)。
+
+    已知边界 (文档化, 不判定): `WHERE id>0`, `WHERE id IS NOT NULL` 等数据依赖
+    条件无法静态证明恒真; 限定: 仅处理简单二元比较, 不含函数/算术/限定引用。
+    """
+    def is_ident(n):
+        return n.type in ("identifier", "field_identifier")
+
+    def walk(n):
+        if n.type == "binary_expression":
+            kids = [c for c in n.children if c.is_named]
+            if (len(kids) == 2 and is_ident(kids[0]) and is_ident(kids[1])
+                    and kids[0].text == kids[1].text):
+                return True
+        for c in n.children:
+            if walk(c):
+                return True
+        return False
+
+    return walk(node)
+
+
+# Round 2: parse-failure containment — tree-sitter-sql 语法覆盖有限, 对无法
+# 解析的破坏性 DDL/DML 形态 (DROP DATABASE/TRIGGER/FUNCTION, ALTER ... DROP,
+# UPDATE/DELETE ... WHERE id IN (subquery) 等) 静默放行 (实证 FN)。本层仅在
+# 解析产生 ERROR 节点时生效: 对 ERROR 所在语句的文本做**语句起始关键词**扫描
+# (锚定 ^ 或 ;, 不扫描字符串字面量内部位置——良性可解析查询完全不进入本层)。
+# 注意: 这不是危险模式表 (危险模式仍全部在 queries/*.scm), 而是解析失败兜底。
+_SQL_PARSE_ERROR_KEYWORD = re.compile(r"(?i)(?:^|;)\s*(drop|alter|delete|truncate|update)\b")
 
 
 @dataclass
@@ -201,12 +239,25 @@ class ASTGuard:
                 kind = self._semantics[language][name]
                 for node in nodes:
                     # SQL UPDATE 后处理: 无 WHERE 子句 = 全表覆盖 → 升级阻断级
+                    # R2: WHERE 为变量自指恒真 (id=id) = 全表覆盖 → 阻断级
                     if language == "sql" and name == "update_stmt":
                         if not _has_where_clause(node):
                             kind = "destructive-update"
+                        elif _has_tautology_where(node):
+                            kind = "destructive-tautology"
                         else:
                             continue  # 有 WHERE 的有界更新 → 放行
                     findings.append(self._finding(language, qname, name, kind, node))
+        # R2: SQL 解析失败兜底 — tree-sitter-sql 语法覆盖有限, 破坏性 DDL/DML
+        # 形态 (DROP DATABASE/TRIGGER/FUNCTION, ALTER ... DROP, UPDATE/DELETE
+        # ... WHERE id IN (subquery)) 解析为 ERROR 节点且无任何捕获 → 静默放行
+        # (实证 FN)。本层仅在存在 ERROR 节点时, 对 ERROR 所在语句做**语句起始**
+        # 破坏性关键词扫描。良性可解析查询完全不进入本层 (零 FP 面)。
+        if language == "sql":
+            try:
+                findings.extend(self._sql_parse_error_guard(code, root))
+            except Exception as e:  # noqa: BLE001 — 兜底层失败静默, 不阻塞主判定
+                logger.warning("ASTGuard sql parse-error guard failed: %s", e)
         # 数据流补强 (仅 Python): 常量折叠 + 别名解析, 闭合 scm 拼接形态盲区
         # (getattr(__builtins__, 'ev'+'al') / __builtins__['e'+'val'] 等)。
         # 补强层失败静默 —— 主判定不依赖它, 见 src/taint.py 模块文档。
@@ -247,6 +298,48 @@ class ASTGuard:
             text=text,
             sexp=sexp,
         )
+
+    # ---- R2: SQL 解析失败兜底 ----
+
+    def _sql_parse_error_guard(self, code: str, root) -> List[ASTFinding]:
+        """tree-sitter-sql 解析失败兜底 (Round 2)。
+
+        实证 (gov_round2_sql_variants.py, 44 用例): DROP DATABASE / DROP TRIGGER /
+        DROP FUNCTION / ALTER TABLE ... DROP ... / UPDATE|DELETE ... WHERE id IN
+        (subquery) 被 tree-sitter-sql 解析为 ERROR 节点 → 无任何 scm 捕获 →
+        静默放行 (7 个 FN)。本层仅当解析树存在 ERROR 节点时生效: 对每个 ERROR
+        最近的语句祖先 (或整个 source_file) 文本做**语句起始**破坏性关键词扫描
+        (锚定 ^ 或 ; —— 不扫描字符串字面量内部)。良性可解析查询完全不进入本层。
+        """
+        errors: List = []
+
+        def walk(n) -> None:
+            if n.type == "ERROR":
+                errors.append(n)
+                return
+            for c in n.children:
+                walk(c)
+
+        walk(root)
+        if not errors:
+            return []
+        out: List[ASTFinding] = []
+        seen: set = set()
+        for err in errors:
+            anc = err.parent
+            while anc is not None and not (anc.type.endswith("_statement")
+                                           or anc.type == "source_file"):
+                anc = anc.parent
+            scope = anc if anc is not None else root
+            if scope.start_point in seen:   # (row, col) 去重 —— 每个语句只扫一次
+                continue
+            seen.add(scope.start_point)
+            text = scope.text.decode("utf-8", "replace")
+            if _SQL_PARSE_ERROR_KEYWORD.search(text):
+                out.append(self._finding("sql", "parse-error-guard",
+                                         "destructive_keyword",
+                                         "destructive-sql-parse-error", scope))
+        return out
 
     # ---- 请求前门 ----
 

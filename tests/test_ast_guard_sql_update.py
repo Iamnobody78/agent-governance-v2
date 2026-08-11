@@ -64,9 +64,30 @@ class TestUpdateWithWhere:
         assert not _blocked(
             guard, {"query": "UPDATE orders SET total=0 WHERE user_id=5 AND status='open';"})
 
-    def test_update_subquery_where_allowed(self, guard):
-        assert not _blocked(
+    def test_update_subquery_where_blocked(self, guard):
+        # GOV Round 2 (2026-08-10): tree-sitter-sql 无法解析 IN (SELECT ...) 子查询,
+        # 整条语句落入 ERROR 节点 → 原 AST 层静默放行 (FN 缺口 #5)。
+        # 新增 _sql_parse_error_guard: 扫描 ERROR 最近语句祖先的破坏性起始关键词
+        # → fail-closed 阻断。同表/异表子查询均走该路径 (语法层根本解不开, 不区分)。
+        kinds = _kinds(
             guard, {"query": "UPDATE t SET x=1 WHERE id IN (SELECT id FROM s WHERE y>0);"})
+        assert "destructive-sql-parse-error" in kinds, kinds
+        assert _blocked(
+            guard, {"query": "UPDATE t SET x=1 WHERE id IN (SELECT id FROM s WHERE y>0);"})
+
+    def test_update_subquery_same_table_blocked(self, guard):
+        # 同表子查询 (C11 全表更新变体) 同样 fail-closed
+        assert _blocked(
+            guard, {"query": "UPDATE t SET x=1 WHERE id IN (SELECT id FROM t WHERE y>0);"})
+
+    def test_delete_subquery_blocked(self, guard):
+        # C13 变体: DELETE + IN 子查询, 双 kind 命中 (原 destructive-sql + 新增 parse-error)
+        assert _blocked(
+            guard, {"query": "DELETE FROM t WHERE id IN (SELECT id FROM s WHERE y>0);"})
+
+    def test_in_literal_tuple_still_allowed(self, guard):
+        # 零误报面: IN (1,2,3) 字面量可解析 → 不进入 parse-error 层 → ALLOW
+        assert not _blocked(guard, {"query": "UPDATE t SET x=1 WHERE id IN (1,2,3);"})
 
     def test_update_quoted_ident_where_allowed(self, guard):
         assert not _blocked(guard, {"query": 'UPDATE "users" SET x=1 WHERE "id"=2;'})
@@ -130,10 +151,23 @@ class TestDangerRegression:
         assert _blocked(guard, {"query": danger}), danger
 
     def test_drop_database_grammar_boundary(self, guard):
-        # 已知 grammar 边界: tree-sitter-sql 不支持 DROP DATABASE 方言,
-        # 解析为 ERROR 节点 → AST 层无法拦截, 由 L2 YAML 规则兜底。
-        # 诚实记录而非假装覆盖。
-        assert not _blocked(guard, {"query": "DROP DATABASE prod;"})
+        # GOV Round 2 (2026-08-10): 原为已知 grammar 边界 (tree-sitter-sql 不支持
+        # DROP DATABASE 方言 → ERROR 节点 → AST 层静默放行), 由 L2 YAML 兜底 ——
+        # 但审计发现 L2 策略层根本没有 SQL 关键词规则 (FN 缺口 #1)。现由
+        # _sql_parse_error_guard 拦截: ERROR 子树语句祖先以 drop 开头 → 阻断。
+        kinds = _kinds(guard, {"query": "DROP DATABASE prod;"})
+        assert "destructive-sql-parse-error" in kinds, kinds
+        assert _blocked(guard, {"query": "DROP DATABASE prod;"})
+
+    @pytest.mark.parametrize("unparsable_danger", [
+        "DROP TRIGGER trg ON users;",              # FN 缺口 #2
+        "DROP FUNCTION fn();",                     # FN 缺口 #3
+        "ALTER TABLE users DROP COLUMN age;",      # FN 缺口 #4
+        "ALTER TABLE users DROP PRIMARY KEY;",
+    ])
+    def test_parse_error_destructive_keywords_blocked(self, guard, unparsable_danger):
+        kinds = _kinds(guard, {"query": unparsable_danger})
+        assert "destructive-sql-parse-error" in kinds, (unparsable_danger, kinds)
 
 
 # ── P1 约束: 新捕获名已注册 ────────────────────────────────────────
