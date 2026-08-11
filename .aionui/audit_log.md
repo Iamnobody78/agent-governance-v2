@@ -3,6 +3,25 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0069 — bottlesumo_pi 仓库独立性修复 + 开源治理资产全量交付（Sprint 69）
+
+- **类型**: 仓库治理重大修复 + 开源资产交付（bottlesumo_pi 独立 repo main=ebe40cc, 8 commits, 806 files）
+- **重大缺陷披露**: bottlesumo_pi **从未是独立 git 仓库** — 真实 git root 是会话根目录（.aionui/msan_data/harness 等 226 个内部文件曾被 `push -u origin main` 推上 GitHub）。产品化仓库边界与产品根不一致，是仓库治理级别的事故，不是普通配置疏漏
+- **修复路径**:
+  1. 独立目录重新 `git init`；从会话根 feature/s69_cd_github 分支 `git read-tree FETCH_HEAD:bottlesumo_pi` 构建 index（保留中文路径/kb 文件，不依赖工作树，规避手工 hash-object SHA1 不匹配）
+  2. 精确 add 交付物（common/firmware/hardware/rl/governance/docs/.github/dashboard 源码），**禁止 `git add -A`**（两次误 staged vision/tools/reports/notion probes → reset 回滚）
+  3. .gitignore 5 轮迭代（仿真数据/meta_harness variants/调试脚本/本地产物）；已 staged 违规文件 `git rm -r --cached` 重复清理（gitignore 只影响 untracked）
+  4. force-push 替换污染 remote main；污染分支删除；会话根历史完整保留（未破坏）
+- **交付**:
+  1. **Track 1 策略编辑器**: dashboard 后端 governance_engine.py（validate/deploy/rollback .bak）+ routers/governance.py 3 端点 + tests 28/28 + 前端 PolicyEditorView tab 6 + E2E 9/9（真实 HTTP, 修正路由/契约与文档 3 处偏差）
+  2. **Track 2 开源资产**: README（双层定位）/ARCHITECTURE/CONTRIBUTING（GATE 3 基线 450→1042 实测）/LICENSE MIT/SECURITY/CHANGELOG/MAINTAINERS/CODE_OF_CONDUCT + mkdocs.yml + docs/ + ISSUE_TEMPLATE yml ×2 + PR 模板 8-GATE 对照表 — 两个仓库均完成
+  3. **Track 3 CI/CD**: .github/workflows 7 件（ci/e2e/docs/release/codeql/stale/dependabot）+ 双仓库 checkout 布局 + CWD=backend 实测复现 core 26/26 + backend 28/28
+  4. **Track 4 E2E + GitHub metadata**: 端点路径实测修正（/api/governance/policies/*、/api/health、validate 200+valid:false、deploy 422、protocol_rules int）
+  5. **Track 5 仓库修复**: 上述完整修复 + force-push
+- **规则蒸馏**: RULE-DASH-004（独立 init）/ -005（禁 add -A）/ -006（read-tree 提取）/ -007（gitignore 仅 untracked）/ -008（API 契约以实测为准）— 写入 governance/dashboard/engineering_rules.md
+- **回归**: dashboard backend 28/28 + frontend build 39 modules + E2E 9/9（CI 布局中复现）；agent-governance-v2 1042 passed + 1 skipped（py3.11）
+- **遗留/后续**: 合规导出、VCE 定时扫描、LLM 验证器、RBAC、CODEOWNERS、DCO bot、GitHub discussions、GitHub Pages 首次运行、issues/discussions enablement（需 GitHub UI 操作，转 PM）
+
 ## AUDIT-0068 — 可解释主控 Step 2b: Ls 权重表迁移 YAML（"策略是数据"铁律兑现）
 
 - **类型**: 治理能力演进（v1.42.4-step2b 快照）; 用户确认优先于 OpenCV MCP; 兑现 v1.42.3 模块 docstring 承诺的 Step 2+ 计划
