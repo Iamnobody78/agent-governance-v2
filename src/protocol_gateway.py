@@ -279,6 +279,20 @@ class ProtocolGateway:
     def to_policy_yaml(self) -> dict:
         return generate_policy_yaml(self.rules)
 
+    def introspect(self) -> dict:
+        """S64 Phase 1: MCE 2.0 自省 — 每条规则可回答"我为什么存在、我在治理什么"。
+
+        返回可审计的自省产物 (序列化为 dict, 供 JSON/YAML 归档):
+          { protocol_module: [RuleMCE.to_dict(), ...], ... }
+        """
+        from .mce_introspection import build_mce_introspection
+        intro = build_mce_introspection(self.protocols, self.rules)
+        return {
+            "version": "MCE-2.0",
+            "protocols": {pms.protocol_module: [rmc.to_dict() for rmc in pms.rule_mces]
+                          for pms in intro},
+        }
+
     def verify(self) -> dict:
         """完整性自检: 返回协议/规则统计 (RULE-NOTION-003: verify 必须计算全部产物)。"""
         return {
