@@ -3,6 +3,21 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0071 — DUAL-ECO GAP-6.10: GitHub 双仓库生态配置（零 UI 纯 API）
+
+- **类型**: GitHub 生态配置（Issues/Discussions/分支保护/CODEOWNERS）+ 工作流转变
+- **操作**（2026-08-10, gh 2.97.0 + REST/GraphQL, token 仅环境变量）:
+  1. Issues 启用: REST PATCH has_issues=true（双仓库 ✅）
+  2. Discussions 启用: **GraphQL** updateRepository（REST 无 has_discussions 字段；内联引号被 PowerShell 拆词 → 改 -F variables 方式 ✅）
+  3. main 分支保护: 1 review + enforce_admins + strict + 禁 force-push（双仓库 ✅, 回读验证）
+  4. CODEOWNERS: 直写 main 被保护 409 拒绝 → 走 PR（bottlesumo-pi #15 / 本仓库 #11, 待 PM 审批）
+- **迭代教训（诚实披露）**:
+  - PowerShell Set-Content utf8 写 BOM → gh --input JSON 解析失败（改 [IO.File]::WriteAllText 无 BOM）
+  - PowerShell 双引号内嵌引号/jq scriptblock → 拆词（改单引号 + 避免内嵌）
+  - GitHub 禁 self-review → PR 合并必须 PM
+- **工作流转变**: 两仓库 main 均受保护——此后代理一切变更走 PR + PM 审批（治理生态自治）
+- **状态**: GAP-6.10 ✅（CODEOWNERS 合并待 PM review）
+
 ## AUDIT-0070 — ARCH-ROUND 1: bottlesumo_pi 生产基线（PostgreSQL + 可观测性 + 容器化 + 路线图）
 
 - **类型**: 架构补全（ARCH-COMPLETE v1.0 元提示词首次执行）；引擎零代码变更
