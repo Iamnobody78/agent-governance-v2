@@ -293,6 +293,22 @@ class ProtocolGateway:
                           for pms in intro},
         }
 
+    def scan(self) -> dict:
+        """S65 Phase 2: VCE 2.0 扫描 — 治理规则"自审"冲突与盲点。
+
+        消费 MCE 自省产物 (introspect), 检测规则间极化/冲突/盲点。
+        返回可审计的扫描报告 (序列化为 dict, 供 vce_scan_report.json 归档):
+          { Polarization_Index, Value_Tensions, Asymmetric_Perspectives,
+            RuleConflicts, BlindSpots, honest_boundary, ... }
+        """
+        from .vce_scanner import vce_scan_rules
+        intro = self.introspect()
+        rule_mces = []
+        for mod, rmcs in intro["protocols"].items():
+            rule_mces.extend(rmcs)
+        return vce_scan_rules(rule_mces, rules=self.rules,
+                              modules_expected=self.modules)
+
     def verify(self) -> dict:
         """完整性自检: 返回协议/规则统计 (RULE-NOTION-003: verify 必须计算全部产物)。"""
         return {
