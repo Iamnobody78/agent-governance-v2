@@ -42,6 +42,11 @@ from typing import Dict, List, Optional
 import yaml
 
 from .policy import Rule
+from .verification import (
+    DeclarationValidator,
+    NoopValidator,
+    VerificationResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -261,9 +266,12 @@ class ProtocolGateway:
     protocols: List[Protocol] = field(default_factory=list)
     rules: List[Rule] = field(default_factory=list)
 
-    def __init__(self, protocols_dir: Optional[str] = None):
+    def __init__(self, protocols_dir: Optional[str] = None,
+                 validator: Optional[DeclarationValidator] = None):
         self.protocols = load_protocols(protocols_dir)
         self.rules = compile_protocol_rules(self.protocols)
+        # S66 验证通道: 默认 NoopValidator (诚实边界, 无验证器时行为与 S65 一致)
+        self.validator: DeclarationValidator = validator or NoopValidator()
 
     @property
     def modules(self) -> List[str]:
@@ -275,6 +283,58 @@ class ProtocolGateway:
             if rule.matches(path, method, body):
                 return rule
         return None
+
+    # -- S66 验证通道 (CVE-S Phase 3: Governance verifiable) -----------
+
+    def set_validator(self, validator: DeclarationValidator) -> None:
+        """热切换验证器 (可插拔: baseline / LLM 语义 / 签名实现均实现同一协议)。"""
+        self.validator = validator
+
+    def verify_declaration(self, rule: Rule, path: str, method: str,
+                           body=None) -> VerificationResult:
+        """对命中规则的声明执行外部验证 (调用注入的验证器)。
+
+        无验证器时返回 NoopValidator 结果 (verified=False, confidence=0),
+        网关裁决行为不受影响 (向后兼容)。
+        """
+        return self.validator.validate(rule, path, method, body)
+
+    def evaluate_verified(self, path: str, method: str, body=None) -> dict:
+        """S66: 裁决 + 声明验证合一。
+
+        返回:
+          {
+            "rule": 命中规则名或 None,
+            "action": 最终动作 (验证失败时 ok 规则降级为 ESCALATE),
+            "verification": VerificationResult.to_dict() 或 None,
+            "channel": 验证器名称,
+          }
+
+        谎报缓解语义:
+          - 命中 ok (ALLOW_WITH_WARNING) 且声明验证失败 → action 降级为
+            ESCALATE (声明不可信 → 升级复核), 这是 declaration_only 盲点
+            缓解主路径;
+          - 命中 enforce (已升级) / ethics (DENY) → action 不变,
+            验证结果附加为信息;
+          - NoopValidator (未配置) → 验证结果 verified=False/confidence=0
+            但 action 不降级 (保持 S65 行为, 向后兼容)。
+        """
+        rule = self.evaluate(path, method, body)
+        if rule is None:
+            return {"rule": None, "action": None,
+                    "verification": None, "channel": self.validator.name}
+        res = self.verify_declaration(rule, path, method, body)
+        action = rule.action
+        if rule.action == "ALLOW_WITH_WARNING" and not res.verified \
+                and self.validator.name != "none":
+            # 放行声明未通过独立验证 → 降级为升级复核 (谎报缓解)
+            action = "ESCALATE"
+        return {
+            "rule": rule.name,
+            "action": action,
+            "verification": res.to_dict(),
+            "channel": self.validator.name,
+        }
 
     def to_policy_yaml(self) -> dict:
         return generate_policy_yaml(self.rules)
@@ -307,7 +367,8 @@ class ProtocolGateway:
         for mod, rmcs in intro["protocols"].items():
             rule_mces.extend(rmcs)
         return vce_scan_rules(rule_mces, rules=self.rules,
-                              modules_expected=self.modules)
+                              modules_expected=self.modules,
+                              verification_channel=self.validator.name)
 
     def verify(self) -> dict:
         """完整性自检: 返回协议/规则统计 (RULE-NOTION-003: verify 必须计算全部产物)。"""

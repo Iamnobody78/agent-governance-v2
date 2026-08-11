@@ -200,13 +200,17 @@ def _find_conflicts(rule_mces: List[Dict], rules: Optional[List[Rule]] = None) -
     return conflicts
 
 
-def _find_blindspots(rule_mces: List[Dict], modules_expected: Optional[List[str]] = None) -> List[BlindSpot]:
+def _find_blindspots(rule_mces: List[Dict], modules_expected: Optional[List[str]] = None,
+                     verification_channel: Optional[str] = None) -> List[BlindSpot]:
     """盲点检测:
       1. missing_rule_type: 某模块缺规则类型 (如缺 ethics 规则)
       2. declaration_only: 全部裁决依赖 agent 声明 (无独立验证通道)
+         — S66: 验证通道存在时 (verification_channel 非空且非 "none"),
+           该盲点消除 (外部验证层已落地)
       3. no_governance_default: 无 governance 声明时的默认行为 (静默 ALLOW)
     """
     spots: List[BlindSpot] = []
+    has_channel = bool(verification_channel) and verification_channel != "none"
     mod_groups: Dict[str, List[str]] = {}
     for r in rule_mces:
         m = re.match(r"protocol-([a-z_]+)-", r.get("rule", ""))
@@ -223,21 +227,23 @@ def _find_blindspots(rule_mces: List[Dict], modules_expected: Optional[List[str]
                                 f"维度未治理",
                 ))
 
-    # declaration_only: 每模块规则都依赖声明
-    for mod, types in mod_groups.items():
-        if types:
-            spots.append(BlindSpot(
-                category="declaration_only", severity="medium",
-                description=f"模块 {mod} 全部裁决依赖 agent 请求体声明 "
-                            f"(triggered/satisfied/violation), 无独立验证通道 — "
-                            f"恶意 agent 可谎报 satisfied=true 绕过 enforce",
-            ))
+    # declaration_only: 每模块规则都依赖声明 — 仅当无验证通道时报告
+    if not has_channel:
+        for mod, types in mod_groups.items():
+            if types:
+                spots.append(BlindSpot(
+                    category="declaration_only", severity="medium",
+                    description=f"模块 {mod} 全部裁决依赖 agent 请求体声明 "
+                                f"(triggered/satisfied/violation), 无独立验证通道 — "
+                                f"恶意 agent 可谎报 satisfied=true 绕过 enforce",
+                ))
     return spots[:8]
 
 
 def vce_scan_rules(rule_mces: List[Dict],
                    rules: Optional[List[Rule]] = None,
-                   modules_expected: Optional[List[str]] = None) -> Dict:
+                   modules_expected: Optional[List[str]] = None,
+                   verification_channel: Optional[str] = None) -> Dict:
     """VCE 2.0 扫描入口: MCE AST 规则列表 → 扫描报告。
 
     Args:
@@ -245,9 +251,13 @@ def vce_scan_rules(rule_mces: List[Dict],
                    priority/ast/origin)。
         rules: 原始 Rule 列表 (可选, 供冲突检测引用)。
         modules_expected: 期望的协议模块 (可选, 盲点检测用)。
+        verification_channel: S66 验证通道标识 (如 "baseline")。
+                   非空且非 "none" 时, declaration_only 盲点消除
+                   (外部验证层已落地), 报告中记录 Verification_Channel。
     """
     conflicts = _find_conflicts(rule_mces, rules)
-    spots = _find_blindspots(rule_mces, modules_expected)
+    spots = _find_blindspots(rule_mces, modules_expected, verification_channel)
+    has_channel = bool(verification_channel) and verification_channel != "none"
     report = {
         # VCE 2.0 契约字段
         "Polarization_Index": _polarity(rule_mces),
@@ -256,6 +266,13 @@ def vce_scan_rules(rule_mces: List[Dict],
         # 扩展字段
         "RuleConflicts": [c.to_dict() for c in conflicts],
         "BlindSpots": [s.to_dict() for s in spots],
+        # S66 验证通道状态
+        "Verification_Channel": {
+            "enabled": has_channel,
+            "type": "pluggable-validator" if has_channel else "none",
+            "validator": verification_channel or "none",
+            "mitigates": ["declaration_only (satisfied 谎报)"],
+        },
         # 元信息
         "scanned_rule_count": len(rule_mces),
         "conflict_count": len(conflicts),
@@ -263,8 +280,13 @@ def vce_scan_rules(rule_mces: List[Dict],
         # HONEST-BOUNDARY 联动: 扫描能力边界声明
         "honest_boundary": {
             "detects": ["priority 冲突", "条件重叠", "声明依赖盲点", "规则缺失"],
-            "does_not_detect": ["恶意 agent 谎报声明 (需外部验证通道)",
-                                "自然语言协议语义偏差 (需 LLM 层)"],
+            "does_not_detect": (
+                ["深层语义谎报 (基线一致性已覆盖, 语义层需 LLM)",
+                 "自然语言协议语义偏差 (需 LLM 层)"]
+                if has_channel else
+                ["恶意 agent 谎报声明 (需外部验证通道)",
+                 "自然语言协议语义偏差 (需 LLM 层)"]
+            ),
             "scope": f"protocol gateway 规则集 ({len(rule_mces)} rules)",
         },
     }

@@ -54,26 +54,18 @@
       "reason": "ethics(DENY p=5) 与 ok(ALLOW_WITH_WARNING p=25/30) 同域并存 — violation 声明同时存在时 DENY 优先 (预期), 但 agent 可能同时声明 violation+satisfied, 语义需明确"
     }
   ],
-  "BlindSpots": [
-    {
-      "category": "declaration_only",
-      "description": "模块 entropy_denoise 全部裁决依赖 agent 请求体声明 (triggered/satisfied/violation), 无独立验证通道 — 恶意 agent 可谎报 satisfied=true 绕过 enforce",
-      "severity": "medium"
-    },
-    {
-      "category": "declaration_only",
-      "description": "模块 feynman_test 全部裁决依赖 agent 请求体声明 (triggered/satisfied/violation), 无独立验证通道 — 恶意 agent 可谎报 satisfied=true 绕过 enforce",
-      "severity": "medium"
-    },
-    {
-      "category": "declaration_only",
-      "description": "模块 logic_chain_check 全部裁决依赖 agent 请求体声明 (triggered/satisfied/violation), 无独立验证通道 — 恶意 agent 可谎报 satisfied=true 绕过 enforce",
-      "severity": "medium"
-    }
-  ],
+  "BlindSpots": [],
+  "Verification_Channel": {
+    "enabled": true,
+    "type": "pluggable-validator",
+    "validator": "baseline",
+    "mitigates": [
+      "declaration_only (satisfied 谎报)"
+    ]
+  },
   "scanned_rule_count": 9,
   "conflict_count": 6,
-  "blindspot_count": 3,
+  "blindspot_count": 0,
   "honest_boundary": {
     "detects": [
       "priority 冲突",
@@ -82,7 +74,7 @@
       "规则缺失"
     ],
     "does_not_detect": [
-      "恶意 agent 谎报声明 (需外部验证通道)",
+      "深层语义谎报 (基线一致性已覆盖, 语义层需 LLM)",
       "自然语言协议语义偏差 (需 LLM 层)"
     ],
     "scope": "protocol gateway 规则集 (9 rules)"
