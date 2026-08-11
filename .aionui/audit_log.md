@@ -3,6 +3,20 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0070 — ARCH-ROUND 1: bottlesumo_pi 生产基线（PostgreSQL + 可观测性 + 容器化 + 路线图）
+
+- **类型**: 架构补全（ARCH-COMPLETE v1.0 元提示词首次执行）；引擎零代码变更
+- **交付**（bottlesumo_pi main 3de1fb9, 4 分支 4 commit）:
+  1. **T0.1 生产化路线图** (93181ee): ROADMAP_PRODUCTION v1.0（v2.x 稳固核心 / v3.0 能力增强 / v4.0+ 生态构建，含 DoD 门）
+  2. **T0.2 PostgreSQL** (c5fbc81): `GOV_DASH_DB_URL` 一键切换 + `resolve_db_url` 纯函数 + 5 单测 + CI postgres:16 矩阵 job
+  3. **T0.3 可观测性** (df2d6d4): `/metrics`（`governance_*` 命名空间）+ JSON 结构化日志 + 4 单测
+  4. **T0.4 容器化** (3de1fb9): 多阶段 Dockerfile（构建时锁定拉取引擎 ref）+ docker-compose 5 服务 + nginx + HEALTHCHECK
+- **GATE 实测**: backend 37/37 + E2E 9/9 + compose config VALID + 镜像 317MB 构建 + 容器 healthy + /metrics 200（4016B）
+- **失败迭代（诚实披露）**: `_factory` 遗漏回归（GATE 捕获）→ 环境变量实时读取 → `make_url` 替代 create_engine 单测；E2E 残留 `e2e_demo.yaml` 污染真实协议目录（既有缺陷，P1）
+- **规则蒸馏**: RULE-ARCH-001..004 入库 engineering_rules.md（三同步硬验证/向后兼容/指标命名空间/E2E 自清理）
+- **Honest Boundary**: P0 ×4 完成；P1 ×11（RBAC 首项）+ P2 ×8 顺延；PG 连通性与 frontend 镜像留给 CI/后续实测
+- **遗留 P1**: RBAC+JWT、性能基准、密钥管理、审计日志管道、E2E 自清理
+
 ## AUDIT-0069 — bottlesumo_pi 仓库独立性修复 + 开源治理资产全量交付（Sprint 69）
 
 - **类型**: 仓库治理重大修复 + 开源资产交付（bottlesumo_pi 独立 repo main=ebe40cc, 8 commits, 806 files）
