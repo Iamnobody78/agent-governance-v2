@@ -178,6 +178,45 @@ class TestBaselineValidator:
         assert res.confidence == 1.0
 
 
+# ── S68 审计回调钩子 ────────────────────────────────────────────────
+
+class TestAuditSink:
+    def test_audit_sink_invoked_on_evaluate_verified(self, gateway):
+        events = []
+        gw = ProtocolGateway(validator=BaselineDeclarationValidator(),
+                             audit_sink=events.append)
+        body = {"governance": {"protocols": {"feynman_test": {"satisfied": True}}}}
+        gw.evaluate_verified("/gateway", "POST", body)
+        assert len(events) == 1
+        ev = events[0]
+        assert ev["rule"] == "protocol-feynman_test-ok"
+        assert ev["action"] == "ESCALATE"  # 验证失败降级
+        assert ev["path"] == "/gateway" and ev["method"] == "POST"
+        assert ev["body"] == body
+        assert ev["verification"]["validator"] == "baseline"
+
+    def test_audit_sink_default_none(self, gateway):
+        assert gateway.audit_sink is None
+
+    def test_audit_sink_no_match_no_event(self):
+        events = []
+        gw = ProtocolGateway(validator=BaselineDeclarationValidator(),
+                             audit_sink=events.append)
+        gw.evaluate_verified("/other", "GET", {})
+        assert len(events) == 0  # 无命中规则 → 无裁决事件
+
+    def test_audit_sink_failure_does_not_break_verdict(self):
+        def bad_sink(event):
+            raise RuntimeError("audit store down")
+        gw = ProtocolGateway(validator=BaselineDeclarationValidator(),
+                             audit_sink=bad_sink)
+        body = {"governance": {"protocols": {"feynman_test": {"satisfied": True}}}}
+        out = gw.evaluate_verified("/gateway", "POST", body)
+        # fail-open 审计: 审计存储故障不影响治理裁决
+        assert out["action"] == "ESCALATE"
+        assert out["verification"]["verified"] is False
+
+
 # ── VCE 联动 (PM 验收项) ─────────────────────────────────────────────
 
 class TestVceLinkage:

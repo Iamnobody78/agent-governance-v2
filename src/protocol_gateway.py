@@ -37,7 +37,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import yaml
 
@@ -267,11 +267,15 @@ class ProtocolGateway:
     rules: List[Rule] = field(default_factory=list)
 
     def __init__(self, protocols_dir: Optional[str] = None,
-                 validator: Optional[DeclarationValidator] = None):
+                 validator: Optional[DeclarationValidator] = None,
+                 audit_sink: Optional[Callable[[dict], None]] = None):
         self.protocols = load_protocols(protocols_dir)
         self.rules = compile_protocol_rules(self.protocols)
         # S66 验证通道: 默认 NoopValidator (诚实边界, 无验证器时行为与 S65 一致)
         self.validator: DeclarationValidator = validator or NoopValidator()
+        # S68 审计回调: 每次 evaluate_verified 完成后调用 audit_sink(event_dict)。
+        # 引擎层独立可审计 — 任何消费方 (dashboard/合规日志/webhook) 可注入。
+        self.audit_sink: Optional[Callable[[dict], None]] = audit_sink
 
     @property
     def modules(self) -> List[str]:
@@ -329,12 +333,24 @@ class ProtocolGateway:
                 and self.validator.name != "none":
             # 放行声明未通过独立验证 → 降级为升级复核 (谎报缓解)
             action = "ESCALATE"
-        return {
+        out = {
             "rule": rule.name,
             "action": action,
             "verification": res.to_dict(),
             "channel": self.validator.name,
         }
+        # S68 审计回调: 引擎层独立审计链 (不阻塞裁决路径)
+        if self.audit_sink is not None:
+            try:
+                self.audit_sink({
+                    **out,
+                    "path": path,
+                    "method": method,
+                    "body": body,
+                })
+            except Exception:  # 审计失败不得影响治理裁决 (fail-open 审计)
+                pass
+        return out
 
     def to_policy_yaml(self) -> dict:
         return generate_policy_yaml(self.rules)
