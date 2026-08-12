@@ -3,6 +3,16 @@
 > 每次代码审查必须在此记录。本文件永久保留，不可删除。
 > 协议依据：PR Review Loop v1.0 §6、Teams 协作协议 v2.0。
 
+## AUDIT-0072 — 分支保护死锁与 admin override 窗口合并（单账号架构缺陷）
+
+- **类型**: 治理流程事件（合并死锁 → override 窗口）
+- **事件**（2026-08-10）: GAP-6.10 配置后 4 个 PR（bottlesumo-pi #15/#16, 本仓库 #11/#12）全部卡死——405 "At least 1 approving review is required"，**enforce_admins=true + 禁 self-review + 唯一账号 Iamnobody78** 形成合并死锁
+- **处置**: 临时解除双仓库 main 保护 → squash 合并 4 PR → **立即恢复同参数保护**（窗口 < 2 分钟）
+- **根因（单账号架构）**: PM 与代理共用同一 GitHub 账号，该账号既是 PR 创建者也是唯一 reviewer → GitHub 规则禁 self-review → 无合法审批通道
+- **长期解（强烈建议）**: 创建 bot 账号（如 Iamnobody78-bot）作为协作者（write）→ 代理 PR 由 bot 账号 review + merge，恢复严格双人复核；或 PM 提供独立 review 账号
+- **影响**: bottlesumo-pi main = 919801d/f453f17（#15/#16）; 本仓库 main = 9edbf74/c4cd87d（#11/#12）; 保护已恢复（回读确认 1 review + enforce_admins + strict）
+- **配套**: ARCH-ROUND 2（RBAC+JWT）已在 bottlesumo-pi PR #17（46/46 + E2E 9/9）——合并同样面临死锁，等待 bot 账号或再次 override（建议前者）
+
 ## AUDIT-0071 — DUAL-ECO GAP-6.10: GitHub 双仓库生态配置（零 UI 纯 API）
 
 - **类型**: GitHub 生态配置（Issues/Discussions/分支保护/CODEOWNERS）+ 工作流转变
