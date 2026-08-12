@@ -19,7 +19,11 @@ MCP_FILE = pathlib.Path(__file__).resolve().parents[2] / ".aionui" / "mcp" / "re
 
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 sys.path.insert(0, str(MCP_FILE.parent))  # 使 import research_mcp_server 可用
-import research_mcp_server as rmcp
+try:
+    import research_mcp_server as rmcp
+except ModuleNotFoundError:
+    # .aionui/mcp/research_mcp_server.py 是运行环境文件（不在 git 检出中）→ 跳过
+    pytest.skip(".aionui/mcp/research_mcp_server.py 不在检出中", allow_module_level=True)
 
 
 def _line(msg: dict) -> dict:

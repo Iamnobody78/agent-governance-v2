@@ -9,3 +9,4 @@ pytest-timeout>=2.0
 # 0.25+ 移除匹配 API, 0.22-0.24 与 tree-sitter-languages 双参 Language 不兼容)
 tree-sitter==0.21.3
 tree-sitter-languages==1.5.0
+cryptography>=42.0
