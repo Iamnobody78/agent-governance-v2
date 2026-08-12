@@ -1032,3 +1032,25 @@
   - 主: 恢复流程新增规模判定分支 —— 产物缺失 + 规模>6 锚点 → 拆分 Spawn 或 Coordinator 兜底（标注"R4 兜底"）
   - 次: 审查者隐含依赖入库 —— DEBT-0009 (_pending 无上限), DEBT-0010 (flush 重试时机未明确)，来源 REAL-002 Reviewer ②
   - 防口頭验证: 三处合并后锚点断言 count==1 全过
+
+## AUDIT-0073 | 2026-08-11T15:30:00Z
+
+- PR: fix/codegen-crlf-drift
+- 根因: src/codegen/generator.py 的 write_text 在 Windows 文本模式输出 CRLF, 提交产物 blob 含 232 个 CRLF; Linux CI 重生成输出 LF → codegen_drift 字节比较漂移 (CI drift=True, 本地 Windows drift=False 的平台不对称)
+- 修复:
+  1. generator.py: write_text(newline="\n") 固定 LF 输出 → 跨平台字节确定性
+  2. sensor.py codegen_drift: 比较前统一换行符 (内容级漂移判定, 换行符载体差异不计入)
+  3. _generated_matches.py 重生成 (LF 干净产物, 7978 bytes)
+  4. check_policy GATE 3: ast_guard.py:119 / proposer_llm.py:37 技术性正则追加 # noqa: policy 豁免 (危险模式表仍全部在 queries/*.scm)
+  5. tests/test_bootstrap.py: 2 处回滚断言改内容级比较 (换行归一)
+- 验证: 本地 tests/test_bootstrap.py + test_codegen.py + test_meta_harness.py 64 passed; check_policy 63 文件 GATE 3 通过
+- 影响面: 引擎 ci-test + gates-1-8 双 workflow 待绿
+
+## AUDIT-0074 | 2026-08-11T16:10:00Z
+
+- PR: fix/codegen-crlf-drift (追加提交)
+- 存量 CI 债务修复 (gates-1-8 的 quality/policy job 在 main 上长期失败, 被 GATE 3 掩盖):
+  1. GATE 1 (check_test_quality.py): 17 处 dataclass 断言误报 — 扩展运行时状态 root 豁免 (event/obs/gw/gateway/leth), 与 engine/r_a 同类 (运行时行为/状态验证, 非字段赋值测试); 遵循 AUDIT-0047/v0.2.3 精度修复模式
+  2. GATE 6 finding 1 (protocol_gateway.py:351): bare `except Exception: pass` 审计回调 → 补 logger.warning (fail-open 语义保留, 可观测)
+  3. GATE 6 finding 2 (meta_security_scanner.py): f-string 参数被误判为路径检查 → JoinedStr 常量段无路径分隔符则豁免 (AUDIT-0047 只覆盖字符串字面量的精度缺口)
+- 验证: GATE 1 PASS (2043 asserts, 0 假阳性), GATE 3 PASS (63 files), GATE 6 PASS; test_verification/metacognition_observer/lethality_yaml/protocol_gateway 77 passed

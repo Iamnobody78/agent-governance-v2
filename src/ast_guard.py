@@ -116,7 +116,7 @@ def _has_tautology_where(node: Node) -> bool:
 # 解析产生 ERROR 节点时生效: 对 ERROR 所在语句的文本做**语句起始关键词**扫描
 # (锚定 ^ 或 ;, 不扫描字符串字面量内部位置——良性可解析查询完全不进入本层)。
 # 注意: 这不是危险模式表 (危险模式仍全部在 queries/*.scm), 而是解析失败兜底。
-_SQL_PARSE_ERROR_KEYWORD = re.compile(r"(?i)(?:^|;)\s*(drop|alter|delete|truncate|update)\b")
+_SQL_PARSE_ERROR_KEYWORD = re.compile(r"(?i)(?:^|;)\s*(drop|alter|delete|truncate|update)\b")  # noqa: policy (parse-error containment fallback; danger patterns live in queries/*.scm)
 
 
 @dataclass

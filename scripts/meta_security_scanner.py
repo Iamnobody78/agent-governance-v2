@@ -143,6 +143,19 @@ class SecurityVisitor(ast.NodeVisitor):
         if len(node.args) < 1:
             return False
         arg = node.args[0]
+        # f-string / JoinedStr argument (v0.2.4, AUDIT-0073, precision fix):
+        # an f-string whose constant segments carry NO path separator is a
+        # rule-name / token prefix check (e.g. r.name.startswith(
+        # f"protocol-{p.module}-")), NOT a path boundary check. AUDIT-0047
+        # only covered plain string literals; JoinedStr slipped through as
+        # "expression argument".
+        if isinstance(arg, ast.JoinedStr):
+            for seg in arg.values:
+                if isinstance(seg, ast.Constant) and isinstance(seg.value, str):
+                    v = seg.value
+                    if "/" in v or "\\" in v or ".." in v or v.startswith("."):
+                        return True
+            return False
         # variable / expression argument -> real path comparison
         if not isinstance(arg, ast.Constant):
             return True

@@ -348,8 +348,8 @@ class ProtocolGateway:
                     "method": method,
                     "body": body,
                 })
-            except Exception:  # 审计失败不得影响治理裁决 (fail-open 审计)
-                pass
+            except Exception as exc:  # 审计失败不得影响治理裁决 (fail-open 审计, 但需可观测 — AUDIT-0073)
+                logger.warning("audit_sink 回调失败 (fail-open, 不阻塞裁决): %s", exc)
         return out
 
     def to_policy_yaml(self) -> dict:

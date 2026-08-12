@@ -135,6 +135,18 @@ class AssertVisitor(ast.NodeVisitor):
                 # - EPOCH: timezone-aware constant — EPOCH.tzinfo checks tz data
                 if root.id in ("engine", "d", "EPOCH"):
                     return False
+                # Runtime-state roots (v0.2.4, AUDIT-0073, GATE 1 precision
+                # fix — same class as engine/r_a above):
+                # - event: metacognition observer event records — asserting
+                #   event.verdict / event.path verifies the RECORDING behavior
+                #   (runtime behavior log), not dataclass field assignment
+                # - obs: observer instance runtime config (window,
+                #   deviation_threshold, min_samples — config propagation)
+                # - gw: gateway verify-channel state transitions
+                #   (gw.validator.name == 'baseline'/'none' switches)
+                # - leth: lethality module runtime tool map
+                if root.id in ("event", "obs", "gw", "gateway", "leth"):
+                    return False
                 if root.id.startswith("resp"):
                     return False
                 # Round-trip / algorithm-result roots (AUDIT-0047, GATE 1

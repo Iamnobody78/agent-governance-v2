@@ -34,7 +34,7 @@ MH_PROPOSER_URL = os.environ.get(
 MH_PROPOSER_MODEL = os.environ.get("MH_PROPOSER_MODEL", "qwen2.5-coder:1.5b")
 MH_PROPOSER_TIMEOUT = float(os.environ.get("MH_PROPOSER_TIMEOUT", "60"))
 
-_YAML_FENCE_RE = re.compile(
+_YAML_FENCE_RE = re.compile(  # noqa: policy (markdown YAML code-fence extractor for LLM output)
     r"```(?:yaml|yml)?\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
 
 

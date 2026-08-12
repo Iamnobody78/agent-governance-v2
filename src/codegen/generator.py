@@ -185,7 +185,9 @@ def generate(policy_path: Path, out_path: Path) -> Tuple[bool, List[str]]:
         old = out_path.read_text(encoding="utf-8")
         if old == src:
             return written, [f"{out_path.name}: unchanged (idempotent)"]
-    out_path.write_text(src, encoding="utf-8")
+    # 固定 LF 输出: 文本模式在 Windows 会写成 CRLF, 导致同一输入在不同平台
+    # 产生不同字节 (CI drift 根因) —— 显式 newline="\n" 保证跨平台字节确定性
+    out_path.write_text(src, encoding="utf-8", newline="\n")
     written = True
     return written, [f"{out_path.name}: generated ({len(rules)} rules -> {len(fn_src)} matchers)"]
 
