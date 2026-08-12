@@ -91,7 +91,12 @@ def codegen_drift(repo_root: str | Path) -> dict:
         tmp_out = Path(tmp) / "_generated_matches.py"
         generate(pol, tmp_out)
         regenerated = tmp_out.read_bytes()
-    drift = regenerated != committed
+    # 字节比较前统一换行符: 历史提交产物可能含 CRLF (Windows 时代生成),
+    # 生成器现已固定输出 LF —— 漂移判定只应反映内容差异, 而非换行符载体差异
+    def _normalize(b: bytes) -> bytes:
+        return b.replace(b"\r\n", b"\n")
+
+    drift = _normalize(regenerated) != _normalize(committed)
     return {
         "drift": drift,
         "generated": str(gen),

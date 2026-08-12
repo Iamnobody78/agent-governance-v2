@@ -177,8 +177,9 @@ class TestDeployer:
         result = run_fix("REGENERATE_CODEGEN", git_repo, run_tests=False)
         assert result["status"] == "ROLLED_BACK"
         assert "回滚" in result["detail"]
-        # 生成物已还原到提交基线
-        assert gen.read_bytes() == committed_bytes
+        # 生成物已还原到提交基线（内容级比较: 换行符载体差异不计入漂移）
+        assert gen.read_bytes().replace(b"\r\n", b"\n") == \
+            committed_bytes.replace(b"\r\n", b"\n")
 
 
 # ---------- AC5/AC6: scheduler ----------
@@ -239,8 +240,9 @@ class TestScheduler:
                                    config=SchedulerConfig(run_tests=False))
         report = sched.run_cycle()
         assert report.status == "ROLLED_BACK"
-        # 生成物已还原到提交基线
-        assert gen.read_bytes() == committed_bytes
+        # 生成物已还原到提交基线（内容级比较: 换行符载体差异不计入漂移）
+        assert gen.read_bytes().replace(b"\r\n", b"\n") == \
+            committed_bytes.replace(b"\r\n", b"\n")
         # 失败记录入库
         with sqlite3.connect(str(db)) as conn:
             n = conn.execute(
