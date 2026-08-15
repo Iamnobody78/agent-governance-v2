@@ -1,3 +1,5 @@
+> ⚠️ **开发迁移公告**: 本仓库已并入 [`cognify-engine`](https://github.com/Iamnobody78/cognify-engine) (插件平台 PLUGINIFY v1.0)。所有新开发/迭代/CI 均迁移至该仓库, 本仓库仅保留历史与外部贡献入口。
+
 # agent-governance-v2
 
 **AI 代理治理层** —— 不是构建框架，而是安全护栏。
