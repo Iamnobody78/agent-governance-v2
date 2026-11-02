@@ -6,7 +6,7 @@ requires-python = ">=3.10"
 dependencies = [
     "aiohttp>=3.9",
     "pyyaml>=6.0",
-    "pydantic>=2.0",
+    "pydantic>=2.14.2",
     "aiosqlite>=0.20",
     "cryptography>=42.0",
     # AST 语义门真实依赖 — 之前只在 requirements.txt 声明, pyproject 缺失导致
